@@ -2,10 +2,15 @@
 
 ```text
 nktp/
-├── Chart.yaml                      # Declares the external otelgen dependency
+├── Chart.yaml
 ├── values.yaml
 ├── README.md
 ├── templates/
+
+otelgen/                            # Optional: if owned by this repository
+├── Chart.yaml
+├── README.md
+└── templates/
 
 blueprints/                         # Optional: for blueprints owned by this repo
 ├── README.md
@@ -21,6 +26,7 @@ tests/
 ├── internal/
 ├── unit/
 │   ├── nktp/
+│   ├── otelgen/                   # Present only if otelgen is owned here
 │   └── blueprints/                # Present only for locally owned blueprints
 ├── integration/
 ├── e2e/
