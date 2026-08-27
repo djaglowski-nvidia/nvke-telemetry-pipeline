@@ -1,6 +1,6 @@
-//go:build functional
+//go:build integration
 
-package functional
+package integration
 
 import "testing"
 
