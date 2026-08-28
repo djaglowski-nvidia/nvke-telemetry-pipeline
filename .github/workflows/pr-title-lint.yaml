@@ -1,0 +1,52 @@
+name: PR Title Lint
+
+on:
+  pull_request:
+    branches:
+      - main
+    types:
+      - opened
+      - edited
+      - reopened
+      - synchronize
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  title:
+    name: Check PR Title
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    timeout-minutes: 5
+
+    steps:
+      - name: Validate Conventional Commit format
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const types = [
+              'build', 'chore', 'ci', 'docs', 'feat', 'fix',
+              'perf', 'refactor', 'revert', 'style', 'test',
+            ];
+            const pattern = new RegExp(
+              `^(${types.join('|')})(\\([A-Za-z0-9][A-Za-z0-9._/-]*\\))?!?: \\S(?:.*\\S)?$`
+            );
+            const { data: { title } } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.payload.pull_request.number,
+            });
+
+            if (!pattern.test(title)) {
+              core.setFailed(
+                `Use '<type>[optional scope][optional !]: <subject>'. ` +
+                `Valid types: ${types.join(', ')}. Received: ${JSON.stringify(title)}`
+              );
+            }
