@@ -6,11 +6,21 @@ nktp/
 ├── values.yaml
 ├── README.md
 ├── templates/
+└── tests/                          # Self-contained unit test module
+    ├── go.mod
+    ├── go.sum
+    ├── pass/                       # Scenarios that must succeed
+    └── fail/                       # Scenarios that must be rejected
 
-otelgen/                            # Optional: if owned by this repository
+occt/                               # Optional: if owned by this repository
 ├── Chart.yaml
 ├── README.md
-└── templates/
+├── templates/
+└── tests/                          # Self-contained unit test module
+    ├── go.mod
+    ├── go.sum
+    ├── pass/                       # Scenarios that must succeed
+    └── fail/                       # Scenarios that must be rejected
 
 blueprints/                         # Optional: for blueprints owned by this repo
 ├── README.md
@@ -24,10 +34,6 @@ tests/
 ├── go.mod
 ├── go.sum
 ├── internal/
-├── unit/
-│   ├── nktp/
-│   ├── otelgen/                   # Present only if otelgen is owned here
-│   └── blueprints/                # Present only for locally owned blueprints
 ├── integration/
 ├── e2e/
 ├── scale/
