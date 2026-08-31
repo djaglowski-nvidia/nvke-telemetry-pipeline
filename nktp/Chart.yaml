@@ -1,0 +1,5 @@
+apiVersion: v2
+name: nktp
+description: A scalable, OpenTelemetry pipeline for collecting, processing, and exporting Kubernetes metrics, logs, and traces.
+type: application
+version: 0.1.0
