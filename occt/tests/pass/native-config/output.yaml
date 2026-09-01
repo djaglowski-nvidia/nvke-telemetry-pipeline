@@ -1,0 +1,21 @@
+---
+# Source: test-chart/templates/transpile.yaml
+exporters:
+  debug:
+    verbosity: detailed
+processors:
+  batch: {}
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+service:
+  pipelines:
+    logs:
+      exporters:
+      - debug
+      processors:
+      - batch
+      receivers:
+      - otlp

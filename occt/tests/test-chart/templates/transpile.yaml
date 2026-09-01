@@ -1,0 +1,1 @@
+{{- include "occt.transpile" (dict "config" .Values.config "blueprints" .Values.blueprints) -}}
