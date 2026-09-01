@@ -1,1 +1,90 @@
 # Default values for the NKTP Helm chart.
+
+# Namespace for all namespaced NKTP resources. Created by the chart when
+# create is true. CRDs and other cluster-scoped resources are unaffected.
+namespace:
+  name: nktp
+  create: true
+
+# CRD installation. Each flag controls one CRD set.
+crds:
+  installOtel: true
+  installPrometheus: true
+
+# OTel workloads. Each workload uses the same structure:
+#   kubernetes:  standard Kubernetes settings (resources, affinity, selectors, labels, ...)
+#   otel.image:  collector image, in the same form as OpenTelemetryCollector spec.image (repo:tag or repo@digest)
+#   otel.config: native OTel collector configuration
+
+# Receives internal telemetry from all NKTP collectors.
+watchdog:
+  kubernetes: {}
+  otel:
+    image: otel/opentelemetry-collector-k8s:0.159.0
+    config: {}
+
+# Log gateway. Exports all logs from the cluster.
+gateway_logs:
+  kubernetes: {}
+  otel:
+    image: otel/opentelemetry-collector-k8s:0.159.0
+    config: {}
+
+# Metric gateway. Exports all metrics from the cluster.
+gateway_metrics:
+  kubernetes: {}
+  otel:
+    image: otel/opentelemetry-collector-k8s:0.159.0
+    config: {}
+
+# Trace gateway. Exports all traces from the cluster.
+gateway_traces:
+  kubernetes: {}
+  otel:
+    image: otel/opentelemetry-collector-k8s:0.159.0
+    config: {}
+
+# Node-level collector. Ingests OTLP from local pods, reads local logs, and collects host metrics.
+daemonset:
+  kubernetes: {}
+  otel:
+    image: otel/opentelemetry-collector-k8s:0.159.0
+    config: {}
+
+# Cluster-level scraper pool.
+cluster_metrics:
+  kubernetes: {}
+  otel:
+    image: otel/opentelemetry-collector-k8s:0.159.0
+    config: {}
+
+# Cluster singleton. Collects Kubernetes API server events.
+cluster_events:
+  kubernetes: {}
+  otel:
+    image: otel/opentelemetry-collector-k8s:0.159.0
+    config: {}
+
+# Managed dependencies. Each has an enabled flag. Further configuration
+# passes through under each key using the dependency's own conventions.
+
+# Manages the OpenTelemetryCollector CRs that define every NKTP workload.
+opentelemetry-operator:
+  enabled: true
+
+# Kubernetes object state metrics. Sharded for scalability.
+kube-state-metrics:
+  enabled: true
+
+# Host-level metrics from each node.
+node-exporter:
+  enabled: true
+
+# Resource metrics API, used for autoscaling. Disabled by default because it is installed
+# via other mechanisms in many clusters.
+metrics-server:
+  enabled: false
+
+# Default in-cluster backend. MUST be disabled for production use.
+otel-lgtm:
+  enabled: true
