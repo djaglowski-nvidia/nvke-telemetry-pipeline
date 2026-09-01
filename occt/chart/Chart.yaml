@@ -1,0 +1,7 @@
+apiVersion: v2
+name: occt
+description: |
+  Transpiles an OpenTelemetry Collector configuration containing
+  blueprint/<type>[/<name>] declarations into native Collector configuration.
+type: library
+version: 0.1.0
