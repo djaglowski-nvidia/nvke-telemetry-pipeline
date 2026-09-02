@@ -1,0 +1,37 @@
+# Local dev loop: NKTP chart on the local Kind cluster.
+# Start with `task dev:up`.
+# Or from dev/: KUBECONFIG=.kubeconfig tilt up [-- --config <name>]
+
+load('ext://helm_resource', 'helm_resource')
+
+config.define_string('config')
+cfg = config.parse()
+dev_config = cfg.get('config', '')
+
+kube_context = 'kind-nktp'
+namespace = 'nktp'
+
+allow_k8s_contexts(kube_context)
+
+# Without a config, the chart installs with its default values.
+value_files = []
+if dev_config:
+    config_dir = 'configs/%s' % dev_config
+    local('test -f "%s/values.yaml" || { echo "error: config not found: %s/values.yaml" >&2; exit 1; }' % (config_dir, config_dir))
+    watch_file(config_dir)
+    value_files = ['%s/values.yaml' % config_dir]
+    value_files += sorted([f for f in listdir(config_dir) if f.endswith('.yaml') and not f.endswith('/values.yaml')])
+
+local(
+    'kubectl --context %s create namespace %s --dry-run=client -o yaml | kubectl --context %s apply -f -'
+    % (kube_context, namespace, kube_context)
+)
+
+# NKTP Helm release with the selected dev config overlay.
+helm_resource(
+    'nktp',
+    chart = '../nktp',
+    namespace = namespace,
+    flags = ['--values=' + f for f in value_files],
+    labels = ['nktp'],
+)

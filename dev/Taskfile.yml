@@ -1,0 +1,75 @@
+version: '3'
+
+# Every command that talks to a cluster is explicitly pointed at .kubeconfig,
+# a file dedicated to this project's Kind cluster. The dev loop never reads or
+# writes any other kubeconfig, regardless of the user's environment.
+
+tasks:
+
+  # --- Dev-facing tasks ---
+
+  up:
+    desc: 'Start the Tilt dev loop against the local Kind cluster (config: task dev:up -- <name>)'
+    deps: [cluster:up]
+    silent: true
+    cmds:
+      - task: stop-tilt
+      - sh -c 'KUBECONFIG=$(pwd)/.kubeconfig tilt up --context kind-nktp {{if .CLI_ARGS}}-- --config {{.CLI_ARGS}}{{end}} > .tilt.log 2>&1 & echo $! > .tilt.pid'
+      - |
+        echo ""
+        echo "  Config:  {{if .CLI_ARGS}}dev/configs/{{.CLI_ARGS}}{{else}}chart defaults{{end}}"
+        echo "  Tilt UI: http://localhost:10350"
+        echo ""
+        echo "  kubectl access: export KUBECONFIG=$(pwd)/.kubeconfig"
+        echo ""
+        echo "  Logs: dev/.tilt.log   Stop: task dev:down"
+        echo ""
+
+  down:
+    desc: Stop the dev loop and delete the local Kind cluster
+    cmds:
+      - task: stop-tilt
+      - task: cluster:down
+
+  # --- Internal tasks ---
+
+  stop-tilt:
+    internal: true
+    desc: Stop the Tilt session if one is running
+    silent: true
+    cmds:
+      # Kill the recorded pid only if it is still a tilt process.
+      - test -f .tilt.pid && ps -p "$(cat .tilt.pid)" -o comm= | grep -q tilt && kill "$(cat .tilt.pid)" || true
+      - rm -f .tilt.pid .tilt.log
+
+  cluster:up:
+    internal: true
+    desc: Create the local Kind cluster
+    deps: [check-local-deps]
+    preconditions:
+      - sh: docker info >/dev/null 2>&1
+        msg: 'Docker daemon is not running. Start it (e.g. colima start, or Docker Desktop) and retry.'
+    silent: true
+    cmds:
+      - kind get clusters | grep -qx nktp || kind create cluster --name nktp --kubeconfig .kubeconfig
+      - kind -q export kubeconfig --name nktp --kubeconfig .kubeconfig
+      - kubectl wait --kubeconfig .kubeconfig --for=condition=Ready nodes --all --timeout=5m
+
+  cluster:down:
+    internal: true
+    desc: Delete the local Kind cluster
+    cmds:
+      - kind delete cluster --name nktp --kubeconfig .kubeconfig
+      - rm -f .kubeconfig
+
+  check-local-deps:
+    internal: true
+    desc: Check that required local dev tools are installed
+    silent: true
+    cmds:
+      - |
+        missing=0
+        for tool in docker kind kubectl helm tilt; do
+          command -v "$tool" >/dev/null || { echo "missing: $tool (see dev/README.md)"; missing=1; }
+        done
+        exit $missing

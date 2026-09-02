@@ -1,1 +1,4 @@
 occt/tests/test-chart/charts/
+dev/.kubeconfig
+dev/.tilt.log
+dev/.tilt.pid

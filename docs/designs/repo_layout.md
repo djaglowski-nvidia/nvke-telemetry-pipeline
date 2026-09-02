@@ -50,6 +50,8 @@ docs/
 ├── reference/                     # Detailed configuration, schemas, and interfaces
 └── testing/                       # Test strategy, execution, and scenario guidance
 
+dev/                               # Local development tooling and scripts
+
 .github/{actions,workflows,ISSUE_TEMPLATE}/
 Taskfile.yml
 README.md
