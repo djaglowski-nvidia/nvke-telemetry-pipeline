@@ -11,58 +11,69 @@ crds:
   installOtel: true
   installPrometheus: true
 
+# Collector image used by all OTel workloads, in the same form as
+# OpenTelemetryCollector spec.image (repo:tag or repo@digest).
+otelcol_image: otel/opentelemetry-collector-k8s:0.159.0
+
 # OTel workloads. Each workload uses the same structure:
-#   kubernetes:  standard Kubernetes settings (resources, affinity, selectors, labels, ...)
-#   otel.image:  collector image, in the same form as OpenTelemetryCollector spec.image (repo:tag or repo@digest)
-#   otel.config: native OTel collector configuration
+#   kubernetes:     Standard Kubernetes settings (resources, affinity, selectors, labels, ...).
+#   otelcol.image:  Set a custom image for this workload only.
+#   otelcol.config: Native OTel collector configuration.
 
 # Receives internal telemetry from all NKTP collectors.
 watchdog:
   kubernetes: {}
-  otel:
-    image: otel/opentelemetry-collector-k8s:0.159.0
+  otelcol:
+    # Set a custom image for this workload only.
+    # image: otel/opentelemetry-collector-k8s:0.159.0
     config: {}
 
 # Log gateway. Exports all logs from the cluster.
 gateway_logs:
   kubernetes: {}
-  otel:
-    image: otel/opentelemetry-collector-k8s:0.159.0
+  otelcol:
+    # Set a custom image for this workload only.
+    # image: otel/opentelemetry-collector-k8s:0.159.0
     config: {}
 
 # Metric gateway. Exports all metrics from the cluster.
 gateway_metrics:
   kubernetes: {}
-  otel:
-    image: otel/opentelemetry-collector-k8s:0.159.0
+  otelcol:
+    # Set a custom image for this workload only.
+    # image: otel/opentelemetry-collector-k8s:0.159.0
     config: {}
 
 # Trace gateway. Exports all traces from the cluster.
 gateway_traces:
   kubernetes: {}
-  otel:
-    image: otel/opentelemetry-collector-k8s:0.159.0
+  otelcol:
+    # Set a custom image for this workload only.
+    # image: otel/opentelemetry-collector-k8s:0.159.0
     config: {}
 
 # Node-level collector. Ingests OTLP from local pods, reads local logs, and collects host metrics.
 daemonset:
   kubernetes: {}
-  otel:
-    image: otel/opentelemetry-collector-k8s:0.159.0
+  otelcol:
+    # Set a custom image for this workload only.
+    # image: otel/opentelemetry-collector-k8s:0.159.0
     config: {}
 
 # Cluster-level scraper pool.
 cluster_metrics:
   kubernetes: {}
-  otel:
-    image: otel/opentelemetry-collector-k8s:0.159.0
+  otelcol:
+    # Set a custom image for this workload only.
+    # image: otel/opentelemetry-collector-k8s:0.159.0
     config: {}
 
 # Cluster singleton. Collects Kubernetes API server events.
 cluster_events:
   kubernetes: {}
-  otel:
-    image: otel/opentelemetry-collector-k8s:0.159.0
+  otelcol:
+    # Set a custom image for this workload only.
+    # image: otel/opentelemetry-collector-k8s:0.159.0
     config: {}
 
 # Managed dependencies. Each has an enabled flag. Further configuration
