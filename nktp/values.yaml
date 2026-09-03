@@ -99,3 +99,4 @@ metrics-server:
 # Default in-cluster backend. MUST be disabled for production use.
 otel-lgtm:
   enabled: true
+  image: grafana/otel-lgtm:0.32.0

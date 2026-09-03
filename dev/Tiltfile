@@ -32,6 +32,8 @@ helm_resource(
     'nktp',
     chart = '../nktp',
     namespace = namespace,
+    deps = ['../nktp'],
     flags = ['--values=' + f for f in value_files],
+    port_forwards = [port_forward(3000, 3000, name = 'grafana')],
     labels = ['nktp'],
 )

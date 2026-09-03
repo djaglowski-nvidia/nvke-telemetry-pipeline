@@ -17,8 +17,9 @@ tasks:
       - sh -c 'KUBECONFIG=$(pwd)/.kubeconfig tilt up --context kind-nktp {{if .CLI_ARGS}}-- --config {{.CLI_ARGS}}{{end}} > .tilt.log 2>&1 & echo $! > .tilt.pid'
       - |
         echo ""
-        echo "  Config:  {{if .CLI_ARGS}}dev/configs/{{.CLI_ARGS}}{{else}}chart defaults{{end}}"
-        echo "  Tilt UI: http://localhost:10350"
+        echo "  Config:     {{if .CLI_ARGS}}dev/configs/{{.CLI_ARGS}}{{else}}chart defaults{{end}}"
+        echo "  Tilt UI:    http://localhost:10350"
+        echo "  Grafana UI: http://localhost:3000 (when otel-lgtm is enabled)"
         echo ""
         echo "  kubectl access: export KUBECONFIG=$(pwd)/.kubeconfig"
         echo ""
