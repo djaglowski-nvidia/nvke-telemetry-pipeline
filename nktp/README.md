@@ -8,6 +8,19 @@ TODO
 
 ## Managed Dependencies
 
+### CRDs
+
+NKTP installs the Prometheus monitoring CRDs (ServiceMonitor, PodMonitor, Probe, ScrapeConfig) by default,
+using the [prometheus-operator-crds](https://github.com/prometheus-community/helm-charts/tree/main/charts/prometheus-operator-crds) chart.
+`helm upgrade` keeps them up to date. They are never deleted on uninstall.
+
+Disable them, for example when another mechanism manages them:
+
+```yaml
+prometheus-crds:
+  install: false
+```
+
 ### otel-lgtm
 
 [grafana/otel-lgtm](https://github.com/grafana/docker-otel-lgtm) is an all-in-one observability backend (Grafana, Loki, Tempo, Prometheus) with OTLP ingest.

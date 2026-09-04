@@ -1,5 +1,13 @@
 version: '3'
 
+tasks:
+  test:
+    desc: 'Run the NKTP chart unit tests (pass flags: task test -- -u)'
+    cmds:
+      - helm repo add prometheus-community https://prometheus-community.github.io/helm-charts --force-update
+      - helm dependency build nktp
+      - helm unittest {{.CLI_ARGS}} nktp
+
 includes:
   dev:
     taskfile: ./dev/Taskfile.yml

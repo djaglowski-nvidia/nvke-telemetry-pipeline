@@ -6,11 +6,6 @@ namespace:
   name: nktp
   create: true
 
-# CRD installation. Each flag controls one CRD set.
-crds:
-  installOtel: true
-  installPrometheus: true
-
 # Collector image used by all OTel workloads, in the same form as
 # OpenTelemetryCollector spec.image (repo:tag or repo@digest).
 otelcol_image: otel/opentelemetry-collector-k8s:0.159.0
@@ -76,8 +71,14 @@ cluster_events:
     # image: otel/opentelemetry-collector-k8s:0.159.0
     config: {}
 
-# Managed dependencies. Each has an enabled flag. Further configuration
-# passes through under each key using the dependency's own conventions.
+# Default in-cluster backend. MUST be disabled for production use.
+otel-lgtm:
+  enabled: true
+  image: grafana/otel-lgtm:0.32.0
+
+# Configuration below this point is inherited from bundled charts. Each
+# chart has an install or enabled flag, and further configuration passes
+# through under its key using the chart's own conventions.
 
 # Manages the OpenTelemetryCollector CRs that define every NKTP workload.
 opentelemetry-operator:
@@ -96,7 +97,31 @@ node-exporter:
 metrics-server:
   enabled: false
 
-# Default in-cluster backend. MUST be disabled for production use.
-otel-lgtm:
-  enabled: true
-  image: grafana/otel-lgtm:0.32.0
+# Prometheus monitoring CRDs (ServiceMonitor, PodMonitor, Probe, ScrapeConfig), from the
+# prometheus-operator-crds chart. NKTP enables only the CRDs it uses.
+prometheus-crds:
+  install: true
+  crds:
+    annotations:
+      # Never delete CRDs on uninstall.
+      helm.sh/resource-policy: keep
+    servicemonitors:
+      enabled: true
+    podmonitors:
+      enabled: true
+    probes:
+      enabled: true
+    scrapeconfigs:
+      enabled: true
+    alertmanagerconfigs:
+      enabled: false
+    alertmanagers:
+      enabled: false
+    prometheusagents:
+      enabled: false
+    prometheuses:
+      enabled: false
+    prometheusrules:
+      enabled: false
+    thanosrulers:
+      enabled: false

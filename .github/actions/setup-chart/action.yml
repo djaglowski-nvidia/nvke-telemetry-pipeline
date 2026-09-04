@@ -1,0 +1,14 @@
+# A composite action rather than a shared job: jobs run on separate runners
+# with no shared filesystem, so a setup job's work would not reach the jobs
+# that need it without artifact plumbing.
+name: Setup chart
+description: Build the NKTP chart dependencies.
+
+runs:
+  using: composite
+  steps:
+    - name: Build chart dependencies
+      shell: bash
+      run: |
+        helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+        helm dependency build nktp

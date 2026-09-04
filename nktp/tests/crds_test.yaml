@@ -1,0 +1,107 @@
+suite: crds
+release:
+  name: test
+templates:
+  - charts/prometheus-crds/charts/crds/templates/crd-*.yaml
+  - templates/otel-lgtm.yaml
+tests:
+  - it: installs the ServiceMonitor, PodMonitor, Probe, and ScrapeConfig CRDs by default
+    asserts:
+      - containsDocument:
+          apiVersion: apiextensions.k8s.io/v1
+          kind: CustomResourceDefinition
+          name: servicemonitors.monitoring.coreos.com
+        template: charts/prometheus-crds/charts/crds/templates/crd-servicemonitors.yaml
+      - containsDocument:
+          apiVersion: apiextensions.k8s.io/v1
+          kind: CustomResourceDefinition
+          name: podmonitors.monitoring.coreos.com
+        template: charts/prometheus-crds/charts/crds/templates/crd-podmonitors.yaml
+      - containsDocument:
+          apiVersion: apiextensions.k8s.io/v1
+          kind: CustomResourceDefinition
+          name: probes.monitoring.coreos.com
+        template: charts/prometheus-crds/charts/crds/templates/crd-probes.yaml
+      - containsDocument:
+          apiVersion: apiextensions.k8s.io/v1
+          kind: CustomResourceDefinition
+          name: scrapeconfigs.monitoring.coreos.com
+        template: charts/prometheus-crds/charts/crds/templates/crd-scrapeconfigs.yaml
+
+  - it: does not install any other CRDs
+    asserts:
+      - containsDocument:
+          apiVersion: apiextensions.k8s.io/v1
+          kind: CustomResourceDefinition
+          name: alertmanagerconfigs.monitoring.coreos.com
+        not: true
+      - containsDocument:
+          apiVersion: apiextensions.k8s.io/v1
+          kind: CustomResourceDefinition
+          name: alertmanagers.monitoring.coreos.com
+        not: true
+      - containsDocument:
+          apiVersion: apiextensions.k8s.io/v1
+          kind: CustomResourceDefinition
+          name: prometheusagents.monitoring.coreos.com
+        not: true
+      - containsDocument:
+          apiVersion: apiextensions.k8s.io/v1
+          kind: CustomResourceDefinition
+          name: prometheuses.monitoring.coreos.com
+        not: true
+      - containsDocument:
+          apiVersion: apiextensions.k8s.io/v1
+          kind: CustomResourceDefinition
+          name: prometheusrules.monitoring.coreos.com
+        not: true
+      - containsDocument:
+          apiVersion: apiextensions.k8s.io/v1
+          kind: CustomResourceDefinition
+          name: thanosrulers.monitoring.coreos.com
+        not: true
+
+  - it: protects the CRDs from deletion on uninstall
+    asserts:
+      - equal:
+          path: metadata.annotations["helm.sh/resource-policy"]
+          value: keep
+        template: charts/prometheus-crds/charts/crds/templates/crd-servicemonitors.yaml
+      - equal:
+          path: metadata.annotations["helm.sh/resource-policy"]
+          value: keep
+        template: charts/prometheus-crds/charts/crds/templates/crd-podmonitors.yaml
+      - equal:
+          path: metadata.annotations["helm.sh/resource-policy"]
+          value: keep
+        template: charts/prometheus-crds/charts/crds/templates/crd-probes.yaml
+      - equal:
+          path: metadata.annotations["helm.sh/resource-policy"]
+          value: keep
+        template: charts/prometheus-crds/charts/crds/templates/crd-scrapeconfigs.yaml
+
+  - it: does not install the prometheus CRDs when disabled
+    set:
+      prometheus-crds:
+        install: false
+    asserts:
+      - containsDocument:
+          apiVersion: apiextensions.k8s.io/v1
+          kind: CustomResourceDefinition
+          name: servicemonitors.monitoring.coreos.com
+        not: true
+      - containsDocument:
+          apiVersion: apiextensions.k8s.io/v1
+          kind: CustomResourceDefinition
+          name: podmonitors.monitoring.coreos.com
+        not: true
+      - containsDocument:
+          apiVersion: apiextensions.k8s.io/v1
+          kind: CustomResourceDefinition
+          name: probes.monitoring.coreos.com
+        not: true
+      - containsDocument:
+          apiVersion: apiextensions.k8s.io/v1
+          kind: CustomResourceDefinition
+          name: scrapeconfigs.monitoring.coreos.com
+        not: true

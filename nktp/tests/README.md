@@ -4,7 +4,7 @@ Tests use [helm-unittest](https://github.com/helm-unittest/helm-unittest):
 
 ```sh
 helm plugin install https://github.com/helm-unittest/helm-unittest.git --version 1.1.2
-helm unittest nktp   # from the repository root
+task test   # from the repository root
 ```
 
 The full default configuration is always covered by a snapshot
@@ -12,7 +12,7 @@ The full default configuration is always covered by a snapshot
 intentional change to default output, regenerate and review the diff:
 
 ```sh
-helm unittest -u nktp
+task test -- -u
 git diff
 ```
 

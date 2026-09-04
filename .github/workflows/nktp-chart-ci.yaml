@@ -21,6 +21,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      - name: Setup chart
+        uses: ./.github/actions/setup-chart
+
       - name: Lint chart
         run: helm lint nktp
 
@@ -34,6 +37,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup chart
+        uses: ./.github/actions/setup-chart
 
       - name: Install helm-unittest
         run: helm plugin install https://github.com/helm-unittest/helm-unittest.git --version 33c48cac798e465deda9a66c8e6c07c0973cf53d # v1.1.2
