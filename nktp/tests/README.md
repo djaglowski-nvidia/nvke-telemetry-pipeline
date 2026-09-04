@@ -1,20 +1,20 @@
 # NKTP Chart Unit Tests
 
-Each directory under `pass/` is a scenario. The chart is rendered with the
-scenario's `values.yaml` and must match its `output.yaml` exactly.
-
-Run the tests:
+Tests use [helm-unittest](https://github.com/helm-unittest/helm-unittest):
 
 ```sh
-go test ./...
+helm plugin install https://github.com/helm-unittest/helm-unittest.git --version 1.1.2
+helm unittest nktp   # from the repository root
 ```
 
-After an intentional template or values change, regenerate the golden files
-and review the diff:
+The full default configuration is always covered by a snapshot
+(`default_snapshot_test.yaml`, goldens in `__snapshot__/`). After an
+intentional change to default output, regenerate and review the diff:
 
 ```sh
-go test -update ./...
+helm unittest -u nktp
 git diff
 ```
 
-To add a scenario, create `pass/<name>/values.yaml` and run `go test -update ./...`.
+Everything else is covered by targeted assertions. Add snapshots only for
+output that is worth pinning in full.

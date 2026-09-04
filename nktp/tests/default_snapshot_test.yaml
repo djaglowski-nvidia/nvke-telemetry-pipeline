@@ -1,0 +1,8 @@
+suite: default snapshot
+templates:
+  - templates/*.yaml
+  - templates/*/*.yaml
+tests:
+  - it: matches the snapshot with default values
+    asserts:
+      - matchSnapshot: {}

@@ -1,0 +1,177 @@
+matches the snapshot with default values:
+  1: |
+    apiVersion: v1
+    data:
+      nktp.yaml: |
+        apiVersion: 1
+        providers:
+          - name: nktp
+            type: file
+            options:
+              path: /otel-lgtm/dashboards-nktp
+              foldersFromFilesStructure: false
+      wipe-defaults.yaml: |
+        apiVersion: 1
+        providers: []
+    kind: ConfigMap
+    metadata:
+      name: lgtm-dashboard-provider
+  2: |
+    apiVersion: v1
+    data:
+      otel-lgtm-health.json: |
+        {
+          "uid": "otel-lgtm-health",
+          "title": "OTel LGTM Health",
+          "schemaVersion": 39,
+          "refresh": "30s",
+          "time": { "from": "now-30m", "to": "now" },
+          "panels": [
+            {
+              "type": "stat",
+              "title": "Internal collector up",
+              "gridPos": { "x": 0, "y": 0, "w": 6, "h": 6 },
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "targets": [{ "expr": "sum(up{job=\"otelcol-contrib\"})", "refId": "A" }]
+            },
+            {
+              "type": "timeseries",
+              "title": "Received /s",
+              "gridPos": { "x": 6, "y": 0, "w": 9, "h": 6 },
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "targets": [
+                { "expr": "sum(rate(otelcol_receiver_accepted_metric_points_total[5m]))", "legendFormat": "metric points", "refId": "A" },
+                { "expr": "sum(rate(otelcol_receiver_accepted_log_records_total[5m]))", "legendFormat": "log records", "refId": "B" },
+                { "expr": "sum(rate(otelcol_receiver_accepted_spans_total[5m]))", "legendFormat": "spans", "refId": "C" }
+              ]
+            },
+            {
+              "type": "timeseries",
+              "title": "Exported /s",
+              "gridPos": { "x": 15, "y": 0, "w": 9, "h": 6 },
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "targets": [
+                { "expr": "sum(rate(otelcol_exporter_sent_metric_points_total[5m]))", "legendFormat": "metric points", "refId": "A" },
+                { "expr": "sum(rate(otelcol_exporter_sent_log_records_total[5m]))", "legendFormat": "log records", "refId": "B" },
+                { "expr": "sum(rate(otelcol_exporter_sent_spans_total[5m]))", "legendFormat": "spans", "refId": "C" }
+              ]
+            },
+            {
+              "type": "timeseries",
+              "title": "Collector memory (RSS)",
+              "gridPos": { "x": 0, "y": 6, "w": 12, "h": 7 },
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "fieldConfig": { "defaults": { "unit": "bytes" } },
+              "targets": [{ "expr": "otelcol_process_memory_rss", "legendFormat": "{{job}}", "refId": "A" }]
+            },
+            {
+              "type": "timeseries",
+              "title": "Exporter queue size",
+              "gridPos": { "x": 12, "y": 6, "w": 12, "h": 7 },
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "options": { "tooltip": { "mode": "multi" } },
+              "targets": [
+                { "expr": "otelcol_exporter_queue_size", "legendFormat": "{{data_type}} size", "refId": "A" },
+                { "expr": "otelcol_exporter_queue_capacity", "legendFormat": "{{data_type}} capacity", "refId": "B" }
+              ]
+            }
+          ]
+        }
+    kind: ConfigMap
+    metadata:
+      name: lgtm-dashboards
+  3: |
+    apiVersion: v1
+    kind: Service
+    metadata:
+      name: lgtm
+    spec:
+      ports:
+        - name: grafana
+          port: 3000
+          protocol: TCP
+          targetPort: 3000
+        - name: otel-grpc
+          port: 4317
+          protocol: TCP
+          targetPort: 4317
+        - name: otel-http
+          port: 4318
+          protocol: TCP
+          targetPort: 4318
+      selector:
+        app: lgtm
+  4: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: lgtm
+    spec:
+      replicas: 1
+      selector:
+        matchLabels:
+          app: lgtm
+      template:
+        metadata:
+          annotations:
+            checksum/dashboards: e865b4e542c79c61cc3e9f2e0d0492bbaf6e57f5be8297079a7337c61a22a8b4
+          labels:
+            app: lgtm
+        spec:
+          containers:
+            - env:
+                - name: GF_AUTH_ANONYMOUS_ENABLED
+                  value: "true"
+                - name: GF_AUTH_ANONYMOUS_ORG_ROLE
+                  value: Admin
+              image: grafana/otel-lgtm:0.32.0
+              name: lgtm
+              ports:
+                - containerPort: 3000
+                - containerPort: 4317
+                - containerPort: 4318
+              readinessProbe:
+                exec:
+                  command:
+                    - cat
+                    - /tmp/ready
+              volumeMounts:
+                - mountPath: /otel-lgtm/grafana/conf/provisioning/dashboards/nktp.yaml
+                  name: dashboard-provider
+                  subPath: nktp.yaml
+                - mountPath: /otel-lgtm/grafana/conf/provisioning/dashboards/grafana-dashboards.yaml
+                  name: dashboard-provider
+                  subPath: wipe-defaults.yaml
+                - mountPath: /otel-lgtm/dashboards-nktp
+                  name: dashboards
+                - mountPath: /data/tempo
+                  name: tempo-data
+                - mountPath: /data/grafana
+                  name: grafana-data
+                - mountPath: /data/loki
+                  name: loki-data
+                - mountPath: /loki
+                  name: loki-storage
+                - mountPath: /data/prometheus
+                  name: p8s-storage
+                - mountPath: /data/pyroscope
+                  name: pyroscope-storage
+          volumes:
+            - configMap:
+                name: lgtm-dashboard-provider
+              name: dashboard-provider
+            - configMap:
+                name: lgtm-dashboards
+              name: dashboards
+            - emptyDir: {}
+              name: tempo-data
+            - emptyDir: {}
+              name: loki-data
+            - emptyDir: {}
+              name: grafana-data
+            - emptyDir: {}
+              name: loki-storage
+            - emptyDir: {}
+              name: p8s-storage
+            - emptyDir: {}
+              name: pyroscope-storage

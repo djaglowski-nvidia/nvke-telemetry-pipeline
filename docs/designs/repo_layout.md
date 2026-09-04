@@ -6,11 +6,9 @@ nktp/
 ├── values.yaml
 ├── README.md
 ├── templates/
-└── tests/                          # Self-contained unit test module
-    ├── go.mod
-    ├── go.sum
-    ├── pass/                       # Scenarios that must succeed
-    └── fail/                       # Scenarios that must be rejected
+└── tests/                          # helm-unittest suites
+    ├── __snapshot__/               # Snapshot of the full default output
+    └── *_test.yaml
 
 occt/                               # Optional: if owned by this repository
 ├── Chart.yaml

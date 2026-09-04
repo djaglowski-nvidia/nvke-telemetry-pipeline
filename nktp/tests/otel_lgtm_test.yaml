@@ -1,0 +1,124 @@
+suite: otel-lgtm
+templates:
+  - templates/otel-lgtm.yaml
+tests:
+  - it: renders the backend by default
+    asserts:
+      - containsDocument:
+          apiVersion: apps/v1
+          kind: Deployment
+          name: lgtm
+          any: true
+      - containsDocument:
+          apiVersion: v1
+          kind: Service
+          name: lgtm
+          any: true
+      - containsDocument:
+          apiVersion: v1
+          kind: ConfigMap
+          name: lgtm-dashboards
+          any: true
+      - containsDocument:
+          apiVersion: v1
+          kind: ConfigMap
+          name: lgtm-dashboard-provider
+          any: true
+
+  - it: removes all otel-lgtm resources when disabled
+    set:
+      otel-lgtm:
+        enabled: false
+    asserts:
+      - containsDocument:
+          apiVersion: apps/v1
+          kind: Deployment
+          name: lgtm
+        not: true
+      - containsDocument:
+          apiVersion: v1
+          kind: Service
+          name: lgtm
+        not: true
+      - containsDocument:
+          apiVersion: v1
+          kind: ConfigMap
+          name: lgtm-dashboards
+        not: true
+      - containsDocument:
+          apiVersion: v1
+          kind: ConfigMap
+          name: lgtm-dashboard-provider
+        not: true
+
+  - it: pins the backend image
+    documentSelector:
+      path: kind
+      value: Deployment
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: grafana/otel-lgtm:0.32.0
+
+  - it: sets a custom image
+    set:
+      otel-lgtm:
+        image: grafana/otel-lgtm:0.31.0
+    documentSelector:
+      path: kind
+      value: Deployment
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: grafana/otel-lgtm:0.31.0
+
+  - it: enables anonymous admin access to Grafana
+    documentSelector:
+      path: kind
+      value: Deployment
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: GF_AUTH_ANONYMOUS_ENABLED
+            value: "true"
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: GF_AUTH_ANONYMOUS_ORG_ROLE
+            value: Admin
+
+  - it: exposes grafana and OTLP ports
+    documentSelector:
+      path: kind
+      value: Service
+    asserts:
+      - contains:
+          path: spec.ports
+          content:
+            name: grafana
+            protocol: TCP
+            port: 3000
+            targetPort: 3000
+      - contains:
+          path: spec.ports
+          content:
+            name: otel-grpc
+            protocol: TCP
+            port: 4317
+            targetPort: 4317
+      - contains:
+          path: spec.ports
+          content:
+            name: otel-http
+            protocol: TCP
+            port: 4318
+            targetPort: 4318
+
+  - it: rolls the pod when dashboard config changes
+    documentSelector:
+      path: kind
+      value: Deployment
+    asserts:
+      - isNotNullOrEmpty:
+          path: spec.template.metadata.annotations["checksum/dashboards"]

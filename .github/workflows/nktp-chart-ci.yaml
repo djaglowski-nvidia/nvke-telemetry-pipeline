@@ -35,12 +35,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Set up Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: nktp/tests/go.mod
-          cache-dependency-path: nktp/tests/go.sum
+      - name: Install helm-unittest
+        run: helm plugin install https://github.com/helm-unittest/helm-unittest.git --version 33c48cac798e465deda9a66c8e6c07c0973cf53d # v1.1.2
 
       - name: Run unit tests
-        working-directory: nktp/tests
-        run: go test ./...
+        run: helm unittest nktp
