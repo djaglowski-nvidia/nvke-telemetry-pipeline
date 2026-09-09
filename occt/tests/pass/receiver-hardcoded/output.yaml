@@ -1,0 +1,23 @@
+---
+# Source: test-chart/templates/transpile.yaml
+connectors:
+  forward/out/my_receiver/a: {}
+exporters:
+  some_exporter: {}
+receivers:
+  otlp/out/my_receiver/a:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+service:
+  pipelines:
+    logs:
+      exporters:
+      - some_exporter
+      receivers:
+      - forward/out/my_receiver/a
+    logs/out/my_receiver/a:
+      exporters:
+      - forward/out/my_receiver/a
+      receivers:
+      - otlp/out/my_receiver/a

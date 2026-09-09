@@ -1,0 +1,28 @@
+# A receiver blueprint can be used like a native receiver.
+# A reference to a receiver blueprint is automatically scoped.
+# References to components and pipelines declared within a receiver blueprint are automatically scoped.
+blueprints:
+  receivers:
+    my_receiver:
+      template: |
+        receivers:
+          otlp:
+            protocols:
+              grpc:
+                endpoint: 0.0.0.0:4317
+
+        pipelines:
+          logs:
+            receivers: [otlp]
+            exporters: [{{ .forward }}]
+
+config:
+  receivers:
+    blueprint/my_receiver/a: {}
+  exporters:
+    some_exporter: {}
+  service:
+    pipelines:
+      logs:
+        receivers: [blueprint/my_receiver/a]
+        exporters: [some_exporter]

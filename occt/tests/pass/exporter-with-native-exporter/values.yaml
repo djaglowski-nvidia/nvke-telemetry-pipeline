@@ -1,0 +1,25 @@
+# An exporter blueprint can be listed alongside a native exporter in the same pipeline.
+blueprints:
+  exporters:
+    my_exporter:
+      template: |
+        exporters:
+          debug:
+            verbosity: detailed
+
+        pipelines:
+          logs:
+            receivers: [{{ .forward }}]
+            exporters: [debug]
+
+config:
+  receivers:
+    some_receiver: {}
+  exporters:
+    some_exporter: {}
+    blueprint/my_exporter/a: {}
+  service:
+    pipelines:
+      logs:
+        receivers: [some_receiver]
+        exporters: [some_exporter, blueprint/my_exporter/a]

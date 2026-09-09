@@ -1,3 +1,4 @@
+# A config with no blueprints passes through unchanged.
 config:
   receivers:
     otlp:

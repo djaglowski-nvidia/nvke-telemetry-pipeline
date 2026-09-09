@@ -1,0 +1,27 @@
+# A receiver blueprint can be listed alongside a native receiver in the same pipeline.
+blueprints:
+  receivers:
+    my_receiver:
+      template: |
+        receivers:
+          otlp:
+            protocols:
+              grpc:
+                endpoint: 0.0.0.0:4317
+
+        pipelines:
+          logs:
+            receivers: [otlp]
+            exporters: [{{ .forward }}]
+
+config:
+  receivers:
+    some_receiver: {}
+    blueprint/my_receiver/a: {}
+  exporters:
+    some_exporter: {}
+  service:
+    pipelines:
+      logs:
+        receivers: [blueprint/my_receiver/a, some_receiver]
+        exporters: [some_exporter]

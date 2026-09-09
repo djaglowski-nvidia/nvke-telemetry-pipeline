@@ -1,0 +1,21 @@
+---
+# Source: test-chart/templates/transpile.yaml
+connectors:
+  forward/in/my_exporter/a: {}
+exporters:
+  debug/in/my_exporter/a:
+    verbosity: detailed
+receivers:
+  some_receiver: {}
+service:
+  pipelines:
+    logs:
+      exporters:
+      - forward/in/my_exporter/a
+      receivers:
+      - some_receiver
+    logs/in/my_exporter/a:
+      exporters:
+      - debug/in/my_exporter/a
+      receivers:
+      - forward/in/my_exporter/a
