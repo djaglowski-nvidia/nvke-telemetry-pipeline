@@ -7,7 +7,7 @@ helm plugin install https://github.com/helm-unittest/helm-unittest.git --version
 task test   # from the repository root
 ```
 
-The full default configuration is always covered by a snapshot
+The default output of NKTP's own templates is always covered by a snapshot
 (`default_snapshot_test.yaml`, goldens in `__snapshot__/`). After an
 intentional change to default output, regenerate and review the diff:
 
@@ -16,5 +16,5 @@ task test -- -u
 git diff
 ```
 
-Everything else is covered by targeted assertions. Add snapshots only for
+Bundled charts and other configurations use targeted assertions. Add snapshots only for
 output that is worth pinning in full.

@@ -1,0 +1,206 @@
+suite: opentelemetry-operator
+release:
+  name: test
+templates:
+  - charts/opentelemetry-operator/templates/deployment*.yaml
+  - charts/opentelemetry-operator/templates/certmanager*.yaml
+  - charts/opentelemetry-operator/templates/admission-webhooks/*.yaml
+  - templates/otel-lgtm.yaml
+tests:
+  - it: runs the pinned operator by default
+    template: charts/opentelemetry-operator/templates/deployment.yaml
+    asserts:
+      - containsDocument:
+          apiVersion: apps/v1
+          kind: Deployment
+          name: test-opentelemetry-operator
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: ghcr.io/open-telemetry/opentelemetry-operator/opentelemetry-operator:0.158.0
+
+  - it: passes through operator image overrides
+    set:
+      opentelemetry-operator:
+        manager:
+          image:
+            repository: example.com/opentelemetry-operator
+            tag: custom
+    template: charts/opentelemetry-operator/templates/deployment.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: example.com/opentelemetry-operator:custom
+
+  - it: omits the operator and its CRDs when disabled
+    set:
+      opentelemetry-operator:
+        enabled: false
+    asserts:
+      - containsDocument:
+          apiVersion: apps/v1
+          kind: Deployment
+          name: test-opentelemetry-operator
+        not: true
+      - containsDocument:
+          apiVersion: apiextensions.k8s.io/v1
+          kind: CustomResourceDefinition
+        not: true
+
+  - it: generates a webhook certificate without cert-manager by default
+    asserts:
+      - isNotEmpty:
+          path: data["tls.crt"]
+        documentSelector:
+          path: kind
+          value: Secret
+        template: charts/opentelemetry-operator/templates/admission-webhooks/operator-webhook.yaml
+      - isNotEmpty:
+          path: data["tls.key"]
+        documentSelector:
+          path: kind
+          value: Secret
+        template: charts/opentelemetry-operator/templates/admission-webhooks/operator-webhook.yaml
+      - containsDocument:
+          apiVersion: admissionregistration.k8s.io/v1
+          kind: MutatingWebhookConfiguration
+          name: test-opentelemetry-operator-mutation
+          any: true
+        template: charts/opentelemetry-operator/templates/admission-webhooks/operator-webhook.yaml
+      - containsDocument:
+          apiVersion: admissionregistration.k8s.io/v1
+          kind: ValidatingWebhookConfiguration
+          name: test-opentelemetry-operator-validation
+          any: true
+        template: charts/opentelemetry-operator/templates/admission-webhooks/operator-webhook.yaml
+      - containsDocument:
+          apiVersion: cert-manager.io/v1
+          kind: Certificate
+        not: true
+
+  - it: reuses an existing webhook certificate on upgrade
+    release:
+      namespace: nktp
+      upgrade: true
+    kubernetesProvider:
+      scheme:
+        v1/Secret:
+          gvr:
+            version: v1
+            resource: secrets
+          namespaced: true
+      objects:
+        - apiVersion: v1
+          kind: Secret
+          metadata:
+            name: test-opentelemetry-operator-controller-manager-service-cert
+            namespace: nktp
+          data:
+            tls.crt: dGVzdC1jZXJ0
+            tls.key: dGVzdC1rZXk=
+            ca.crt: dGVzdC1jYQ==
+    template: charts/opentelemetry-operator/templates/admission-webhooks/operator-webhook.yaml
+    asserts:
+      - equal:
+          path: data
+          value:
+            tls.crt: dGVzdC1jZXJ0
+            tls.key: dGVzdC1rZXk=
+            ca.crt: dGVzdC1jYQ==
+        documentSelector:
+          path: kind
+          value: Secret
+      - equal:
+          path: webhooks[0].clientConfig.caBundle
+          value: dGVzdC1jYQ==
+        documentSelector:
+          path: kind
+          value: MutatingWebhookConfiguration
+      - equal:
+          path: webhooks[0].clientConfig.caBundle
+          value: dGVzdC1jYQ==
+        documentSelector:
+          path: kind
+          value: ValidatingWebhookConfiguration
+
+  - it: supports cert-manager for webhook certificates
+    set:
+      opentelemetry-operator:
+        admissionWebhooks:
+          certManager:
+            enabled: true
+    asserts:
+      - containsDocument:
+          apiVersion: cert-manager.io/v1
+          kind: Certificate
+          name: test-opentelemetry-operator-serving-cert
+          any: true
+        template: charts/opentelemetry-operator/templates/certmanager.yaml
+      - containsDocument:
+          apiVersion: cert-manager.io/v1
+          kind: Issuer
+          name: test-opentelemetry-operator-selfsigned-issuer
+          any: true
+        template: charts/opentelemetry-operator/templates/certmanager.yaml
+      - containsDocument:
+          apiVersion: v1
+          kind: Secret
+        not: true
+      - hasDocuments:
+          count: 4
+        template: charts/opentelemetry-operator/templates/admission-webhooks/operator-webhook.yaml
+
+  - it: installs the four OpenTelemetry CRDs by default
+    template: charts/opentelemetry-operator/templates/admission-webhooks/operator-webhook.yaml
+    asserts:
+      - containsDocument:
+          apiVersion: apiextensions.k8s.io/v1
+          kind: CustomResourceDefinition
+          name: opentelemetrycollectors.opentelemetry.io
+          any: true
+      - containsDocument:
+          apiVersion: apiextensions.k8s.io/v1
+          kind: CustomResourceDefinition
+          name: instrumentations.opentelemetry.io
+          any: true
+      - containsDocument:
+          apiVersion: apiextensions.k8s.io/v1
+          kind: CustomResourceDefinition
+          name: targetallocators.opentelemetry.io
+          any: true
+      - containsDocument:
+          apiVersion: apiextensions.k8s.io/v1
+          kind: CustomResourceDefinition
+          name: opampbridges.opentelemetry.io
+          any: true
+      - containsDocument:
+          apiVersion: apiextensions.k8s.io/v1
+          kind: CustomResourceDefinition
+          name: clusterobservabilities.opentelemetry.io
+        not: true
+
+  - it: keeps all OpenTelemetry CRDs on uninstall
+    template: charts/opentelemetry-operator/templates/admission-webhooks/operator-webhook.yaml
+    documentSelector:
+      path: kind
+      value: CustomResourceDefinition
+      matchMany: true
+    asserts:
+      - equal:
+          path: metadata.annotations["helm.sh/resource-policy"]
+          value: keep
+
+  - it: disables OpenTelemetry CRD installation without disabling the operator
+    set:
+      opentelemetry-operator:
+        crds:
+          create: false
+    asserts:
+      - containsDocument:
+          apiVersion: apiextensions.k8s.io/v1
+          kind: CustomResourceDefinition
+        not: true
+      - containsDocument:
+          apiVersion: apps/v1
+          kind: Deployment
+          name: test-opentelemetry-operator
+        template: charts/opentelemetry-operator/templates/deployment.yaml

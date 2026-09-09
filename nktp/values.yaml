@@ -83,6 +83,18 @@ otel-lgtm:
 # Manages the OpenTelemetryCollector CRs that define every NKTP workload.
 opentelemetry-operator:
   enabled: true
+  crds:
+    create: true
+    annotations:
+      # Keep CRDs when the chart is uninstalled.
+      helm.sh/resource-policy: keep
+  admissionWebhooks:
+    certManager:
+      # Enable this to use an existing cert-manager installation instead of
+      # the self-signed certificate that Helm generates.
+      enabled: false
+    autoGenerateCert:
+      recreate: false
 
 # Kubernetes object state metrics. Sharded for scalability.
 kube-state-metrics:

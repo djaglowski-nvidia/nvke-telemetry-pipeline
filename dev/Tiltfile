@@ -2,7 +2,7 @@
 # Start with `task dev:up`.
 # Or from dev/: KUBECONFIG=.kubeconfig tilt up [-- --config <name>]
 
-load('ext://helm_resource', 'helm_resource')
+load('ext://helm_resource', 'helm_resource', 'helm_repo')
 
 config.define_string('config')
 cfg = config.parse()
@@ -12,6 +12,10 @@ kube_context = 'kind-nktp'
 namespace = 'nktp'
 
 allow_k8s_contexts(kube_context)
+watch_settings(ignore = ['../nktp/charts', '../nktp/tmpcharts-*'])
+
+helm_repo('open-telemetry', 'https://open-telemetry.github.io/opentelemetry-helm-charts')
+helm_repo('prometheus-community', 'https://prometheus-community.github.io/helm-charts')
 
 # Without a config, the chart installs with its default values.
 value_files = []
@@ -34,6 +38,8 @@ helm_resource(
     namespace = namespace,
     deps = ['../nktp'],
     flags = ['--values=' + f for f in value_files],
+    build_dependencies = True,
+    resource_deps = ['open-telemetry', 'prometheus-community'],
     port_forwards = [port_forward(3000, 3000, name = 'grafana')],
     labels = ['nktp'],
 )
