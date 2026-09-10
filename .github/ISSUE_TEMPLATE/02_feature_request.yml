@@ -1,0 +1,97 @@
+name: Request a feature
+description: Propose a software capability or project improvement.
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Describe the user problem before proposing a solution. Review `CONTRIBUTING.md` for scope and which changes need prior discussion.
+
+  - type: checkboxes
+    id: prerequisites
+    attributes:
+      label: Prerequisites
+      options:
+        - label: I searched existing issues for a similar request.
+          required: true
+        - label: I reviewed the contribution scope in `CONTRIBUTING.md`.
+          required: true
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      description: Select the part of the repository the request applies to.
+      options:
+        - NKTP chart
+        - OCCT
+        - Local development tooling
+        - Documentation
+        - Multiple components
+        - Not sure
+    validations:
+      required: true
+
+  - type: dropdown
+    id: request_type
+    attributes:
+      label: Request type
+      description: Select the option that best describes the requested change.
+      options:
+        - New feature
+        - Improvement to existing functionality
+        - Change to existing functionality
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or opportunity
+      description: Who is affected, what are they trying to do, why does it matter, and what concrete example or workflow illustrates the need?
+    validations:
+      required: true
+
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Desired outcome
+      description: Describe the capability or result you would like without assuming a specific implementation.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Describe current workarounds or other approaches you considered.
+    validations:
+      required: false
+
+  - type: textarea
+    id: compatibility
+    attributes:
+      label: Compatibility and operational considerations
+      description: Expected changes to default behavior, values, or bundled dependencies; upgrade or migration impact; anything that affects existing installations.
+    validations:
+      required: false
+
+  - type: dropdown
+    id: contribute
+    attributes:
+      label: Are you willing to contribute?
+      options:
+        - Yes, I can open a pull request
+        - Maybe, with guidance
+        - "No"
+    validations:
+      required: true
+
+  - type: textarea
+    id: additional_context
+    attributes:
+      label: Additional context
+      description: Add related issues, references, or technical constraints.
+    validations:
+      required: false

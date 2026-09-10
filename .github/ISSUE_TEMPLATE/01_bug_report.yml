@@ -1,0 +1,137 @@
+name: Report a bug
+description: Report reproducible behavior that appears to be incorrect.
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: checkboxes
+    id: prerequisites
+    attributes:
+      label: Prerequisites
+      options:
+        - label: I searched existing issues and found no duplicates.
+          required: true
+        - label: I can reproduce this issue consistently.
+          required: true
+        - label: This is not a security vulnerability. Those go to [NVIDIA PSIRT](https://www.nvidia.com/en-us/security/report-vulnerability/), not through GitHub; see `SECURITY.md`.
+          required: true
+        - label: I removed secrets, credentials, private endpoints, and sensitive data from this report.
+          required: true
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      description: Select the part of the repository the problem is in.
+      options:
+        - NKTP chart
+        - OCCT
+        - Local development tooling
+        - Documentation
+        - Not sure
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Chart version or commit
+      description: Identify the affected chart version, development build, or commit.
+      placeholder: "For example: 0.1.0, 0.1.0-dev.g757c36d5, or 757c36d"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: impact
+    attributes:
+      label: Impact
+      description: How severe is this issue for you?
+      options:
+        - Blocking (cannot deploy or telemetry is not flowing)
+        - High (major functionality broken)
+        - Medium (workaround exists)
+        - Low (minor issue)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: regression
+    attributes:
+      label: Regression?
+      description: Did this work in a previous version?
+      options:
+        - "Yes, this worked before (name the version below)"
+        - "No, this is a new use case"
+        - "Unknown"
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Fill in the relevant lines. Redact secrets and private data.
+      value: |
+        - Kubernetes distribution and version:
+        - Helm version:
+        - Installation method (OCI chart / source checkout / dev loop):
+        - OpenTelemetry Operator version, if overridden:
+        - otel-lgtm enabled (yes/no):
+        - Other relevant details:
+    validations:
+      required: true
+
+  - type: textarea
+    id: values
+    attributes:
+      label: Values overrides
+      description: The smallest values file that reproduces the problem, or "defaults" if none. Redact secrets, endpoints, and credentials.
+      render: yaml
+    validations:
+      required: false
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: Provide the exact commands and any required setup. Remove unrelated details. See [Minimal, Reproducible Example](https://stackoverflow.com/help/minimal-reproducible-example) for additional guidance.
+      placeholder: |
+        Required setup:
+        Exact commands:
+        1.
+        2.
+        3.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: Explain what you expected to happen.
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: Explain what happened instead.
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs, rendered manifests, or kubectl output
+      description: Operator or collector logs, `helm template` output, or `kubectl describe` output after removing sensitive information.
+      render: shell
+    validations:
+      required: false
+
+  - type: textarea
+    id: additional_context
+    attributes:
+      label: Additional context
+      description: Workarounds, related issues, recent upgrades, or anything else that helps diagnose the problem.
+    validations:
+      required: false

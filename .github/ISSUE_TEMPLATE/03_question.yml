@@ -1,0 +1,35 @@
+name: Ask a question
+description: Ask about installing, configuring, or operating NKTP.
+title: "[Question]: "
+labels: ["question"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Check `nktp/README.md`, `docs/`, and [existing questions](https://github.com/NVIDIA-dev/nktp/issues?q=is%3Aissue+label%3Aquestion) first.
+
+        If something looks broken rather than unclear, use the bug report form instead. Do not include security vulnerabilities here; see `SECURITY.md`.
+
+  - type: textarea
+    id: question
+    attributes:
+      label: Question
+      description: What are you trying to do, and what is unclear?
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: Chart version, Kubernetes and Helm versions, relevant values overrides with secrets redacted, and what you have already tried.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Submission checks
+      options:
+        - label: I searched existing issues and documentation for an answer.
+          required: true

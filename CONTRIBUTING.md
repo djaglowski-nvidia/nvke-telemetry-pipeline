@@ -1,0 +1,166 @@
+# Contributing to NKTP
+
+NKTP is developed in an internal NVIDIA repository. Changes arrive as pull
+requests from branches in this repository and are reviewed by the maintainers
+listed in [.github/CODEOWNERS](.github/CODEOWNERS).
+
+## Contribution scope
+
+Open a pull request directly for:
+
+- Bug fixes, test additions, and documentation improvements.
+- Chart template and values changes that do not alter what NKTP installs by
+  default.
+- New local development configs under `dev/configs/`.
+
+Open an issue first for:
+
+- Changes to the default deployment: what NKTP installs, enables, or exposes
+  out of the box.
+- Adding, removing, or upgrading a bundled dependency in `nktp/Chart.yaml`.
+- Changes to the release and publishing process in [RELEASING.md](RELEASING.md).
+- New test suites under `tests/`.
+
+Settling the approach in an issue costs less than reworking a finished pull
+request. If you are not sure which kind of change you have, open an issue and
+ask.
+
+Problems in the bundled upstream components themselves belong upstream unless
+NKTP's configuration of them is the cause.
+
+## Reporting bugs, proposing changes, and asking questions
+
+- Report bugs with the [bug report form](https://github.com/NVIDIA-dev/nktp/issues/new?template=01_bug_report.yml).
+  Include the chart version, Kubernetes and Helm versions, the values overrides
+  in use, and exact reproduction steps.
+- Propose changes with the [feature request form](https://github.com/NVIDIA-dev/nktp/issues/new?template=02_feature_request.yml).
+  Describe the problem before the solution.
+- Ask questions with the [question form](https://github.com/NVIDIA-dev/nktp/issues/new?template=03_question.yml).
+  Existing answers are under the
+  [`question` label](https://github.com/NVIDIA-dev/nktp/issues?q=is%3Aissue+label%3Aquestion).
+- Issues are triaged on a best-effort basis; response times vary.
+
+## Development setup
+
+The local loop runs NKTP in a Kind cluster under Tilt. It requires a
+Docker-compatible container runtime, [Task](https://taskfile.dev/installation/),
+[Kind](https://kind.sigs.k8s.io/docs/user/quick-start/#installation),
+[kubectl](https://kubernetes.io/docs/tasks/tools/),
+[Helm](https://helm.sh/docs/intro/install/), and
+[Tilt](https://docs.tilt.dev/install.html).
+
+```bash
+task dev:up       # Kind cluster + NKTP chart + Tilt dev loop
+task dev:down     # remove the workloads and delete the cluster
+```
+
+See [dev/README.md](dev/README.md) for how the loop works and how to layer a
+config from `dev/configs/` on top of the chart defaults. The tooling only ever
+uses `dev/.kubeconfig`; it never touches other kubectl contexts.
+
+### Tests and checks
+
+Chart unit tests use [helm-unittest](https://github.com/helm-unittest/helm-unittest).
+Install the plugin once:
+
+```bash
+helm plugin install https://github.com/helm-unittest/helm-unittest.git --version 1.1.2
+```
+
+Run the checks that CI runs before opening a pull request:
+
+```bash
+task test                                 # NKTP chart unit tests
+helm lint nktp && helm template nktp nktp # what the lint job runs
+(cd occt/tests && go test ./...)          # OCCT golden tests, when changing occt/
+```
+
+`task test` adds the upstream Helm repositories, builds the locked chart
+dependencies, and runs `helm unittest`. The default output of NKTP's own
+templates is pinned by a snapshot in `nktp/tests/__snapshot__/`. After an
+intentional change to that output, regenerate the snapshot and review the diff
+before committing it:
+
+```bash
+task test -- -u
+git diff nktp/tests/__snapshot__/
+```
+
+OCCT scenarios under `occt/tests/pass/` pin their rendered output in
+`output.yaml`. Regenerate them the same way after an intentional change:
+
+```bash
+(cd occt/tests && go test ./... -update)
+```
+
+Never edit a snapshot or golden file by hand, and never regenerate one to make
+a failing test pass without understanding why the output changed. See
+[nktp/tests/README.md](nktp/tests/README.md) for when to add a snapshot versus
+targeted assertions.
+
+No specialized hardware or credentials are needed for any of the above. Chart
+publishing to NVCR runs only from `main` and release tags and is described in
+[RELEASING.md](RELEASING.md); pull requests validate without publishing.
+
+## Pull request process
+
+1. Branch from `main` in this repository. The convention in use is
+   `<user>/<topic>`.
+2. Give the pull request a title in
+   [Conventional Commits 1.0.0](https://www.conventionalcommits.org/en/v1.0.0/)
+   form: `<type>[(scope)][!]: <subject>`. Allowed types are `build`, `chore`,
+   `ci`, `docs`, `feat`, `fix`, `perf`, `refactor`, `revert`, `style`, and
+   `test`. Mark a
+   breaking change with `!`. A workflow lints the title on every pull request,
+   and editing the title re-runs it without a new commit.
+3. Write the title for a reader, not for the linter. Pull requests merge by
+   squash only, so the title becomes the commit subject on `main`, where it
+   cannot be corrected. Branch commits are discarded at merge, so there is no
+   need to tidy them.
+4. Fill in both sections of the pull request template. The Testing section
+   should say what you ran and what it told you.
+5. Keep a pull request to one change. Dependency version bumps go in their own
+   pull request with the corresponding `Chart.lock` update.
+6. Include regenerated snapshots or golden files in the same pull request as
+   the change that alters them, so reviewers see the rendered effect.
+7. Update `nktp/README.md` in the same pull request when a change alters chart
+   defaults, bundled dependencies, or user-visible configuration.
+8. Keep the pull request in draft while you are still reshaping it. Once it is
+   ready for review, address feedback by pushing new commits rather than
+   rewriting history, and reply on the thread with what changed and where.
+
+## Review process
+
+Pull requests are reviewed by the `nktp-maintainers` team through
+[.github/CODEOWNERS](.github/CODEOWNERS). Merging to `main` requires one
+approving review from a code owner, all review threads resolved, and
+re-approval after any new commits. Re-request review once you have responded
+to a round of feedback, not once per commit. Reviews happen on a best-effort
+basis; if a pull request has not received a response, comment on it to request
+a status update.
+
+## Releases
+
+Chart versioning, tagging, and publishing are maintainer actions described in
+[RELEASING.md](RELEASING.md). A pull request does not need to change chart
+versions.
+
+## AI-assisted contributions
+
+AI-assisted contributions are welcome under the same review standard as any
+other change.
+
+- **You are responsible:** Review and understand all AI-generated changes
+  before submitting them. "The AI wrote it" does not explain a bug.
+- **Verify correctness:** AI-generated changes may contain bugs or security
+  issues. Run the applicable tests and review the diff carefully.
+- **No AI-generated sensitive content:** Do not use AI to generate security
+  policies, legal, or license text.
+
+See [AGENTS.md](AGENTS.md) for instructions for coding agents working in this
+repository.
+
+## Security issues
+
+Do not report security vulnerabilities through public issues or pull requests.
+Follow the process in [SECURITY.md](SECURITY.md).
