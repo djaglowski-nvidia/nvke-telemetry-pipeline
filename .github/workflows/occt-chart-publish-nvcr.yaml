@@ -1,0 +1,28 @@
+name: OCCT Chart Publish NVCR
+
+on:
+  push:
+    branches: [main]
+    tags: ['occt/v*']
+    paths:
+      - 'occt/chart/**'
+      - '.github/workflows/chart-publish-nvcr.yaml'
+      - '.github/workflows/occt-chart-publish-nvcr.yaml'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: occt-chart-publish-nvcr-${{ github.ref }}-${{ github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: >-
+      github.repository == 'NVIDIA-dev/nktp' &&
+      (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/occt/v'))
+    uses: ./.github/workflows/chart-publish-nvcr.yaml
+    with:
+      chart: occt
+    secrets: inherit

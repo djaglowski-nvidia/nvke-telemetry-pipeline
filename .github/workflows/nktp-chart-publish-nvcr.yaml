@@ -1,0 +1,31 @@
+name: NKTP Chart Publish NVCR
+
+on:
+  push:
+    branches: [main]
+    tags: ['nktp/v*']
+    paths:
+      - 'nktp/**'
+      - '!nktp/tests/**'
+      - '.github/actions/setup-chart/**'
+      - '.github/workflows/chart-publish-nvcr.yaml'
+      - '.github/workflows/nktp-chart-publish-nvcr.yaml'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+# Keep each matching main commit; serialize attempts to publish the same release tag.
+concurrency:
+  group: nktp-chart-publish-nvcr-${{ github.ref }}-${{ github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: >-
+      github.repository == 'NVIDIA-dev/nktp' &&
+      (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/nktp/v'))
+    uses: ./.github/workflows/chart-publish-nvcr.yaml
+    with:
+      chart: nktp
+    secrets: inherit

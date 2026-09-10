@@ -1,0 +1,124 @@
+name: Publish Helm Chart to NVCR
+
+# Shared by the NKTP and OCCT publishing workflows.
+# Registry environment variables are populated from GitHub secrets.
+# Calling workflows can pass these secrets with secrets: inherit.
+on:
+  workflow_call:
+    inputs:
+      chart:
+        description: Chart to publish (nktp or occt).
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: Publish ${{ inputs.chart }}
+    if: github.repository == 'NVIDIA-dev/nktp'
+    runs-on: ubuntu-latest
+    environment: nvcr
+    timeout-minutes: 10
+    env:
+      CHART: ${{ inputs.chart }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Helm
+        uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+        with:
+          version: v3.20.2
+
+      - name: Resolve chart and version
+        id: meta
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "${CHART}" in
+            nktp) chart_path=nktp ;;
+            occt) chart_path=occt/chart ;;
+            *) echo "::error::Unsupported chart"; exit 1 ;;
+          esac
+          chart_version="$(helm show chart "${chart_path}" | awk '/^version:/ {gsub(/"/, "", $2); print $2}')"
+          case "${GITHUB_REF}" in
+            "refs/tags/${CHART}/v"*)
+              version="${GITHUB_REF#refs/tags/${CHART}/v}"
+              if [[ "${version}" != "${chart_version}" ]]; then
+                echo "::error::Release tag version must match ${chart_path}/Chart.yaml (${chart_version})"
+                exit 1
+              fi
+              ;;
+            refs/heads/main)
+              # No release tags are needed for the first development build.
+              # Strip build metadata and extend any existing prerelease suffix.
+              version="${chart_version%%+*}"
+              if [[ "${version}" == *-* ]]; then
+                version+=.
+              else
+                version+=-
+              fi
+              version+="dev.g${GITHUB_SHA:0:8}"
+              ;;
+            *) echo "::error::Publish only from main or a matching chart release tag"; exit 1 ;;
+          esac
+          {
+            echo "chart_path=${chart_path}"
+            echo "version=${version}"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Build NKTP dependencies
+        if: inputs.chart == 'nktp'
+        uses: ./.github/actions/setup-chart
+
+      - name: Package and validate
+        shell: bash
+        env:
+          CHART_PATH: ${{ steps.meta.outputs.chart_path }}
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          set -euo pipefail
+          helm package "${CHART_PATH}" --version "${VERSION}" --destination "${RUNNER_TEMP}/chart-dist"
+          package="${RUNNER_TEMP}/chart-dist/${CHART}-${VERSION}.tgz"
+          helm lint "${package}" --strict
+          # OCCT is a library chart; it cannot be rendered on its own.
+          if [[ "${CHART}" == nktp ]]; then
+            helm template nktp "${package}" > "${RUNNER_TEMP}/nktp-rendered.yaml"
+          fi
+          sha256sum "${package}"
+
+      - name: Publish to NVCR
+        shell: bash
+        env:
+          NKTP_NGC_ORG: ${{ secrets.NKTP_NGC_ORG }}
+          NKTP_NGC_REGISTRY_TOKEN: ${{ secrets.NKTP_NGC_REGISTRY_TOKEN }}
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          set -euo pipefail
+          # Accept an org or org/team, without a scheme, host or chart name.
+          if [[ ! "${NKTP_NGC_ORG}" =~ ^[a-z0-9_-]+(/[a-z0-9_-]+)?$ ]]; then
+            echo "::error::Set NKTP_NGC_ORG to an NGC org or org/team in the nvcr environment"
+            exit 1
+          fi
+          if [[ -z "${NKTP_NGC_REGISTRY_TOKEN}" ]]; then
+            echo "::error::NKTP_NGC_REGISTRY_TOKEN is not set in the nvcr environment"
+            exit 1
+          fi
+          umask 077
+          export HELM_REGISTRY_CONFIG="${RUNNER_TEMP}/nvcr-auth.json"
+          trap 'rm -f "${HELM_REGISTRY_CONFIG}"' EXIT
+          # NGC requires the literal username $oauthtoken.
+          # shellcheck disable=SC2016
+          printf '%s' "${NKTP_NGC_REGISTRY_TOKEN}" | helm registry login nvcr.io \
+            --username '$oauthtoken' --password-stdin
+          # Helm appends Chart.yaml's name and version to this parent prefix.
+          helm push "${RUNNER_TEMP}/chart-dist/${CHART}-${VERSION}.tgz" \
+            "oci://nvcr.io/${NKTP_NGC_ORG}"
+          {
+            echo "Published ${CHART}:${VERSION} to NVCR."
+            echo "Source commit: ${GITHUB_SHA}"
+          } >> "${GITHUB_STEP_SUMMARY}"
