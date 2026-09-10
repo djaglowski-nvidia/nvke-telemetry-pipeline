@@ -100,9 +100,14 @@ opentelemetry-operator:
 kube-state-metrics:
   enabled: true
 
-# Host-level metrics from each node.
+# Host-level metrics from each node. Runs as a DaemonSet with host networking,
+# so it binds port 9100 on every node.
 node-exporter:
   enabled: true
+  prometheus:
+    monitor:
+      # Declares the exporter as a scrape target, ready for a collector to pick up.
+      enabled: true
 
 # Resource metrics API, used for autoscaling. Disabled by default because it is installed
 # via other mechanisms in many clusters.

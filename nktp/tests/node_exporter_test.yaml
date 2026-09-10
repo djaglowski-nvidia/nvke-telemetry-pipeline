@@ -1,0 +1,117 @@
+suite: node-exporter
+release:
+  name: test
+templates:
+  - charts/node-exporter/templates/*.yaml
+  - templates/otel-lgtm.yaml
+tests:
+  - it: runs the pinned exporter on every node by default
+    template: charts/node-exporter/templates/daemonset.yaml
+    asserts:
+      - containsDocument:
+          apiVersion: apps/v1
+          kind: DaemonSet
+          name: test-node-exporter
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: quay.io/prometheus/node-exporter:v1.12.1
+
+  - it: reads host metrics from the node it runs on
+    template: charts/node-exporter/templates/daemonset.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.hostNetwork
+          value: true
+      - equal:
+          path: spec.template.spec.hostPID
+          value: true
+      - equal:
+          path: spec.template.spec.containers[0].ports[0].containerPort
+          value: 9100
+
+  - it: exposes the exporter through a Service and its own ServiceAccount
+    asserts:
+      - containsDocument:
+          apiVersion: v1
+          kind: Service
+          name: test-node-exporter
+        template: charts/node-exporter/templates/service.yaml
+      - equal:
+          path: spec.ports[0].port
+          value: 9100
+        template: charts/node-exporter/templates/service.yaml
+      - containsDocument:
+          apiVersion: v1
+          kind: ServiceAccount
+          name: test-node-exporter
+        template: charts/node-exporter/templates/serviceaccount.yaml
+
+  - it: declares the exporter as a scrape target
+    template: charts/node-exporter/templates/servicemonitor.yaml
+    asserts:
+      - containsDocument:
+          apiVersion: monitoring.coreos.com/v1
+          kind: ServiceMonitor
+          name: test-node-exporter
+      - equal:
+          path: spec.selector.matchLabels["app.kubernetes.io/name"]
+          value: node-exporter
+      - equal:
+          path: spec.endpoints[0].port
+          value: metrics
+
+  - it: drops the monitor without disabling the exporter
+    set:
+      node-exporter:
+        prometheus:
+          monitor:
+            enabled: false
+    asserts:
+      - containsDocument:
+          apiVersion: monitoring.coreos.com/v1
+          kind: ServiceMonitor
+        not: true
+      - containsDocument:
+          apiVersion: apps/v1
+          kind: DaemonSet
+          name: test-node-exporter
+        template: charts/node-exporter/templates/daemonset.yaml
+
+  - it: passes through exporter image overrides
+    set:
+      node-exporter:
+        image:
+          registry: example.com
+          repository: node-exporter
+          # The chart semverCompares the tag, so it must parse as a version.
+          tag: v9.9.9
+    template: charts/node-exporter/templates/daemonset.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: example.com/node-exporter:v9.9.9
+
+  - it: omits the exporter entirely when disabled
+    set:
+      node-exporter:
+        enabled: false
+    asserts:
+      - containsDocument:
+          apiVersion: apps/v1
+          kind: DaemonSet
+          name: test-node-exporter
+        not: true
+      - containsDocument:
+          apiVersion: v1
+          kind: Service
+          name: test-node-exporter
+        not: true
+      - containsDocument:
+          apiVersion: v1
+          kind: ServiceAccount
+          name: test-node-exporter
+        not: true
+      - containsDocument:
+          apiVersion: monitoring.coreos.com/v1
+          kind: ServiceMonitor
+        not: true

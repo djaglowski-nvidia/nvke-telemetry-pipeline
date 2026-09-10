@@ -67,6 +67,19 @@ opentelemetry-operator:
       enabled: true
 ```
 
+### Node exporter
+
+NKTP installs [prometheus-node-exporter](https://github.com/prometheus-community/helm-charts/tree/main/charts/prometheus-node-exporter) by default
+to collect host-level metrics from every node. It runs as a DaemonSet with host networking and binds port 9100 on each node,
+and ships a ServiceMonitor so the exporter is discoverable as a scrape target.
+
+Disable it, for example when the cluster already runs a node exporter:
+
+```yaml
+node-exporter:
+  enabled: false
+```
+
 ### otel-lgtm
 
 [grafana/otel-lgtm](https://github.com/grafana/docker-otel-lgtm) is an all-in-one observability backend (Grafana, Loki, Tempo, Prometheus) with OTLP ingest.
