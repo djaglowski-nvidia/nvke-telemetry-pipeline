@@ -13,15 +13,130 @@ otelcol_image: otel/opentelemetry-collector-k8s:0.159.0
 # OTel workloads. Each workload uses the same structure:
 #   kubernetes:     Standard Kubernetes settings (resources, affinity, selectors, labels, ...).
 #   otelcol.image:  Set a custom image for this workload only.
-#   otelcol.config: Native OTel collector configuration.
+#   otelcol.config: Native OTel collector configuration as a YAML map.
 
 # Receives internal telemetry from all NKTP collectors.
+# Sends received telemetry and its own telemetry to the default backend.
 watchdog:
-  kubernetes: {}
+  kubernetes:
+    replicas: 2
+    autoscaler:
+      minReplicas: 2
+      maxReplicas: 16
+      targetCPUUtilization: 75
+      targetMemoryUtilization: 100
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+    env:
+      - name: GOMEMLIMIT
+        value: 448MiB # Soft Go runtime target. Leaves 64Mi nominal headroom below the container limit.
+      - name: GOGC
+        value: "50" # More frequent GC trades CPU for lower heap growth.
+    podDisruptionBudget:
+      maxUnavailable: 25%
+    deploymentUpdateStrategy:
+      type: RollingUpdate
+      rollingUpdate:
+        maxUnavailable: 0
+        maxSurge: 25%
+    terminationGracePeriodSeconds: 60
+    topologySpreadConstraints:
+      - maxSkew: 1
+        topologyKey: topology.kubernetes.io/zone
+        whenUnsatisfiable: ScheduleAnyway
+        labelSelector:
+          matchLabels:
+            app.kubernetes.io/name: nktp-watchdog-collector
+      - maxSkew: 1
+        topologyKey: kubernetes.io/hostname
+        whenUnsatisfiable: ScheduleAnyway
+        labelSelector:
+          matchLabels:
+            app.kubernetes.io/name: nktp-watchdog-collector
+    podSecurityContext:
+      runAsNonRoot: true
+      seccompProfile:
+        type: RuntimeDefault
+    securityContext:
+      allowPrivilegeEscalation: false
+      readOnlyRootFilesystem: true
+      capabilities:
+        drop: [ALL]
   otelcol:
     # Set a custom image for this workload only.
     # image: otel/opentelemetry-collector-k8s:0.159.0
-    config: {}
+    config:
+      extensions:
+        health_check:
+          endpoint: 0.0.0.0:13133
+      receivers:
+        otlp:
+          protocols:
+            http:
+              endpoint: 0.0.0.0:4318
+      processors:
+        memory_limiter:
+          check_interval: 500ms # Poll Go heap Alloc. Bursts can allocate between checks.
+          limit_percentage: 80 # Hard heap threshold, 409.6Mi. Leaves room below the container cap.
+          spike_limit_percentage: 25 # Subtract from hard threshold for soft refusal at 55% (281.6Mi).
+      exporters:
+        otlp_http:
+          endpoint: http://lgtm:4318
+          retry_on_failure:
+            max_elapsed_time: 30m
+          sending_queue:
+            sizer: bytes # Counts serialized bytes. Go heap use can be several times larger.
+            queue_size: 8388608 # Per signal. 3 x 8MiB = 24MiB, including in-flight payloads.
+            num_consumers: 32 # Export concurrency. Idle worker slots hold no batch payload.
+            batch:
+              sizer: bytes # Batch sizes use serialized bytes, matching queue accounting.
+              min_size: 1048576 # Batch at 1MiB to amortize export overhead.
+              max_size: 2097152 # Split above 2MiB serialized. Decoded heap can be larger.
+              flush_timeout: 1s # Flush partial batches to limit low-volume buffering time.
+      service:
+        extensions: [health_check]
+        telemetry:
+          resource:
+            service.name: nktp-watchdog
+          metrics:
+            readers:
+              - periodic:
+                  exporter:
+                    otlp:
+                      protocol: http/protobuf
+                      endpoint: http://lgtm:4318
+          logs:
+            processors:
+              - batch:
+                  exporter:
+                    otlp:
+                      protocol: http/protobuf
+                      endpoint: http://lgtm:4318
+          traces:
+            processors:
+              - batch:
+                  exporter:
+                    otlp:
+                      protocol: http/protobuf
+                      endpoint: http://lgtm:4318
+        pipelines:
+          metrics:
+            receivers: [otlp]
+            processors: [memory_limiter]
+            exporters: [otlp_http]
+          logs:
+            receivers: [otlp]
+            processors: [memory_limiter]
+            exporters: [otlp_http]
+          traces:
+            receivers: [otlp]
+            processors: [memory_limiter]
+            exporters: [otlp_http]
 
 # Log gateway. Exports all logs from the cluster.
 gateway_logs:

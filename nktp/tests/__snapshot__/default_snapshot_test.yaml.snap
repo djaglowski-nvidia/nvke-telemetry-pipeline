@@ -19,6 +19,88 @@ matches the snapshot with default values:
   2: |
     apiVersion: v1
     data:
+      nktp-watchdog.json: |
+        {
+          "uid": "nktp-watchdog",
+          "title": "NKTP Watchdog",
+          "schemaVersion": 39,
+          "refresh": "30s",
+          "time": { "from": "now-30m", "to": "now" },
+          "panels": [
+            {
+              "id": 1,
+              "type": "timeseries",
+              "title": "Received /s",
+              "gridPos": { "x": 0, "y": 0, "w": 12, "h": 7 },
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "fieldConfig": { "defaults": { "min": 0 } },
+              "targets": [
+                { "expr": "sum(rate(otelcol_receiver_accepted_metric_points_total{job=\"nktp-watchdog\"}[5m]))", "legendFormat": "metric points", "refId": "A" },
+                { "expr": "sum(rate(otelcol_receiver_accepted_log_records_total{job=\"nktp-watchdog\"}[5m]))", "legendFormat": "log records", "refId": "B" },
+                { "expr": "sum(rate(otelcol_receiver_accepted_spans_total{job=\"nktp-watchdog\"}[5m]))", "legendFormat": "spans", "refId": "C" }
+              ]
+            },
+            {
+              "id": 2,
+              "type": "timeseries",
+              "title": "Exported /s",
+              "gridPos": { "x": 12, "y": 0, "w": 12, "h": 7 },
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "fieldConfig": { "defaults": { "min": 0 } },
+              "targets": [
+                { "expr": "sum(rate(otelcol_exporter_sent_metric_points_total{job=\"nktp-watchdog\"}[5m]))", "legendFormat": "metric points", "refId": "A" },
+                { "expr": "sum(rate(otelcol_exporter_sent_log_records_total{job=\"nktp-watchdog\"}[5m]))", "legendFormat": "log records", "refId": "B" },
+                { "expr": "sum(rate(otelcol_exporter_sent_spans_total{job=\"nktp-watchdog\"}[5m]))", "legendFormat": "spans", "refId": "C" }
+              ]
+            },
+            {
+              "id": 3,
+              "type": "timeseries",
+              "title": "Export failures /s",
+              "gridPos": { "x": 0, "y": 7, "w": 12, "h": 7 },
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "fieldConfig": { "defaults": { "min": 0 } },
+              "targets": [
+                { "expr": "sum(rate(otelcol_exporter_send_failed_metric_points_total{job=\"nktp-watchdog\"}[5m]))", "legendFormat": "metric points", "refId": "A" },
+                { "expr": "sum(rate(otelcol_exporter_send_failed_log_records_total{job=\"nktp-watchdog\"}[5m]))", "legendFormat": "log records", "refId": "B" },
+                { "expr": "sum(rate(otelcol_exporter_send_failed_spans_total{job=\"nktp-watchdog\"}[5m]))", "legendFormat": "spans", "refId": "C" }
+              ]
+            },
+            {
+              "id": 4,
+              "type": "timeseries",
+              "title": "Exporter queue use",
+              "gridPos": { "x": 12, "y": 7, "w": 12, "h": 7 },
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100 } },
+              "targets": [
+                { "expr": "100 * sum by (exporter, data_type) (otelcol_exporter_queue_size{job=\"nktp-watchdog\"}) / sum by (exporter, data_type) (otelcol_exporter_queue_capacity{job=\"nktp-watchdog\"})", "legendFormat": "{{exporter}} {{data_type}}", "refId": "A" }
+              ]
+            },
+            {
+              "id": 5,
+              "type": "timeseries",
+              "title": "CPU cores",
+              "gridPos": { "x": 0, "y": 14, "w": 12, "h": 7 },
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "fieldConfig": { "defaults": { "min": 0 } },
+              "targets": [
+                { "expr": "sum(rate(otelcol_process_cpu_seconds_total{job=\"nktp-watchdog\"}[5m]))", "legendFormat": "CPU cores", "refId": "A" }
+              ]
+            },
+            {
+              "id": 6,
+              "type": "timeseries",
+              "title": "Memory (RSS)",
+              "gridPos": { "x": 12, "y": 14, "w": 12, "h": 7 },
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "fieldConfig": { "defaults": { "unit": "bytes", "min": 0 } },
+              "targets": [
+                { "expr": "sum(otelcol_process_memory_rss_bytes{job=\"nktp-watchdog\"})", "legendFormat": "RSS", "refId": "A" }
+              ]
+            }
+          ]
+        }
       otel-lgtm-health.json: |
         {
           "uid": "otel-lgtm-health",
@@ -114,7 +196,7 @@ matches the snapshot with default values:
       template:
         metadata:
           annotations:
-            checksum/dashboards: e865b4e542c79c61cc3e9f2e0d0492bbaf6e57f5be8297079a7337c61a22a8b4
+            checksum/dashboards: ce1ed8a9b3035899e7bf197ea147d3801babc047d252c9cfd489718a953541ae
           labels:
             app: lgtm
         spec:
@@ -175,3 +257,142 @@ matches the snapshot with default values:
               name: p8s-storage
             - emptyDir: {}
               name: pyroscope-storage
+  5: |
+    apiVersion: opentelemetry.io/v1beta1
+    kind: OpenTelemetryCollector
+    metadata:
+      labels:
+        helm.sh/chart: opentelemetry-kube-stack-0.20.8
+      name: nktp-watchdog
+      namespace: NAMESPACE
+    spec:
+      autoscaler:
+        maxReplicas: 16
+        minReplicas: 2
+        targetCPUUtilization: 75
+        targetMemoryUtilization: 100
+      config:
+        exporters:
+          otlp_http:
+            endpoint: http://lgtm:4318
+            retry_on_failure:
+              max_elapsed_time: 30m
+            sending_queue:
+              batch:
+                flush_timeout: 1s
+                max_size: 2097152
+                min_size: 1048576
+                sizer: bytes
+              num_consumers: 32
+              queue_size: 8388608
+              sizer: bytes
+        extensions:
+          health_check:
+            endpoint: 0.0.0.0:13133
+        processors:
+          memory_limiter:
+            check_interval: 500ms
+            limit_percentage: 80
+            spike_limit_percentage: 25
+        receivers:
+          otlp:
+            protocols:
+              http:
+                endpoint: 0.0.0.0:4318
+        service:
+          extensions:
+            - health_check
+          pipelines:
+            logs:
+              exporters:
+                - otlp_http
+              processors:
+                - memory_limiter
+              receivers:
+                - otlp
+            metrics:
+              exporters:
+                - otlp_http
+              processors:
+                - memory_limiter
+              receivers:
+                - otlp
+            traces:
+              exporters:
+                - otlp_http
+              processors:
+                - memory_limiter
+              receivers:
+                - otlp
+          telemetry:
+            logs:
+              processors:
+                - batch:
+                    exporter:
+                      otlp:
+                        endpoint: http://lgtm:4318
+                        protocol: http/protobuf
+            metrics:
+              readers:
+                - periodic:
+                    exporter:
+                      otlp:
+                        endpoint: http://lgtm:4318
+                        protocol: http/protobuf
+            resource:
+              service.name: nktp-watchdog
+            traces:
+              processors:
+                - batch:
+                    exporter:
+                      otlp:
+                        endpoint: http://lgtm:4318
+                        protocol: http/protobuf
+      deploymentUpdateStrategy:
+        rollingUpdate:
+          maxSurge: 25%
+          maxUnavailable: 0
+        type: RollingUpdate
+      env:
+        - name: GOMEMLIMIT
+          value: 448MiB
+        - name: GOGC
+          value: "50"
+      image: otel/opentelemetry-collector-k8s:0.159.0
+      managementState: managed
+      mode: deployment
+      podDisruptionBudget:
+        maxUnavailable: 25%
+      podSecurityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      replicas: 2
+      resources:
+        limits:
+          cpu: 500m
+          memory: 512Mi
+        requests:
+          cpu: 100m
+          memory: 256Mi
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop:
+            - ALL
+        readOnlyRootFilesystem: true
+      terminationGracePeriodSeconds: 60
+      topologySpreadConstraints:
+        - labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: nktp-watchdog-collector
+          maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+        - labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: nktp-watchdog-collector
+          maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+      upgradeStrategy: automatic

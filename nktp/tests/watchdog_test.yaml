@@ -1,0 +1,518 @@
+suite: watchdog
+release:
+  name: test
+  namespace: nktp
+templates:
+  - templates/watchdog.yaml
+  - charts/opentelemetry-kube-stack/templates/hooks.yaml
+tests:
+  - it: creates a Collector deployment with the default image
+    template: templates/watchdog.yaml
+    asserts:
+      - containsDocument:
+          apiVersion: opentelemetry.io/v1beta1
+          kind: OpenTelemetryCollector
+          name: nktp-watchdog
+      - equal:
+          path: spec.mode
+          value: deployment
+      - equal:
+          path: spec.managementState
+          value: managed
+      - equal:
+          path: spec.upgradeStrategy
+          value: automatic
+      - equal:
+          path: spec.replicas
+          value: 2
+      - equal:
+          path: spec.autoscaler
+          value:
+            minReplicas: 2
+            maxReplicas: 16
+            targetCPUUtilization: 75
+            targetMemoryUtilization: 100
+      - equal:
+          path: spec.podDisruptionBudget
+          value:
+            maxUnavailable: 25%
+      - equal:
+          path: spec.deploymentUpdateStrategy
+          value:
+            type: RollingUpdate
+            rollingUpdate:
+              maxUnavailable: 0
+              maxSurge: 25%
+      - equal:
+          path: spec.topologySpreadConstraints
+          value:
+            - maxSkew: 1
+              topologyKey: topology.kubernetes.io/zone
+              whenUnsatisfiable: ScheduleAnyway
+              labelSelector:
+                matchLabels:
+                  app.kubernetes.io/name: nktp-watchdog-collector
+            - maxSkew: 1
+              topologyKey: kubernetes.io/hostname
+              whenUnsatisfiable: ScheduleAnyway
+              labelSelector:
+                matchLabels:
+                  app.kubernetes.io/name: nktp-watchdog-collector
+      - equal:
+          path: spec.terminationGracePeriodSeconds
+          value: 60
+      - equal:
+          path: spec.podSecurityContext
+          value:
+            runAsNonRoot: true
+            seccompProfile:
+              type: RuntimeDefault
+      - equal:
+          path: spec.securityContext
+          value:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+      - notExists:
+          path: spec.lifecycle
+      - equal:
+          path: spec.resources
+          value:
+            requests: {cpu: 100m, memory: 256Mi}
+            limits: {cpu: 500m, memory: 512Mi}
+      - equal:
+          path: spec.env
+          value:
+            - name: GOMEMLIMIT
+              value: 448MiB
+            - name: GOGC
+              value: "50"
+      - equal:
+          path: spec.config.exporters.otlp_http
+          value:
+            endpoint: http://lgtm:4318
+            retry_on_failure:
+              max_elapsed_time: 30m
+            sending_queue:
+              sizer: bytes
+              queue_size: 8388608
+              num_consumers: 32
+              batch:
+                sizer: bytes
+                min_size: 1048576
+                max_size: 2097152
+                flush_timeout: 1s
+      - equal:
+          path: spec.image
+          value: otel/opentelemetry-collector-k8s:0.159.0
+      - equal:
+          path: metadata.labels["helm.sh/chart"]
+          value: opentelemetry-kube-stack-0.20.8
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: helm.sh/chart=opentelemetry-kube-stack-0.20.8
+        template: charts/opentelemetry-kube-stack/templates/hooks.yaml
+        documentSelector:
+          path: kind
+          value: Job
+
+  - it: uses the global Collector image override
+    template: templates/watchdog.yaml
+    set:
+      otelcol_image: example.com/collector:global
+    asserts:
+      - equal:
+          path: spec.image
+          value: example.com/collector:global
+
+  - it: prefers the watchdog image override
+    template: templates/watchdog.yaml
+    set:
+      otelcol_image: example.com/collector:global
+      watchdog.kubernetes.image: example.com/collector:kubernetes
+      watchdog.otelcol.image: example.com/collector:watchdog
+    asserts:
+      - equal:
+          path: spec.image
+          value: example.com/collector:watchdog
+
+  - it: passes Kubernetes settings to the Collector spec
+    template: templates/watchdog.yaml
+    set:
+      watchdog.kubernetes:
+        replicas: 6
+        autoscaler:
+          targetCPUUtilization: 60
+        deploymentUpdateStrategy:
+          rollingUpdate:
+            maxSurge: 50%
+        podSecurityContext:
+          fsGroup: 2000
+        securityContext:
+          readOnlyRootFilesystem: false
+        lifecycle:
+          preStop:
+            sleep:
+              seconds: 10
+        resources:
+          requests:
+            memory: 128Mi
+        nodeSelector:
+          kubernetes.io/os: linux
+        env:
+          - name: EXAMPLE
+            value: watchdog
+    asserts:
+      - equal:
+          path: spec.replicas
+          value: 6
+      - equal:
+          path: spec.resources
+          value:
+            requests: {cpu: 100m, memory: 128Mi}
+            limits: {cpu: 500m, memory: 512Mi}
+      - equal:
+          path: spec.autoscaler
+          value:
+            minReplicas: 2
+            maxReplicas: 16
+            targetCPUUtilization: 60
+            targetMemoryUtilization: 100
+      - equal:
+          path: spec.nodeSelector
+          value:
+            kubernetes.io/os: linux
+      - equal:
+          path: spec.deploymentUpdateStrategy
+          value:
+            type: RollingUpdate
+            rollingUpdate:
+              maxUnavailable: 0
+              maxSurge: 50%
+      - equal:
+          path: spec.podSecurityContext
+          value:
+            runAsNonRoot: true
+            seccompProfile:
+              type: RuntimeDefault
+            fsGroup: 2000
+      - equal:
+          path: spec.securityContext
+          value:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop: [ALL]
+      - equal:
+          path: spec.lifecycle.preStop.sleep.seconds
+          value: 10
+      - equal:
+          path: spec.env
+          value:
+            - name: EXAMPLE
+              value: watchdog
+
+  - it: changes its own log level without removing default telemetry or pipelines
+    template: templates/watchdog.yaml
+    set:
+      watchdog.otelcol.config.service.telemetry.logs.level: error
+    asserts:
+      - equal:
+          path: spec.config.service.telemetry.logs
+          value:
+            level: error
+            processors:
+              - batch:
+                  exporter:
+                    otlp:
+                      protocol: http/protobuf
+                      endpoint: http://lgtm:4318
+      - equal:
+          path: spec.config.receivers.otlp.protocols
+          value:
+            http:
+              endpoint: 0.0.0.0:4318
+      - equal:
+          path: spec.config.exporters.otlp_http.endpoint
+          value: http://lgtm:4318
+      - equal:
+          path: spec.config.processors
+          value:
+            memory_limiter:
+              check_interval: 500ms
+              limit_percentage: 80
+              spike_limit_percentage: 25
+      - equal:
+          path: spec.config.service.pipelines
+          value:
+            metrics: {receivers: [otlp], processors: [memory_limiter], exporters: [otlp_http]}
+            logs: {receivers: [otlp], processors: [memory_limiter], exporters: [otlp_http]}
+            traces: {receivers: [otlp], processors: [memory_limiter], exporters: [otlp_http]}
+      - equal:
+          path: spec.config.service.telemetry.metrics.readers
+          value:
+            - periodic:
+                exporter:
+                  otlp:
+                    protocol: http/protobuf
+                    endpoint: http://lgtm:4318
+      - equal:
+          path: spec.config.service.telemetry.traces.processors
+          value:
+            - batch:
+                exporter:
+                  otlp:
+                    protocol: http/protobuf
+                    endpoint: http://lgtm:4318
+      - equal:
+          path: spec.config.service.telemetry.resource
+          value:
+            service.name: nktp-watchdog
+
+  - it: redirects its own metrics to gRPC without changing other telemetry
+    template: templates/watchdog.yaml
+    set:
+      watchdog.otelcol.config.service.telemetry.metrics.readers:
+        - periodic:
+            exporter:
+              otlp:
+                protocol: grpc
+                endpoint: http://metrics.example:4317
+    asserts:
+      - equal:
+          path: spec.config.service.telemetry
+          value:
+            resource:
+              service.name: nktp-watchdog
+            metrics:
+              readers:
+                - periodic:
+                    exporter:
+                      otlp:
+                        protocol: grpc
+                        endpoint: http://metrics.example:4317
+            logs:
+              processors:
+                - batch:
+                    exporter:
+                      otlp:
+                        protocol: http/protobuf
+                        endpoint: http://lgtm:4318
+            traces:
+              processors:
+                - batch:
+                    exporter:
+                      otlp:
+                        protocol: http/protobuf
+                        endpoint: http://lgtm:4318
+      - equal:
+          path: spec.config.exporters.otlp_http.endpoint
+          value: http://lgtm:4318
+      - equal:
+          path: spec.config.service.pipelines
+          value:
+            metrics: {receivers: [otlp], processors: [memory_limiter], exporters: [otlp_http]}
+            logs: {receivers: [otlp], processors: [memory_limiter], exporters: [otlp_http]}
+            traces: {receivers: [otlp], processors: [memory_limiter], exporters: [otlp_http]}
+
+  - it: redirects its own logs to gRPC without changing other telemetry
+    template: templates/watchdog.yaml
+    set:
+      watchdog.otelcol.config.service.telemetry.logs.processors:
+        - batch:
+            exporter:
+              otlp:
+                protocol: grpc
+                endpoint: http://logs.example:4317
+    asserts:
+      - equal:
+          path: spec.config.service.telemetry
+          value:
+            resource:
+              service.name: nktp-watchdog
+            metrics:
+              readers:
+                - periodic:
+                    exporter:
+                      otlp:
+                        protocol: http/protobuf
+                        endpoint: http://lgtm:4318
+            logs:
+              processors:
+                - batch:
+                    exporter:
+                      otlp:
+                        protocol: grpc
+                        endpoint: http://logs.example:4317
+            traces:
+              processors:
+                - batch:
+                    exporter:
+                      otlp:
+                        protocol: http/protobuf
+                        endpoint: http://lgtm:4318
+      - equal:
+          path: spec.config.exporters.otlp_http.endpoint
+          value: http://lgtm:4318
+      - equal:
+          path: spec.config.service.pipelines
+          value:
+            metrics: {receivers: [otlp], processors: [memory_limiter], exporters: [otlp_http]}
+            logs: {receivers: [otlp], processors: [memory_limiter], exporters: [otlp_http]}
+            traces: {receivers: [otlp], processors: [memory_limiter], exporters: [otlp_http]}
+
+  - it: redirects its own traces to gRPC without changing other telemetry
+    template: templates/watchdog.yaml
+    set:
+      watchdog.otelcol.config.service.telemetry.traces.processors:
+        - batch:
+            exporter:
+              otlp:
+                protocol: grpc
+                endpoint: http://traces.example:4317
+    asserts:
+      - equal:
+          path: spec.config.service.telemetry
+          value:
+            resource:
+              service.name: nktp-watchdog
+            metrics:
+              readers:
+                - periodic:
+                    exporter:
+                      otlp:
+                        protocol: http/protobuf
+                        endpoint: http://lgtm:4318
+            logs:
+              processors:
+                - batch:
+                    exporter:
+                      otlp:
+                        protocol: http/protobuf
+                        endpoint: http://lgtm:4318
+            traces:
+              processors:
+                - batch:
+                    exporter:
+                      otlp:
+                        protocol: grpc
+                        endpoint: http://traces.example:4317
+      - equal:
+          path: spec.config.exporters.otlp_http.endpoint
+          value: http://lgtm:4318
+      - equal:
+          path: spec.config.service.pipelines
+          value:
+            metrics: {receivers: [otlp], processors: [memory_limiter], exporters: [otlp_http]}
+            logs: {receivers: [otlp], processors: [memory_limiter], exporters: [otlp_http]}
+            traces: {receivers: [otlp], processors: [memory_limiter], exporters: [otlp_http]}
+
+  - it: changes forwarding settings independently of its own telemetry
+    template: templates/watchdog.yaml
+    set:
+      watchdog.otelcol.config.exporters.otlp_http.endpoint: http://telemetry.example:4318
+      watchdog.otelcol.config.exporters.otlp_http.sending_queue.queue_size: 2097152
+    asserts:
+      - equal:
+          path: spec.config.exporters.otlp_http.endpoint
+          value: http://telemetry.example:4318
+      - equal:
+          path: spec.config.exporters.otlp_http.sending_queue
+          value:
+            sizer: bytes
+            queue_size: 2097152
+            num_consumers: 32
+            batch:
+              sizer: bytes
+              min_size: 1048576
+              max_size: 2097152
+              flush_timeout: 1s
+      - equal:
+          path: spec.config.service.telemetry.logs.processors[0].batch.exporter.otlp.endpoint
+          value: http://lgtm:4318
+      - equal:
+          path: spec.config.service.telemetry.metrics.readers[0].periodic.exporter.otlp.endpoint
+          value: http://lgtm:4318
+      - equal:
+          path: spec.config.service.telemetry.traces.processors[0].batch.exporter.otlp.endpoint
+          value: http://lgtm:4318
+
+  - it: preserves native environment references and literal expressions
+    template: templates/watchdog.yaml
+    set:
+      watchdog.otelcol.config.receivers.otlp.protocols.http.endpoint: ${env:WATCHDOG_LISTEN_ADDR}
+      watchdog.otelcol.config.exporters.otlp_http.endpoint: ${env:WATCHDOG_OTLP_ENDPOINT}
+      watchdog.otelcol.config.exporters.otlp_http.headers:
+        x-literal: "{{ preserved }} $$TOKEN"
+    asserts:
+      - equal:
+          path: spec.config.receivers.otlp.protocols.http.endpoint
+          value: ${env:WATCHDOG_LISTEN_ADDR}
+      - equal:
+          path: spec.config.exporters.otlp_http.endpoint
+          value: ${env:WATCHDOG_OTLP_ENDPOINT}
+      - equal:
+          path: spec.config.exporters.otlp_http.headers
+          value:
+            x-literal: "{{ preserved }} $$TOKEN"
+
+  - it: replaces a pipeline exporter list without appending its default
+    template: templates/watchdog.yaml
+    set:
+      watchdog.otelcol.config.exporters.debug: {}
+      watchdog.otelcol.config.service.pipelines.metrics.exporters: [debug]
+    asserts:
+      - equal:
+          path: spec.config.service.pipelines.metrics
+          value:
+            receivers: [otlp]
+            processors: [memory_limiter]
+            exporters: [debug]
+      - equal:
+          path: spec.config.exporters.debug
+          value: {}
+      - equal:
+          path: spec.config.exporters.otlp_http.endpoint
+          value: http://lgtm:4318
+      - equal:
+          path: spec.config.service.pipelines.logs.exporters
+          value: [otlp_http]
+      - equal:
+          path: spec.config.service.pipelines.traces.exporters
+          value: [otlp_http]
+
+  - it: replaces HTTP with an explicitly configured gRPC receiver
+    template: templates/watchdog.yaml
+    set:
+      watchdog.otelcol.config.receivers.otlp.protocols.http: null
+      watchdog.otelcol.config.receivers.otlp.protocols.grpc.endpoint: 0.0.0.0:4317
+    asserts:
+      - equal:
+          path: spec.config.receivers.otlp.protocols
+          value:
+            grpc:
+              endpoint: 0.0.0.0:4317
+
+  - it: renders for an existing operator and CRDs
+    template: templates/watchdog.yaml
+    set:
+      opentelemetry-kube-stack.opentelemetry-operator.enabled: false
+      opentelemetry-kube-stack.crds.installOtel: false
+      opentelemetry-kube-stack.crds.installPrometheus: false
+    asserts:
+      - containsDocument:
+          apiVersion: opentelemetry.io/v1beta1
+          kind: OpenTelemetryCollector
+          name: nktp-watchdog
+      - equal:
+          path: metadata.labels["helm.sh/chart"]
+          value: opentelemetry-kube-stack-0.20.8
+
+  - it: rejects string configuration
+    template: templates/watchdog.yaml
+    set:
+      watchdog.otelcol.config: "{}"
+    asserts:
+      - failedTemplate:
+          errorMessage: watchdog.otelcol.config must be a native Collector YAML map
