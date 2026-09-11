@@ -13,3 +13,6 @@ includes:
   dev:
     taskfile: ./dev/Taskfile.yml
     dir: ./dev
+  occt:
+    taskfile: ./occt/Taskfile.yml
+    dir: ./occt
