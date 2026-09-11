@@ -140,11 +140,115 @@ watchdog:
 
 # Log gateway. Exports all logs from the cluster.
 gateway_logs:
-  kubernetes: {}
+  kubernetes:
+    mode: statefulset # Stable replica identities support per-replica volumes for optional persistent queues.
+    replicas: 2
+    autoscaler:
+      minReplicas: 2
+      maxReplicas: 64
+      targetCPUUtilization: 75
+      targetMemoryUtilization: 100
+    resources:
+      requests:
+        cpu: 200m
+        memory: 512Mi
+      limits:
+        cpu: "1"
+        memory: 1Gi
+    env:
+      - name: GOMEMLIMIT
+        value: 896MiB # Soft Go runtime target. Leaves 128Mi nominal headroom below the container limit.
+      - name: GOGC
+        value: "50" # More frequent GC trades CPU for lower heap growth.
+    podDisruptionBudget:
+      maxUnavailable: 25%
+    terminationGracePeriodSeconds: 60
+    topologySpreadConstraints:
+      - maxSkew: 1
+        topologyKey: topology.kubernetes.io/zone
+        whenUnsatisfiable: ScheduleAnyway
+        labelSelector:
+          matchLabels:
+            app.kubernetes.io/name: nktp-gateway-logs-collector
+      - maxSkew: 1
+        topologyKey: kubernetes.io/hostname
+        whenUnsatisfiable: ScheduleAnyway
+        labelSelector:
+          matchLabels:
+            app.kubernetes.io/name: nktp-gateway-logs-collector
+    podSecurityContext:
+      runAsNonRoot: true
+      seccompProfile:
+        type: RuntimeDefault
+    securityContext:
+      allowPrivilegeEscalation: false
+      readOnlyRootFilesystem: true
+      capabilities:
+        drop: [ALL]
   otelcol:
     # Set a custom image for this workload only.
     # image: otel/opentelemetry-collector-k8s:0.159.0
-    config: {}
+    config:
+      extensions:
+        health_check:
+          endpoint: 0.0.0.0:13133
+      receivers:
+        otlp:
+          protocols:
+            grpc:
+              endpoint: 0.0.0.0:4317
+            http:
+              endpoint: 0.0.0.0:4318
+      processors:
+        memory_limiter:
+          check_interval: 500ms # Poll Go heap Alloc. Bursts can allocate between checks.
+          limit_percentage: 80 # Hard heap threshold, 819.2Mi. Leaves room below the container cap.
+          spike_limit_percentage: 25 # Subtract from hard threshold for soft refusal at 55% (563.2Mi).
+      exporters:
+        otlp_http:
+          endpoint: http://lgtm:4318
+          retry_on_failure:
+            max_elapsed_time: 30m
+          sending_queue:
+            sizer: bytes # Counts serialized bytes. Go heap use can be several times larger.
+            queue_size: 16777216 # One 16MiB logs queue, including in-flight payloads.
+            num_consumers: 32 # Export concurrency. Idle worker slots hold no batch payload.
+            batch:
+              sizer: bytes # Batch sizes use serialized bytes, matching queue accounting.
+              min_size: 1048576 # Batch at 1MiB to amortize export overhead.
+              max_size: 2097152 # Split above 2MiB serialized. Decoded heap can be larger.
+              flush_timeout: 1s # Flush partial batches to limit low-volume buffering time.
+      service:
+        extensions: [health_check]
+        telemetry:
+          resource:
+            service.name: nktp-gateway-logs
+          metrics:
+            readers:
+              - periodic:
+                  exporter:
+                    otlp:
+                      protocol: http/protobuf
+                      endpoint: http://nktp-watchdog-collector:4318
+          logs:
+            processors:
+              - batch:
+                  exporter:
+                    otlp:
+                      protocol: http/protobuf
+                      endpoint: http://nktp-watchdog-collector:4318
+          traces:
+            processors:
+              - batch:
+                  exporter:
+                    otlp:
+                      protocol: http/protobuf
+                      endpoint: http://nktp-watchdog-collector:4318
+        pipelines:
+          logs:
+            receivers: [otlp]
+            processors: [memory_limiter]
+            exporters: [otlp_http]
 
 # Metric gateway. Exports all metrics from the cluster.
 gateway_metrics:

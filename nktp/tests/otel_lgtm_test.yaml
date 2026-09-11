@@ -25,6 +25,24 @@ tests:
           name: lgtm-dashboard-provider
           any: true
 
+  - it: provisions the logs gateway dashboard
+    documentSelector:
+      path: metadata.name
+      value: lgtm-dashboards
+    asserts:
+      - matchRegex:
+          path: data["nktp-gateway-logs.json"]
+          pattern: '"uid": "nktp-gateway-logs"'
+      - matchRegex:
+          path: data["nktp-gateway-logs.json"]
+          pattern: '"title": "NKTP Logs Gateway"'
+      - matchRegex:
+          path: data["nktp-gateway-logs.json"]
+          pattern: otelcol_receiver_accepted_log_records_total
+      - notMatchRegex:
+          path: data["nktp-gateway-logs.json"]
+          pattern: 'opentelemetry_allocator|metric_points|accepted_spans|sent_spans'
+
   - it: removes all otel-lgtm resources when disabled
     set:
       otel-lgtm:

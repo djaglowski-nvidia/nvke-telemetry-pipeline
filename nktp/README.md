@@ -22,6 +22,18 @@ to override the global `otelcol_image`.
 Include `GOMEMLIMIT` and `GOGC` in any replacement `watchdog.kubernetes.env` list
 to retain these settings.
 
+### Logs gateway
+
+The logs gateway accepts OTLP logs over gRPC at `nktp-gateway-logs-collector:4317`
+and HTTP at `http://nktp-gateway-logs-collector:4318` in the Helm release namespace.
+It forwards received logs to LGTM and sends its own metrics, logs and traces to
+watchdog.
+
+Use `gateway_logs.otelcol.config` for Collector configuration and
+`gateway_logs.kubernetes` for Kubernetes workload configuration. Autoscaling
+requires the Kubernetes resource metrics API. Retain `GOMEMLIMIT` and `GOGC` when
+replacing `gateway_logs.kubernetes.env`.
+
 ## Managed Dependencies
 
 ### OpenTelemetry and CRDs
