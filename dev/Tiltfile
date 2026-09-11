@@ -15,7 +15,7 @@ allow_k8s_contexts(kube_context)
 watch_settings(ignore = ['../nktp/charts', '../nktp/tmpcharts-*'])
 
 helm_repo('open-telemetry', 'https://open-telemetry.github.io/opentelemetry-helm-charts')
-helm_repo('prometheus-community', 'https://prometheus-community.github.io/helm-charts')
+helm_repo('prometheus-community', 'https://prometheus-community.github.io/helm-charts', resource_deps = ['open-telemetry'])
 
 # Without a config, the chart installs with its default values.
 value_files = []
@@ -40,6 +40,14 @@ helm_resource(
     flags = ['--values=' + f for f in value_files],
     build_dependencies = True,
     resource_deps = ['open-telemetry', 'prometheus-community'],
-    port_forwards = [port_forward(3000, 3000, name = 'grafana')],
+    labels = ['nktp'],
+)
+
+local_resource(
+    'grafana',
+    serve_cmd = 'kubectl --kubeconfig "%s" --context %s --namespace %s port-forward service/lgtm 3000:3000'
+    % (os.path.abspath('.kubeconfig'), kube_context, namespace),
+    resource_deps = ['nktp'],
+    links = ['http://localhost:3000'],
     labels = ['nktp'],
 )
