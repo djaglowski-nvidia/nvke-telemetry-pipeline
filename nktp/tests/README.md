@@ -18,3 +18,5 @@ git diff
 
 Bundled charts and other configurations use targeted assertions. Add snapshots only for
 output that is worth pinning in full.
+
+The CRD suite uses `includeCrds: true` to check native CRDs and their installation flags.

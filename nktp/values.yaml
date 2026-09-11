@@ -80,21 +80,24 @@ otel-lgtm:
 # chart has an install or enabled flag, and further configuration passes
 # through under its key using the chart's own conventions.
 
-# Manages the OpenTelemetryCollector CRs that define every NKTP workload.
-opentelemetry-operator:
-  enabled: true
+# Provides the Operator and native OpenTelemetry and Prometheus CRDs.
+opentelemetry-kube-stack:
   crds:
-    create: true
-    annotations:
-      # Keep CRDs when the chart is uninstalled.
-      helm.sh/resource-policy: keep
-  admissionWebhooks:
-    certManager:
-      # Enable this to use an existing cert-manager installation instead of
-      # the self-signed certificate that Helm generates.
+    installOtel: true
+    installPrometheus: true
+  collectors:
+    daemon:
       enabled: false
-    autoGenerateCert:
-      recreate: false
+  clusterRole:
+    enabled: false
+  opentelemetry-operator:
+    fullnameOverride: nktp-operator
+    admissionWebhooks:
+      certManager:
+        # Enable this to use an existing cert-manager installation.
+        enabled: false
+      autoGenerateCert:
+        recreate: false
 
 # Kubernetes object state metrics. Sharded for scalability.
 kube-state-metrics:
@@ -113,32 +116,3 @@ node-exporter:
 # via other mechanisms in many clusters.
 metrics-server:
   enabled: false
-
-# Prometheus monitoring CRDs (ServiceMonitor, PodMonitor, Probe, ScrapeConfig), from the
-# prometheus-operator-crds chart. NKTP enables only the CRDs it uses.
-prometheus-crds:
-  install: true
-  crds:
-    annotations:
-      # Never delete CRDs on uninstall.
-      helm.sh/resource-policy: keep
-    servicemonitors:
-      enabled: true
-    podmonitors:
-      enabled: true
-    probes:
-      enabled: true
-    scrapeconfigs:
-      enabled: true
-    alertmanagerconfigs:
-      enabled: false
-    alertmanagers:
-      enabled: false
-    prometheusagents:
-      enabled: false
-    prometheuses:
-      enabled: false
-    prometheusrules:
-      enabled: false
-    thanosrulers:
-      enabled: false

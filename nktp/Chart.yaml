@@ -5,17 +5,11 @@ type: application
 version: 0.1.0
 
 dependencies:
-  - name: opentelemetry-operator
+  - name: opentelemetry-kube-stack
     repository: https://open-telemetry.github.io/opentelemetry-helm-charts
-    version: 0.122.0
-    condition: opentelemetry-operator.enabled
+    version: 0.20.8
   - name: prometheus-node-exporter
     alias: node-exporter
     repository: https://prometheus-community.github.io/helm-charts
     version: 4.56.1
     condition: node-exporter.enabled
-  - name: prometheus-operator-crds
-    alias: prometheus-crds
-    repository: https://prometheus-community.github.io/helm-charts
-    version: 31.0.1
-    condition: prometheus-crds.install

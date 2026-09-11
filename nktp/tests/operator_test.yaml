@@ -2,48 +2,42 @@ suite: opentelemetry-operator
 release:
   name: test
 templates:
-  - charts/opentelemetry-operator/templates/deployment*.yaml
-  - charts/opentelemetry-operator/templates/certmanager*.yaml
-  - charts/opentelemetry-operator/templates/admission-webhooks/*.yaml
-  - templates/otel-lgtm.yaml
+  - charts/opentelemetry-kube-stack/charts/opentelemetry-operator/templates/deployment*.yaml
+  - charts/opentelemetry-kube-stack/charts/opentelemetry-operator/templates/certmanager*.yaml
+  - charts/opentelemetry-kube-stack/charts/opentelemetry-operator/templates/admission-webhooks/*.yaml
+  - charts/opentelemetry-kube-stack/templates/collector.yaml
+  - charts/opentelemetry-kube-stack/templates/hooks.yaml
 tests:
   - it: runs the pinned operator by default
-    template: charts/opentelemetry-operator/templates/deployment.yaml
+    template: charts/opentelemetry-kube-stack/charts/opentelemetry-operator/templates/deployment.yaml
     asserts:
       - containsDocument:
           apiVersion: apps/v1
           kind: Deployment
-          name: test-opentelemetry-operator
+          name: nktp-operator
       - equal:
           path: spec.template.spec.containers[0].image
-          value: ghcr.io/open-telemetry/opentelemetry-operator/opentelemetry-operator:0.158.0
+          value: ghcr.io/open-telemetry/opentelemetry-operator/opentelemetry-operator:0.154.0
 
   - it: passes through operator image overrides
     set:
-      opentelemetry-operator:
-        manager:
-          image:
-            repository: example.com/opentelemetry-operator
-            tag: custom
-    template: charts/opentelemetry-operator/templates/deployment.yaml
+      opentelemetry-kube-stack.opentelemetry-operator.manager.image:
+        repository: example.com/opentelemetry-operator
+        tag: custom
+    template: charts/opentelemetry-kube-stack/charts/opentelemetry-operator/templates/deployment.yaml
     asserts:
       - equal:
           path: spec.template.spec.containers[0].image
           value: example.com/opentelemetry-operator:custom
 
-  - it: omits the operator and its CRDs when disabled
+  - it: omits the operator when disabled
     set:
-      opentelemetry-operator:
-        enabled: false
+      opentelemetry-kube-stack.opentelemetry-operator.enabled: false
     asserts:
       - containsDocument:
           apiVersion: apps/v1
           kind: Deployment
-          name: test-opentelemetry-operator
-        not: true
-      - containsDocument:
-          apiVersion: apiextensions.k8s.io/v1
-          kind: CustomResourceDefinition
+          name: nktp-operator
         not: true
 
   - it: generates a webhook certificate without cert-manager by default
@@ -53,25 +47,25 @@ tests:
         documentSelector:
           path: kind
           value: Secret
-        template: charts/opentelemetry-operator/templates/admission-webhooks/operator-webhook.yaml
+        template: charts/opentelemetry-kube-stack/charts/opentelemetry-operator/templates/admission-webhooks/operator-webhook.yaml
       - isNotEmpty:
           path: data["tls.key"]
         documentSelector:
           path: kind
           value: Secret
-        template: charts/opentelemetry-operator/templates/admission-webhooks/operator-webhook.yaml
+        template: charts/opentelemetry-kube-stack/charts/opentelemetry-operator/templates/admission-webhooks/operator-webhook.yaml
       - containsDocument:
           apiVersion: admissionregistration.k8s.io/v1
           kind: MutatingWebhookConfiguration
-          name: test-opentelemetry-operator-mutation
+          name: nktp-operator-mutation
           any: true
-        template: charts/opentelemetry-operator/templates/admission-webhooks/operator-webhook.yaml
+        template: charts/opentelemetry-kube-stack/charts/opentelemetry-operator/templates/admission-webhooks/operator-webhook.yaml
       - containsDocument:
           apiVersion: admissionregistration.k8s.io/v1
           kind: ValidatingWebhookConfiguration
-          name: test-opentelemetry-operator-validation
+          name: nktp-operator-validation
           any: true
-        template: charts/opentelemetry-operator/templates/admission-webhooks/operator-webhook.yaml
+        template: charts/opentelemetry-kube-stack/charts/opentelemetry-operator/templates/admission-webhooks/operator-webhook.yaml
       - containsDocument:
           apiVersion: cert-manager.io/v1
           kind: Certificate
@@ -92,13 +86,13 @@ tests:
         - apiVersion: v1
           kind: Secret
           metadata:
-            name: test-opentelemetry-operator-controller-manager-service-cert
+            name: nktp-operator-controller-manager-service-cert
             namespace: nktp
           data:
             tls.crt: dGVzdC1jZXJ0
             tls.key: dGVzdC1rZXk=
             ca.crt: dGVzdC1jYQ==
-    template: charts/opentelemetry-operator/templates/admission-webhooks/operator-webhook.yaml
+    template: charts/opentelemetry-kube-stack/charts/opentelemetry-operator/templates/admission-webhooks/operator-webhook.yaml
     asserts:
       - equal:
           path: data
@@ -110,13 +104,13 @@ tests:
           path: kind
           value: Secret
       - equal:
-          path: webhooks[0].clientConfig.caBundle
+          path: webhooks[*].clientConfig.caBundle
           value: dGVzdC1jYQ==
         documentSelector:
           path: kind
           value: MutatingWebhookConfiguration
       - equal:
-          path: webhooks[0].clientConfig.caBundle
+          path: webhooks[*].clientConfig.caBundle
           value: dGVzdC1jYQ==
         documentSelector:
           path: kind
@@ -124,76 +118,42 @@ tests:
 
   - it: supports cert-manager for webhook certificates
     set:
-      opentelemetry-operator:
-        admissionWebhooks:
-          certManager:
-            enabled: true
+      opentelemetry-kube-stack.opentelemetry-operator.admissionWebhooks.certManager.enabled: true
     asserts:
       - containsDocument:
           apiVersion: cert-manager.io/v1
           kind: Certificate
-          name: test-opentelemetry-operator-serving-cert
+          name: nktp-operator-serving-cert
           any: true
-        template: charts/opentelemetry-operator/templates/certmanager.yaml
+        template: charts/opentelemetry-kube-stack/charts/opentelemetry-operator/templates/certmanager.yaml
       - containsDocument:
           apiVersion: cert-manager.io/v1
           kind: Issuer
-          name: test-opentelemetry-operator-selfsigned-issuer
+          name: nktp-operator-selfsigned-issuer
           any: true
-        template: charts/opentelemetry-operator/templates/certmanager.yaml
+        template: charts/opentelemetry-kube-stack/charts/opentelemetry-operator/templates/certmanager.yaml
       - containsDocument:
           apiVersion: v1
           kind: Secret
         not: true
-      - hasDocuments:
-          count: 4
-        template: charts/opentelemetry-operator/templates/admission-webhooks/operator-webhook.yaml
 
-  - it: installs the four OpenTelemetry CRDs by default
-    template: charts/opentelemetry-operator/templates/admission-webhooks/operator-webhook.yaml
-    asserts:
-      - containsDocument:
-          apiVersion: apiextensions.k8s.io/v1
-          kind: CustomResourceDefinition
-          name: opentelemetrycollectors.opentelemetry.io
-          any: true
-      - containsDocument:
-          apiVersion: apiextensions.k8s.io/v1
-          kind: CustomResourceDefinition
-          name: instrumentations.opentelemetry.io
-          any: true
-      - containsDocument:
-          apiVersion: apiextensions.k8s.io/v1
-          kind: CustomResourceDefinition
-          name: targetallocators.opentelemetry.io
-          any: true
-      - containsDocument:
-          apiVersion: apiextensions.k8s.io/v1
-          kind: CustomResourceDefinition
-          name: opampbridges.opentelemetry.io
-          any: true
-      - containsDocument:
-          apiVersion: apiextensions.k8s.io/v1
-          kind: CustomResourceDefinition
-          name: clusterobservabilities.opentelemetry.io
-        not: true
-
-  - it: keeps all OpenTelemetry CRDs on uninstall
-    template: charts/opentelemetry-operator/templates/admission-webhooks/operator-webhook.yaml
-    documentSelector:
-      path: kind
-      value: CustomResourceDefinition
-      matchMany: true
+  - it: allows admission while the operator starts
+    template: charts/opentelemetry-kube-stack/charts/opentelemetry-operator/templates/admission-webhooks/operator-webhook.yaml
     asserts:
       - equal:
-          path: metadata.annotations["helm.sh/resource-policy"]
-          value: keep
+          path: webhooks[*].failurePolicy
+          value: Ignore
+        documentSelector:
+          path: kind
+          value: MutatingWebhookConfiguration
+      - equal:
+          path: webhooks[*].failurePolicy
+          value: Ignore
+        documentSelector:
+          path: kind
+          value: ValidatingWebhookConfiguration
 
-  - it: disables OpenTelemetry CRD installation without disabling the operator
-    set:
-      opentelemetry-operator:
-        crds:
-          create: false
+  - it: leaves CRD installation to the native dependencies
     asserts:
       - containsDocument:
           apiVersion: apiextensions.k8s.io/v1
@@ -202,5 +162,32 @@ tests:
       - containsDocument:
           apiVersion: apps/v1
           kind: Deployment
-          name: test-opentelemetry-operator
-        template: charts/opentelemetry-operator/templates/deployment.yaml
+          name: nktp-operator
+        template: charts/opentelemetry-kube-stack/charts/opentelemetry-operator/templates/deployment.yaml
+
+  - it: does not create kube-stack Collector workloads by default
+    template: charts/opentelemetry-kube-stack/templates/collector.yaml
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: uses the upstream cleanup job before uninstall
+    template: charts/opentelemetry-kube-stack/templates/hooks.yaml
+    documentSelector:
+      path: kind
+      value: Job
+    asserts:
+      - equal:
+          path: metadata.annotations["helm.sh/hook"]
+          value: pre-delete
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: helm.sh/chart=opentelemetry-kube-stack-0.20.8
+
+  - it: omits the upstream cleanup job and its access resources when disabled
+    set:
+      opentelemetry-kube-stack.cleanupJob.enabled: false
+    template: charts/opentelemetry-kube-stack/templates/hooks.yaml
+    asserts:
+      - hasDocuments:
+          count: 0

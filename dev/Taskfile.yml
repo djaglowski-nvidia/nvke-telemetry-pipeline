@@ -54,7 +54,7 @@ tasks:
     cmds:
       - kind get clusters | grep -qx nktp || kind create cluster --name nktp --kubeconfig .kubeconfig
       - kind -q export kubeconfig --name nktp --kubeconfig .kubeconfig
-      - kubectl wait --kubeconfig .kubeconfig --for=condition=Ready nodes --all --timeout=5m
+      - kubectl wait --kubeconfig .kubeconfig --context kind-nktp --for=condition=Ready nodes --all --timeout=5m
 
   cluster:down:
     internal: true

@@ -1,107 +1,91 @@
 suite: crds
+includeCrds: true
 release:
   name: test
 templates:
-  - charts/prometheus-crds/charts/crds/templates/crd-*.yaml
-  - templates/otel-lgtm.yaml
+  - charts/opentelemetry-kube-stack/charts/*-crds/crds/*.yaml
 tests:
-  - it: installs the ServiceMonitor, PodMonitor, Probe, and ScrapeConfig CRDs by default
-    asserts:
+  - it: includes only the four OpenTelemetry and four monitoring CRDs
+    asserts: &native_crds
+      - containsDocument:
+          apiVersion: apiextensions.k8s.io/v1
+          kind: CustomResourceDefinition
+          name: opentelemetrycollectors.opentelemetry.io
+        template: charts/opentelemetry-kube-stack/charts/otel-crds/crds/opentelemetry.io_opentelemetrycollectors.yaml
+      - containsDocument:
+          apiVersion: apiextensions.k8s.io/v1
+          kind: CustomResourceDefinition
+          name: instrumentations.opentelemetry.io
+        template: charts/opentelemetry-kube-stack/charts/otel-crds/crds/opentelemetry.io_instrumentations.yaml
+      - containsDocument:
+          apiVersion: apiextensions.k8s.io/v1
+          kind: CustomResourceDefinition
+          name: targetallocators.opentelemetry.io
+        template: charts/opentelemetry-kube-stack/charts/otel-crds/crds/opentelemetry.io_targetallocators.yaml
+      - containsDocument:
+          apiVersion: apiextensions.k8s.io/v1
+          kind: CustomResourceDefinition
+          name: opampbridges.opentelemetry.io
+        template: charts/opentelemetry-kube-stack/charts/otel-crds/crds/opentelemetry.io_opampbridges.yaml
       - containsDocument:
           apiVersion: apiextensions.k8s.io/v1
           kind: CustomResourceDefinition
           name: servicemonitors.monitoring.coreos.com
-        template: charts/prometheus-crds/charts/crds/templates/crd-servicemonitors.yaml
+        template: charts/opentelemetry-kube-stack/charts/prometheus-crds/crds/monitoring.coreos.com_servicemonitors.yaml
       - containsDocument:
           apiVersion: apiextensions.k8s.io/v1
           kind: CustomResourceDefinition
           name: podmonitors.monitoring.coreos.com
-        template: charts/prometheus-crds/charts/crds/templates/crd-podmonitors.yaml
+        template: charts/opentelemetry-kube-stack/charts/prometheus-crds/crds/monitoring.coreos.com_podmonitors.yaml
       - containsDocument:
           apiVersion: apiextensions.k8s.io/v1
           kind: CustomResourceDefinition
           name: probes.monitoring.coreos.com
-        template: charts/prometheus-crds/charts/crds/templates/crd-probes.yaml
+        template: charts/opentelemetry-kube-stack/charts/prometheus-crds/crds/monitoring.coreos.com_probes.yaml
       - containsDocument:
           apiVersion: apiextensions.k8s.io/v1
           kind: CustomResourceDefinition
           name: scrapeconfigs.monitoring.coreos.com
-        template: charts/prometheus-crds/charts/crds/templates/crd-scrapeconfigs.yaml
+        template: charts/opentelemetry-kube-stack/charts/prometheus-crds/crds/monitoring.coreos.com_scrapeconfigs.yaml
+      - matchRegex:
+          path: spec.names.kind
+          pattern: '^(OpenTelemetryCollector|Instrumentation|TargetAllocator|OpAMPBridge|ServiceMonitor|PodMonitor|Probe|ScrapeConfig)$'
 
-  - it: does not install any other CRDs
-    asserts:
-      - containsDocument:
-          apiVersion: apiextensions.k8s.io/v1
-          kind: CustomResourceDefinition
-          name: alertmanagerconfigs.monitoring.coreos.com
-        not: true
-      - containsDocument:
-          apiVersion: apiextensions.k8s.io/v1
-          kind: CustomResourceDefinition
-          name: alertmanagers.monitoring.coreos.com
-        not: true
-      - containsDocument:
-          apiVersion: apiextensions.k8s.io/v1
-          kind: CustomResourceDefinition
-          name: prometheusagents.monitoring.coreos.com
-        not: true
-      - containsDocument:
-          apiVersion: apiextensions.k8s.io/v1
-          kind: CustomResourceDefinition
-          name: prometheuses.monitoring.coreos.com
-        not: true
-      - containsDocument:
-          apiVersion: apiextensions.k8s.io/v1
-          kind: CustomResourceDefinition
-          name: prometheusrules.monitoring.coreos.com
-        not: true
-      - containsDocument:
-          apiVersion: apiextensions.k8s.io/v1
-          kind: CustomResourceDefinition
-          name: thanosrulers.monitoring.coreos.com
-        not: true
-
-  - it: protects the CRDs from deletion on uninstall
-    asserts:
-      - equal:
-          path: metadata.annotations["helm.sh/resource-policy"]
-          value: keep
-        template: charts/prometheus-crds/charts/crds/templates/crd-servicemonitors.yaml
-      - equal:
-          path: metadata.annotations["helm.sh/resource-policy"]
-          value: keep
-        template: charts/prometheus-crds/charts/crds/templates/crd-podmonitors.yaml
-      - equal:
-          path: metadata.annotations["helm.sh/resource-policy"]
-          value: keep
-        template: charts/prometheus-crds/charts/crds/templates/crd-probes.yaml
-      - equal:
-          path: metadata.annotations["helm.sh/resource-policy"]
-          value: keep
-        template: charts/prometheus-crds/charts/crds/templates/crd-scrapeconfigs.yaml
-
-  - it: does not install the prometheus CRDs when disabled
+  - it: disables OpenTelemetry CRDs without disabling monitoring CRDs
     set:
-      prometheus-crds:
-        install: false
+      opentelemetry-kube-stack.crds.installOtel: false
     asserts:
+      - notMatchRegex:
+          path: spec.group
+          pattern: '^opentelemetry[.]io$'
       - containsDocument:
           apiVersion: apiextensions.k8s.io/v1
           kind: CustomResourceDefinition
           name: servicemonitors.monitoring.coreos.com
-        not: true
+        template: charts/opentelemetry-kube-stack/charts/prometheus-crds/crds/monitoring.coreos.com_servicemonitors.yaml
+
+  - it: disables monitoring CRDs without disabling OpenTelemetry CRDs
+    set:
+      opentelemetry-kube-stack.crds.installPrometheus: false
+    asserts:
+      - notMatchRegex:
+          path: spec.group
+          pattern: '^monitoring[.]coreos[.]com$'
       - containsDocument:
           apiVersion: apiextensions.k8s.io/v1
           kind: CustomResourceDefinition
-          name: podmonitors.monitoring.coreos.com
-        not: true
-      - containsDocument:
-          apiVersion: apiextensions.k8s.io/v1
-          kind: CustomResourceDefinition
-          name: probes.monitoring.coreos.com
-        not: true
-      - containsDocument:
-          apiVersion: apiextensions.k8s.io/v1
-          kind: CustomResourceDefinition
-          name: scrapeconfigs.monitoring.coreos.com
-        not: true
+          name: opentelemetrycollectors.opentelemetry.io
+        template: charts/opentelemetry-kube-stack/charts/otel-crds/crds/opentelemetry.io_opentelemetrycollectors.yaml
+
+  - it: omits all native CRDs when both installation flags are disabled
+    set:
+      opentelemetry-kube-stack.crds.installOtel: false
+      opentelemetry-kube-stack.crds.installPrometheus: false
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: keeps native CRD installation independent of the operator
+    set:
+      opentelemetry-kube-stack.opentelemetry-operator.enabled: false
+    asserts: *native_crds
