@@ -1,0 +1,96 @@
+suite: watchdog RBAC
+release:
+  namespace: nktp
+templates:
+  - templates/watchdog-rbac.yaml
+tests:
+  - it: grants metrics access and namespaced allocator discovery
+    asserts:
+      - equal:
+          path: roleRef
+          value:
+            apiGroup: rbac.authorization.k8s.io
+            kind: ClusterRole
+            name: nktp-operator-metrics
+        documentSelector:
+          path: kind
+          value: ClusterRoleBinding
+      - equal:
+          path: subjects
+          value:
+            - kind: ServiceAccount
+              name: nktp-watchdog-collector
+              namespace: nktp
+        documentSelector:
+          path: kind
+          value: ClusterRoleBinding
+      - equal:
+          path: rules
+          value:
+            - apiGroups: [""]
+              resources: [pods, services]
+              verbs: [get, list, watch]
+            - apiGroups: [discovery.k8s.io]
+              resources: [endpointslices]
+              verbs: [get, list, watch]
+        documentSelector:
+          path: kind
+          value: Role
+      - equal:
+          path: subjects
+          value:
+            - kind: ServiceAccount
+              name: nktp-watchdog-targetallocator
+              namespace: nktp
+        documentSelector:
+          path: kind
+          value: RoleBinding
+
+  - it: binds custom accounts in the release namespace
+    release:
+      namespace: telemetry
+    set:
+      watchdog.kubernetes.serviceAccount: existing-watchdog
+      watchdog.kubernetes.targetAllocator.serviceAccount: existing-allocator
+    asserts:
+      - equal:
+          path: metadata.name
+          value: nktp-watchdog-operator-metrics-telemetry
+        documentSelector:
+          path: kind
+          value: ClusterRoleBinding
+      - equal:
+          path: subjects
+          value:
+            - kind: ServiceAccount
+              name: existing-watchdog
+              namespace: telemetry
+        documentSelector:
+          path: kind
+          value: ClusterRoleBinding
+      - equal:
+          path: metadata.namespace
+          value: telemetry
+        documentSelector:
+          path: kind
+          value: Role
+      - equal:
+          path: subjects
+          value:
+            - kind: ServiceAccount
+              name: existing-allocator
+              namespace: telemetry
+        documentSelector:
+          path: kind
+          value: RoleBinding
+
+  - it: omits the metrics binding when the bundled Operator is disabled
+    set:
+      opentelemetry-kube-stack.opentelemetry-operator.enabled: false
+    asserts:
+      - hasDocuments:
+          count: 2
+      - containsDocument:
+          apiVersion: rbac.authorization.k8s.io/v1
+          kind: ClusterRoleBinding
+        not: true

@@ -19,7 +19,17 @@ otelcol_image: otel/opentelemetry-collector-k8s:0.159.0
 # Sends received telemetry and its own telemetry to the default backend.
 watchdog:
   kubernetes:
+    mode: statefulset # Required by the operator's Target Allocator support.
     replicas: 2
+    targetAllocator:
+      enabled: true # Assign each explicit scrape target to one watchdog replica.
+      replicas: 1
+      allocationStrategy: consistent-hashing
+      prometheusCR:
+        enabled: false # The future metrics service owns monitor discovery.
+      observability:
+        metrics:
+          enableMetrics: false # Watchdog scrapes the allocator without a ServiceMonitor.
     autoscaler:
       minReplicas: 2
       maxReplicas: 16
@@ -39,11 +49,6 @@ watchdog:
         value: "50" # More frequent GC trades CPU for lower heap growth.
     podDisruptionBudget:
       maxUnavailable: 25%
-    deploymentUpdateStrategy:
-      type: RollingUpdate
-      rollingUpdate:
-        maxUnavailable: 0
-        maxSurge: 25%
     terminationGracePeriodSeconds: 60
     topologySpreadConstraints:
       - maxSkew: 1
@@ -79,6 +84,35 @@ watchdog:
           protocols:
             http:
               endpoint: 0.0.0.0:4318
+        prometheus:
+          config:
+            scrape_configs:
+              - job_name: nktp-operator
+                scrape_interval: 30s
+                scheme: https
+                bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+                tls_config:
+                  insecure_skip_verify: true # Matches upstream scraping of its self-signed metrics certificate.
+                kubernetes_sd_configs:
+                  - role: endpointslice
+                    namespaces:
+                      own_namespace: true
+                relabel_configs:
+                  - source_labels:
+                      - __meta_kubernetes_service_name
+                      - __meta_kubernetes_endpointslice_port_name
+                      - __meta_kubernetes_endpointslice_endpoint_conditions_ready
+                      - __meta_kubernetes_endpointslice_address_target_kind
+                    regex: nktp-operator;metrics;true;Pod
+                    action: keep
+                  - source_labels: [__meta_kubernetes_namespace]
+                    target_label: namespace
+                  - source_labels: [__meta_kubernetes_endpointslice_address_target_name]
+                    target_label: pod
+              - job_name: nktp-watchdog-targetallocator
+                scrape_interval: 30s
+                static_configs:
+                  - targets: [nktp-watchdog-targetallocator:80]
       processors:
         memory_limiter:
           check_interval: 500ms # Poll Go heap Alloc. Bursts can allocate between checks.
@@ -126,7 +160,7 @@ watchdog:
                       endpoint: http://lgtm:4318
         pipelines:
           metrics:
-            receivers: [otlp]
+            receivers: [otlp, prometheus]
             processors: [memory_limiter]
             exporters: [otlp_http]
           logs:
@@ -519,6 +553,9 @@ opentelemetry-kube-stack:
     enabled: false
   opentelemetry-operator:
     fullnameOverride: nktp-operator
+    manager:
+      serviceMonitor:
+        enabled: false # Watchdog owns the explicit Operator scrape job.
     admissionWebhooks:
       certManager:
         # Enable this to use an existing cert-manager installation.

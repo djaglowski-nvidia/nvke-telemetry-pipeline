@@ -5,6 +5,7 @@ templates:
   - charts/opentelemetry-kube-stack/charts/opentelemetry-operator/templates/deployment*.yaml
   - charts/opentelemetry-kube-stack/charts/opentelemetry-operator/templates/certmanager*.yaml
   - charts/opentelemetry-kube-stack/charts/opentelemetry-operator/templates/admission-webhooks/*.yaml
+  - charts/opentelemetry-kube-stack/charts/opentelemetry-operator/templates/servicemonitor.yaml
   - charts/opentelemetry-kube-stack/templates/collector.yaml
   - charts/opentelemetry-kube-stack/templates/hooks.yaml
 tests:
@@ -167,6 +168,12 @@ tests:
 
   - it: does not create kube-stack Collector workloads by default
     template: charts/opentelemetry-kube-stack/templates/collector.yaml
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: does not advertise operator metrics through a ServiceMonitor
+    template: charts/opentelemetry-kube-stack/charts/opentelemetry-operator/templates/servicemonitor.yaml
     asserts:
       - hasDocuments:
           count: 0

@@ -1,3 +1,7 @@
+{{- $allocator := .Values.watchdog.kubernetes.targetAllocator | default dict -}}
+{{- if not (and (kindIs "map" $allocator) (deepEqual $allocator.enabled true)) -}}
+{{- fail "watchdog.kubernetes.targetAllocator.enabled must be true to assign each scrape target to one watchdog replica" -}}
+{{- end -}}
 {{- if not (kindIs "map" .Values.watchdog.otelcol.config) -}}
 {{- fail "watchdog.otelcol.config must be a native Collector YAML map" -}}
 {{- end -}}

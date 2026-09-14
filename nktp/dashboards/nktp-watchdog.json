@@ -76,6 +76,29 @@
       "targets": [
         { "expr": "sum(otelcol_process_memory_rss_bytes{job=\"nktp-watchdog\"})", "legendFormat": "RSS", "refId": "A" }
       ]
+    },
+    {
+      "id": 7, "type": "stat", "title": "Scrape targets up",
+      "gridPos": { "x": 0, "y": 21, "w": 6, "h": 7 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "sum by (job) (up{job=~\"nktp-operator|nktp-watchdog-targetallocator\"})", "legendFormat": "{{job}}", "instant": true, "refId": "A" }]
+    },
+    {
+      "id": 8, "type": "timeseries", "title": "Allocator collectors",
+      "gridPos": { "x": 6, "y": 21, "w": 9, "h": 7 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "min": 0 } },
+      "targets": [
+        { "expr": "sum(opentelemetry_allocator_collectors_discovered{job=\"nktp-watchdog-targetallocator\"})", "legendFormat": "discovered", "refId": "A" },
+        { "expr": "sum(opentelemetry_allocator_collectors_allocatable{job=\"nktp-watchdog-targetallocator\"})", "legendFormat": "allocatable", "refId": "B" }
+      ]
+    },
+    {
+      "id": 9, "type": "timeseries", "title": "Targets per collector",
+      "gridPos": { "x": 15, "y": 21, "w": 9, "h": 7 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "min": 0 } },
+      "targets": [{ "expr": "opentelemetry_allocator_targets_per_collector{job=\"nktp-watchdog-targetallocator\"}", "legendFormat": "{{collector_name}}", "refId": "A" }]
     }
   ]
 }

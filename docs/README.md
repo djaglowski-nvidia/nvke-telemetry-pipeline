@@ -5,3 +5,4 @@ This directory organizes NKTP architecture, design, installation, configuration,
 ## Design documents
 
 - [Repository layout](designs/repo_layout.md)
+- [Required target allocation](designs/target_allocation.md)

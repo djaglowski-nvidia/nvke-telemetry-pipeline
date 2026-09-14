@@ -14,6 +14,8 @@ It forwards received telemetry and exports its own telemetry to LGTM by default.
 
 The bundled OpenTelemetry Operator manages the watchdog. Autoscaling requires the
 Kubernetes resource metrics API, commonly provided by metrics-server.
+Setting `watchdog.kubernetes.targetAllocator.enabled` to `false` will cause Helm
+rendering to fail.
 
 Configure the Collector through `watchdog.otelcol.config`.
 

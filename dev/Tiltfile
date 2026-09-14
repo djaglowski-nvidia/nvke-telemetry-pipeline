@@ -3,6 +3,7 @@
 # Or from dev/: KUBECONFIG=.kubeconfig tilt up [-- --config <name>]
 
 load('ext://helm_resource', 'helm_resource', 'helm_repo')
+load('ext://k8s_attach', 'k8s_attach')
 
 config.define_string('config')
 cfg = config.parse()
@@ -43,11 +44,11 @@ helm_resource(
     labels = ['nktp'],
 )
 
-local_resource(
+k8s_attach(
     'grafana',
-    serve_cmd = 'kubectl --kubeconfig "%s" --context %s --namespace %s port-forward service/lgtm 3000:3000'
-    % (os.path.abspath('.kubeconfig'), kube_context, namespace),
+    'deployment/lgtm',
+    namespace = namespace,
+    port_forwards = ['3000:3000'],
     resource_deps = ['nktp'],
-    links = ['http://localhost:3000'],
     labels = ['nktp'],
 )

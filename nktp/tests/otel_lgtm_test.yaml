@@ -25,6 +25,54 @@ tests:
           name: lgtm-dashboard-provider
           any: true
 
+  - it: provisions the operator dashboard
+    documentSelector:
+      path: metadata.name
+      value: lgtm-dashboards
+    asserts:
+      - matchRegex:
+          path: data["nktp-operator.json"]
+          pattern: '"uid": "nktp-operator"'
+      - matchRegex:
+          path: data["nktp-operator.json"]
+          pattern: '"title": "NKTP Operator"'
+      - matchRegex:
+          path: data["nktp-operator.json"]
+          pattern: '"title": "Reporting replicas"'
+      - matchRegex:
+          path: data["nktp-operator.json"]
+          pattern: 'count\(count by \(instance\) \(process_start_time_seconds'
+      - notMatchRegex:
+          path: data["nktp-operator.json"]
+          pattern: 'up\{|opentelemetry_allocator'
+      - matchRegex:
+          path: data["nktp-watchdog.json"]
+          pattern: 'nktp-operator\|nktp-watchdog-targetallocator'
+      - matchRegex:
+          path: data["nktp-watchdog.json"]
+          pattern: opentelemetry_allocator_targets_per_collector
+
+  - it: includes every operator pod and retains per-pod event and latency series
+    documentSelector:
+      path: metadata.name
+      value: lgtm-dashboards
+    asserts:
+      - notMatchRegex:
+          path: data["nktp-operator.json"]
+          pattern: '"name": "instance"|\$instance|instance=~'
+      - matchRegex:
+          path: data["nktp-operator.json"]
+          pattern: 'sum by \(pod, controller, result\) \(increase\(controller_runtime_reconcile_total'
+      - matchRegex:
+          path: data["nktp-operator.json"]
+          pattern: '"stacking": \{ "mode": "normal", "group": "reconciliations" \}'
+      - matchRegex:
+          path: data["nktp-operator.json"]
+          pattern: 'sum by \(le, pod, controller\)'
+      - matchRegex:
+          path: data["nktp-operator.json"]
+          pattern: 'sum by \(le, pod, webhook\)'
+
   - it: provisions the logs gateway dashboard
     documentSelector:
       path: metadata.name

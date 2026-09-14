@@ -6,7 +6,7 @@ templates:
   - templates/watchdog.yaml
   - charts/opentelemetry-kube-stack/templates/hooks.yaml
 tests:
-  - it: creates a Collector deployment with the default image
+  - it: creates a Collector StatefulSet with the default image
     template: templates/watchdog.yaml
     asserts:
       - containsDocument:
@@ -15,7 +15,7 @@ tests:
           name: nktp-watchdog
       - equal:
           path: spec.mode
-          value: deployment
+          value: statefulset
       - equal:
           path: spec.managementState
           value: managed
@@ -36,13 +36,19 @@ tests:
           path: spec.podDisruptionBudget
           value:
             maxUnavailable: 25%
-      - equal:
+      - notExists:
           path: spec.deploymentUpdateStrategy
+      - equal:
+          path: spec.targetAllocator
           value:
-            type: RollingUpdate
-            rollingUpdate:
-              maxUnavailable: 0
-              maxSurge: 25%
+            enabled: true
+            replicas: 1
+            allocationStrategy: consistent-hashing
+            prometheusCR:
+              enabled: false
+            observability:
+              metrics:
+                enableMetrics: false
       - equal:
           path: spec.topologySpreadConstraints
           value:
@@ -126,6 +132,53 @@ tests:
           path: spec.image
           value: example.com/collector:global
 
+  - it: discovers Operator pod endpoints in its namespace and scrapes the allocator
+    template: templates/watchdog.yaml
+    release:
+      namespace: telemetry
+    asserts:
+      - equal:
+          path: metadata.namespace
+          value: telemetry
+      - equal:
+          path: spec.config.receivers.prometheus.config.scrape_configs
+          value:
+            - job_name: nktp-operator
+              scrape_interval: 30s
+              scheme: https
+              bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+              tls_config:
+                insecure_skip_verify: true
+              kubernetes_sd_configs:
+                - role: endpointslice
+                  namespaces:
+                    own_namespace: true
+              relabel_configs:
+                - source_labels:
+                    - __meta_kubernetes_service_name
+                    - __meta_kubernetes_endpointslice_port_name
+                    - __meta_kubernetes_endpointslice_endpoint_conditions_ready
+                    - __meta_kubernetes_endpointslice_address_target_kind
+                  regex: nktp-operator;metrics;true;Pod
+                  action: keep
+                - source_labels: [__meta_kubernetes_namespace]
+                  target_label: namespace
+                - source_labels: [__meta_kubernetes_endpointslice_address_target_name]
+                  target_label: pod
+            - job_name: nktp-watchdog-targetallocator
+              scrape_interval: 30s
+              static_configs:
+                - targets: [nktp-watchdog-targetallocator:80]
+      - equal:
+          path: spec.config.service.pipelines.metrics.receivers
+          value: [otlp, prometheus]
+      - equal:
+          path: spec.targetAllocator.prometheusCR.enabled
+          value: false
+      - equal:
+          path: spec.targetAllocator.observability.metrics.enableMetrics
+          value: false
+
   - it: prefers the watchdog image override
     template: templates/watchdog.yaml
     set:
@@ -144,9 +197,7 @@ tests:
         replicas: 6
         autoscaler:
           targetCPUUtilization: 60
-        deploymentUpdateStrategy:
-          rollingUpdate:
-            maxSurge: 50%
+        podManagementPolicy: OrderedReady
         podSecurityContext:
           fsGroup: 2000
         securityContext:
@@ -184,12 +235,8 @@ tests:
           value:
             kubernetes.io/os: linux
       - equal:
-          path: spec.deploymentUpdateStrategy
-          value:
-            type: RollingUpdate
-            rollingUpdate:
-              maxUnavailable: 0
-              maxSurge: 50%
+          path: spec.podManagementPolicy
+          value: OrderedReady
       - equal:
           path: spec.podSecurityContext
           value:
@@ -246,7 +293,7 @@ tests:
       - equal:
           path: spec.config.service.pipelines
           value:
-            metrics: {receivers: [otlp], processors: [memory_limiter], exporters: [otlp_http]}
+            metrics: {receivers: [otlp, prometheus], processors: [memory_limiter], exporters: [otlp_http]}
             logs: {receivers: [otlp], processors: [memory_limiter], exporters: [otlp_http]}
             traces: {receivers: [otlp], processors: [memory_limiter], exporters: [otlp_http]}
       - equal:
@@ -312,7 +359,7 @@ tests:
       - equal:
           path: spec.config.service.pipelines
           value:
-            metrics: {receivers: [otlp], processors: [memory_limiter], exporters: [otlp_http]}
+            metrics: {receivers: [otlp, prometheus], processors: [memory_limiter], exporters: [otlp_http]}
             logs: {receivers: [otlp], processors: [memory_limiter], exporters: [otlp_http]}
             traces: {receivers: [otlp], processors: [memory_limiter], exporters: [otlp_http]}
 
@@ -358,7 +405,7 @@ tests:
       - equal:
           path: spec.config.service.pipelines
           value:
-            metrics: {receivers: [otlp], processors: [memory_limiter], exporters: [otlp_http]}
+            metrics: {receivers: [otlp, prometheus], processors: [memory_limiter], exporters: [otlp_http]}
             logs: {receivers: [otlp], processors: [memory_limiter], exporters: [otlp_http]}
             traces: {receivers: [otlp], processors: [memory_limiter], exporters: [otlp_http]}
 
@@ -404,7 +451,7 @@ tests:
       - equal:
           path: spec.config.service.pipelines
           value:
-            metrics: {receivers: [otlp], processors: [memory_limiter], exporters: [otlp_http]}
+            metrics: {receivers: [otlp, prometheus], processors: [memory_limiter], exporters: [otlp_http]}
             logs: {receivers: [otlp], processors: [memory_limiter], exporters: [otlp_http]}
             traces: {receivers: [otlp], processors: [memory_limiter], exporters: [otlp_http]}
 
@@ -466,7 +513,7 @@ tests:
       - equal:
           path: spec.config.service.pipelines.metrics
           value:
-            receivers: [otlp]
+            receivers: [otlp, prometheus]
             processors: [memory_limiter]
             exporters: [debug]
       - equal:
@@ -516,3 +563,19 @@ tests:
     asserts:
       - failedTemplate:
           errorMessage: watchdog.otelcol.config must be a native Collector YAML map
+
+  - it: rejects disabling target allocation
+    template: templates/watchdog.yaml
+    set:
+      watchdog.kubernetes.targetAllocator.enabled: false
+    asserts:
+      - failedTemplate:
+          errorMessage: watchdog.kubernetes.targetAllocator.enabled must be true to assign each scrape target to one watchdog replica
+
+  - it: rejects removing target allocation
+    template: templates/watchdog.yaml
+    set:
+      watchdog.kubernetes.targetAllocator: null
+    asserts:
+      - failedTemplate:
+          errorMessage: watchdog.kubernetes.targetAllocator.enabled must be true to assign each scrape target to one watchdog replica
