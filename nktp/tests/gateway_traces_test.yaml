@@ -1,0 +1,238 @@
+suite: traces gateway
+release:
+  namespace: nktp
+templates:
+  - templates/gateway-traces.yaml
+tests:
+  - it: forwards only traces and sends its own telemetry to watchdog
+    asserts:
+      - equal:
+          path: metadata.name
+          value: nktp-gateway-traces
+      - equal:
+          path: spec.mode
+          value: statefulset
+      - notExists:
+          path: spec.deploymentUpdateStrategy
+      - notExists:
+          path: spec.targetAllocator
+      - equal:
+          path: spec.config.receivers
+          value:
+            otlp:
+              protocols:
+                grpc:
+                  endpoint: 0.0.0.0:4317
+                http:
+                  endpoint: 0.0.0.0:4318
+      - equal:
+          path: spec.config.service.pipelines
+          value:
+            traces: {receivers: [otlp], processors: [memory_limiter], exporters: [otlp_http]}
+      - equal:
+          path: spec.config.processors
+          value:
+            memory_limiter:
+              check_interval: 500ms
+              limit_percentage: 80
+              spike_limit_percentage: 25
+      - equal:
+          path: spec.config.exporters.otlp_http.endpoint
+          value: http://lgtm:4318
+      - equal:
+          path: spec.config.service.telemetry
+          value:
+            resource:
+              service.name: nktp-gateway-traces
+            metrics:
+              readers:
+                - periodic:
+                    exporter:
+                      otlp:
+                        protocol: http/protobuf
+                        endpoint: http://nktp-watchdog-collector:4318
+            logs:
+              processors:
+                - batch:
+                    exporter:
+                      otlp:
+                        protocol: http/protobuf
+                        endpoint: http://nktp-watchdog-collector:4318
+            traces:
+              processors:
+                - batch:
+                    exporter:
+                      otlp:
+                        protocol: http/protobuf
+                        endpoint: http://nktp-watchdog-collector:4318
+
+  - it: uses the global image with an existing Operator in another namespace
+    release:
+      namespace: telemetry
+    set:
+      otelcol_image: example.com/collector:global
+      opentelemetry-kube-stack.opentelemetry-operator.enabled: false
+    asserts:
+      - equal:
+          path: metadata.namespace
+          value: telemetry
+      - equal:
+          path: metadata.labels["helm.sh/chart"]
+          value: opentelemetry-kube-stack-0.20.8
+      - equal:
+          path: spec.image
+          value: example.com/collector:global
+
+  - it: passes workload overrides through and resolves the Collector image separately
+    set:
+      otelcol_image: example.com/collector:global
+      gateway_traces.otelcol.image: example.com/collector:traces
+      gateway_traces.kubernetes:
+        image: example.com/collector:ignored
+        config: {ignored: true}
+        nodeSelector: {workload: telemetry}
+        tolerations: [{key: telemetry, operator: Exists}]
+        autoscaler: {maxReplicas: 32}
+        resources:
+          requests: {cpu: 300m}
+        env:
+          - name: GOMEMLIMIT
+            value: 896MiB
+          - name: DESTINATION
+            value: http://telemetry.example:4318
+    asserts:
+      - equal:
+          path: spec.image
+          value: example.com/collector:traces
+      - equal:
+          path: spec.nodeSelector
+          value: {workload: telemetry}
+      - equal:
+          path: spec.tolerations
+          value: [{key: telemetry, operator: Exists}]
+      - equal:
+          path: spec.autoscaler
+          value: {minReplicas: 2, maxReplicas: 32, targetCPUUtilization: 75, targetMemoryUtilization: 100}
+      - equal:
+          path: spec.resources
+          value:
+            requests: {cpu: 300m, memory: 512Mi}
+            limits: {cpu: "1", memory: 1Gi}
+      - equal:
+          path: spec.env
+          value:
+            - name: GOMEMLIMIT
+              value: 896MiB
+            - name: DESTINATION
+              value: http://telemetry.example:4318
+      - notExists:
+          path: spec.config.ignored
+
+  - it: changes forwarding fields without changing own telemetry or native expressions
+    set:
+      gateway_traces.otelcol.config.exporters.otlp_http.endpoint: ${env:DESTINATION}
+      gateway_traces.otelcol.config.exporters.otlp_http.headers:
+        x-literal: "{{ preserved }} $$TOKEN"
+      gateway_traces.otelcol.config.exporters.otlp_http.sending_queue.queue_size: 4194304
+    asserts:
+      - equal:
+          path: spec.config.exporters.otlp_http.endpoint
+          value: ${env:DESTINATION}
+      - equal:
+          path: spec.config.exporters.otlp_http.headers
+          value: {x-literal: "{{ preserved }} $$TOKEN"}
+      - equal:
+          path: spec.config.exporters.otlp_http.sending_queue
+          value:
+            sizer: bytes
+            queue_size: 4194304
+            num_consumers: 32
+            batch: {sizer: bytes, min_size: 1048576, max_size: 2097152, flush_timeout: 1s}
+      - equal:
+          path: spec.config.service.telemetry.metrics.readers[0].periodic.exporter.otlp.endpoint
+          value: http://nktp-watchdog-collector:4318
+      - equal:
+          path: spec.config.service.telemetry.logs.processors[0].batch.exporter.otlp.endpoint
+          value: http://nktp-watchdog-collector:4318
+      - equal:
+          path: spec.config.service.telemetry.traces.processors[0].batch.exporter.otlp.endpoint
+          value: http://nktp-watchdog-collector:4318
+
+  - it: replaces own metric exporters independently
+    set:
+      gateway_traces.otelcol.config.service.telemetry.metrics.readers:
+        - periodic:
+            exporter:
+              otlp: {protocol: grpc, endpoint: http://metrics.example:4317}
+    asserts:
+      - equal:
+          path: spec.config.service.telemetry.metrics.readers
+          value:
+            - periodic:
+                exporter:
+                  otlp: {protocol: grpc, endpoint: http://metrics.example:4317}
+      - equal:
+          path: spec.config.service.telemetry.logs.processors[0].batch.exporter.otlp.endpoint
+          value: http://nktp-watchdog-collector:4318
+      - equal:
+          path: spec.config.service.telemetry.traces.processors[0].batch.exporter.otlp.endpoint
+          value: http://nktp-watchdog-collector:4318
+      - equal:
+          path: spec.config.exporters.otlp_http.endpoint
+          value: http://lgtm:4318
+
+  - it: replaces own log exporters independently
+    set:
+      gateway_traces.otelcol.config.service.telemetry.logs.processors:
+        - batch:
+            exporter:
+              otlp: {protocol: grpc, endpoint: http://logs.example:4317}
+    asserts:
+      - equal:
+          path: spec.config.service.telemetry.logs.processors
+          value:
+            - batch:
+                exporter:
+                  otlp: {protocol: grpc, endpoint: http://logs.example:4317}
+      - equal:
+          path: spec.config.service.telemetry.metrics.readers[0].periodic.exporter.otlp.endpoint
+          value: http://nktp-watchdog-collector:4318
+      - equal:
+          path: spec.config.service.telemetry.traces.processors[0].batch.exporter.otlp.endpoint
+          value: http://nktp-watchdog-collector:4318
+      - equal:
+          path: spec.config.exporters.otlp_http.endpoint
+          value: http://lgtm:4318
+
+  - it: replaces own trace exporters independently
+    set:
+      gateway_traces.otelcol.config.service.telemetry.traces.processors:
+        - batch:
+            exporter:
+              otlp: {protocol: grpc, endpoint: http://traces.example:4317}
+    asserts:
+      - equal:
+          path: spec.config.service.telemetry.traces.processors
+          value:
+            - batch:
+                exporter:
+                  otlp: {protocol: grpc, endpoint: http://traces.example:4317}
+      - equal:
+          path: spec.config.service.telemetry.metrics.readers[0].periodic.exporter.otlp.endpoint
+          value: http://nktp-watchdog-collector:4318
+      - equal:
+          path: spec.config.service.telemetry.logs.processors[0].batch.exporter.otlp.endpoint
+          value: http://nktp-watchdog-collector:4318
+      - equal:
+          path: spec.config.exporters.otlp_http.endpoint
+          value: http://lgtm:4318
+
+  - it: removes HTTP and changes the gRPC listener through native overrides
+    set:
+      gateway_traces.otelcol.config.receivers.otlp.protocols.http: null
+      gateway_traces.otelcol.config.receivers.otlp.protocols.grpc.endpoint: ${env:GRPC_LISTEN_ADDR}
+    asserts:
+      - equal:
+          path: spec.config.receivers.otlp.protocols
+          value:
+            grpc: {endpoint: "${env:GRPC_LISTEN_ADDR}"}

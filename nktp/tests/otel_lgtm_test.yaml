@@ -61,6 +61,24 @@ tests:
           path: data["nktp-gateway-metrics.json"]
           pattern: 'opentelemetry_allocator|log_records|accepted_spans|sent_spans'
 
+  - it: provisions the traces gateway dashboard
+    documentSelector:
+      path: metadata.name
+      value: lgtm-dashboards
+    asserts:
+      - matchRegex:
+          path: data["nktp-gateway-traces.json"]
+          pattern: '"uid": "nktp-gateway-traces"'
+      - matchRegex:
+          path: data["nktp-gateway-traces.json"]
+          pattern: '"title": "NKTP Traces Gateway"'
+      - matchRegex:
+          path: data["nktp-gateway-traces.json"]
+          pattern: otelcol_receiver_accepted_spans_total
+      - notMatchRegex:
+          path: data["nktp-gateway-traces.json"]
+          pattern: 'opentelemetry_allocator|metric_points|log_records'
+
   - it: removes all otel-lgtm resources when disabled
     set:
       otel-lgtm:
