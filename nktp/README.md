@@ -34,6 +34,18 @@ Use `gateway_logs.otelcol.config` for Collector configuration and
 requires the Kubernetes resource metrics API. Retain `GOMEMLIMIT` and `GOGC` when
 replacing `gateway_logs.kubernetes.env`.
 
+### Metrics gateway
+
+The metrics gateway accepts OTLP metrics over gRPC at `nktp-gateway-metrics-collector:4317`
+and HTTP at `http://nktp-gateway-metrics-collector:4318` in the Helm release namespace.
+It forwards received metrics to LGTM and sends its own metrics, logs and traces to
+watchdog.
+
+Use `gateway_metrics.otelcol.config` for Collector configuration and
+`gateway_metrics.kubernetes` for Kubernetes workload configuration. Autoscaling
+requires the Kubernetes resource metrics API. Retain `GOMEMLIMIT` and `GOGC` when
+replacing `gateway_metrics.kubernetes.env`.
+
 ## Managed Dependencies
 
 ### OpenTelemetry and CRDs
