@@ -1,0 +1,279 @@
+suite: cluster events
+release:
+  namespace: nktp
+templates:
+  - templates/cluster-events.yaml
+tests:
+  - it: elects one Event reader and forwards logs through the logs gateway
+    asserts:
+      - equal:
+          path: metadata.name
+          value: nktp-cluster-events
+      - equal:
+          path: spec.mode
+          value: statefulset
+      - notExists:
+          path: spec.deploymentUpdateStrategy
+      - notExists:
+          path: spec.targetAllocator
+      - notExists:
+          path: spec.autoscaler
+      - equal:
+          path: spec.replicas
+          value: 2
+      - equal:
+          path: spec.config.extensions.k8s_leader_elector
+          value:
+            auth_type: serviceAccount
+            lease_name: nktp-cluster-events
+            lease_namespace: ${env:POD_NAMESPACE}
+      - equal:
+          path: spec.config.service.extensions
+          value: [health_check, k8s_leader_elector]
+      - contains:
+          path: spec.env
+          content:
+            name: POD_NAMESPACE
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.namespace
+      - equal:
+          path: spec.config.receivers
+          value:
+            k8s_events:
+              auth_type: serviceAccount
+              k8s_leader_elector: k8s_leader_elector
+              namespaces: []
+      - equal:
+          path: spec.config.service.pipelines
+          value:
+            logs: {receivers: [k8s_events], processors: [memory_limiter], exporters: [otlp_http]}
+      - equal:
+          path: spec.config.processors
+          value:
+            memory_limiter:
+              check_interval: 500ms
+              limit_percentage: 80
+              spike_limit_percentage: 25
+      - equal:
+          path: spec.config.exporters.otlp_http.endpoint
+          value: http://nktp-gateway-logs-collector:4318
+      - equal:
+          path: spec.config.service.telemetry
+          value:
+            resource:
+              service.name: nktp-cluster-events
+            metrics:
+              readers:
+                - periodic:
+                    exporter:
+                      otlp:
+                        protocol: http/protobuf
+                        endpoint: http://nktp-watchdog-collector:4318
+            logs:
+              processors:
+                - batch:
+                    exporter:
+                      otlp:
+                        protocol: http/protobuf
+                        endpoint: http://nktp-watchdog-collector:4318
+            traces:
+              processors:
+                - batch:
+                    exporter:
+                      otlp:
+                        protocol: http/protobuf
+                        endpoint: http://nktp-watchdog-collector:4318
+
+  - it: uses the global image with an existing Operator in another namespace
+    release:
+      namespace: telemetry
+    set:
+      otelcol_image: example.com/collector:global
+      opentelemetry-kube-stack.opentelemetry-operator.enabled: false
+    asserts:
+      - equal:
+          path: metadata.namespace
+          value: telemetry
+      - equal:
+          path: metadata.labels["helm.sh/chart"]
+          value: opentelemetry-kube-stack-0.20.8
+      - equal:
+          path: spec.image
+          value: example.com/collector:global
+
+  - it: passes workload overrides through and resolves the Collector image separately
+    set:
+      otelcol_image: example.com/collector:global
+      cluster_events.otelcol.image: example.com/collector:events
+      cluster_events.kubernetes:
+        image: example.com/collector:ignored
+        config: {ignored: true}
+        nodeSelector: {workload: telemetry}
+        tolerations: [{key: telemetry, operator: Exists}]
+        replicas: 3
+        resources:
+          requests: {cpu: 300m}
+        env:
+          - name: GOMEMLIMIT
+            value: 896MiB
+          - name: POD_NAMESPACE
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.namespace
+          - name: DESTINATION
+            value: http://telemetry.example:4318
+    asserts:
+      - equal:
+          path: spec.image
+          value: example.com/collector:events
+      - equal:
+          path: spec.nodeSelector
+          value: {workload: telemetry}
+      - equal:
+          path: spec.tolerations
+          value: [{key: telemetry, operator: Exists}]
+      - equal:
+          path: spec.replicas
+          value: 3
+      - equal:
+          path: spec.resources
+          value:
+            requests: {cpu: 300m, memory: 512Mi}
+            limits: {cpu: "1", memory: 1Gi}
+      - equal:
+          path: spec.env
+          value:
+            - name: GOMEMLIMIT
+              value: 896MiB
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: DESTINATION
+              value: http://telemetry.example:4318
+      - notExists:
+          path: spec.config.ignored
+
+  - it: changes forwarding fields without changing own telemetry or native expressions
+    set:
+      cluster_events.otelcol.config.exporters.otlp_http.endpoint: ${env:DESTINATION}
+      cluster_events.otelcol.config.exporters.otlp_http.headers:
+        x-literal: "{{ preserved }} $$TOKEN"
+      cluster_events.otelcol.config.exporters.otlp_http.sending_queue.queue_size: 4194304
+    asserts:
+      - equal:
+          path: spec.config.exporters.otlp_http.endpoint
+          value: ${env:DESTINATION}
+      - equal:
+          path: spec.config.exporters.otlp_http.headers
+          value: {x-literal: "{{ preserved }} $$TOKEN"}
+      - equal:
+          path: spec.config.exporters.otlp_http.sending_queue
+          value:
+            sizer: bytes
+            queue_size: 4194304
+            num_consumers: 32
+            batch: {sizer: bytes, min_size: 1048576, max_size: 2097152, flush_timeout: 1s}
+      - equal:
+          path: spec.config.service.telemetry.metrics.readers[0].periodic.exporter.otlp.endpoint
+          value: http://nktp-watchdog-collector:4318
+      - equal:
+          path: spec.config.service.telemetry.logs.processors[0].batch.exporter.otlp.endpoint
+          value: http://nktp-watchdog-collector:4318
+      - equal:
+          path: spec.config.service.telemetry.traces.processors[0].batch.exporter.otlp.endpoint
+          value: http://nktp-watchdog-collector:4318
+
+  - it: replaces own metric exporters independently
+    set:
+      cluster_events.otelcol.config.service.telemetry.metrics.readers:
+        - periodic:
+            exporter:
+              otlp: {protocol: grpc, endpoint: http://metrics.example:4317}
+    asserts:
+      - equal:
+          path: spec.config.service.telemetry.metrics.readers
+          value:
+            - periodic:
+                exporter:
+                  otlp: {protocol: grpc, endpoint: http://metrics.example:4317}
+      - equal:
+          path: spec.config.service.telemetry.logs.processors[0].batch.exporter.otlp.endpoint
+          value: http://nktp-watchdog-collector:4318
+      - equal:
+          path: spec.config.service.telemetry.traces.processors[0].batch.exporter.otlp.endpoint
+          value: http://nktp-watchdog-collector:4318
+      - equal:
+          path: spec.config.exporters.otlp_http.endpoint
+          value: http://nktp-gateway-logs-collector:4318
+
+  - it: replaces own log exporters independently
+    set:
+      cluster_events.otelcol.config.service.telemetry.logs.processors:
+        - batch:
+            exporter:
+              otlp: {protocol: grpc, endpoint: http://logs.example:4317}
+    asserts:
+      - equal:
+          path: spec.config.service.telemetry.logs.processors
+          value:
+            - batch:
+                exporter:
+                  otlp: {protocol: grpc, endpoint: http://logs.example:4317}
+      - equal:
+          path: spec.config.service.telemetry.metrics.readers[0].periodic.exporter.otlp.endpoint
+          value: http://nktp-watchdog-collector:4318
+      - equal:
+          path: spec.config.service.telemetry.traces.processors[0].batch.exporter.otlp.endpoint
+          value: http://nktp-watchdog-collector:4318
+      - equal:
+          path: spec.config.exporters.otlp_http.endpoint
+          value: http://nktp-gateway-logs-collector:4318
+
+  - it: replaces own trace exporters independently
+    set:
+      cluster_events.otelcol.config.service.telemetry.traces.processors:
+        - batch:
+            exporter:
+              otlp: {protocol: grpc, endpoint: http://traces.example:4317}
+    asserts:
+      - equal:
+          path: spec.config.service.telemetry.traces.processors
+          value:
+            - batch:
+                exporter:
+                  otlp: {protocol: grpc, endpoint: http://traces.example:4317}
+      - equal:
+          path: spec.config.service.telemetry.metrics.readers[0].periodic.exporter.otlp.endpoint
+          value: http://nktp-watchdog-collector:4318
+      - equal:
+          path: spec.config.service.telemetry.logs.processors[0].batch.exporter.otlp.endpoint
+          value: http://nktp-watchdog-collector:4318
+      - equal:
+          path: spec.config.exporters.otlp_http.endpoint
+          value: http://nktp-gateway-logs-collector:4318
+
+  - it: overrides watched namespaces and the native Lease configuration
+    set:
+      cluster_events.otelcol.config.receivers.k8s_events.namespaces: [team-a, team-b]
+      cluster_events.otelcol.config.extensions.k8s_leader_elector.lease_name: custom-event-reader
+      cluster_events.otelcol.config.extensions.k8s_leader_elector.lease_namespace: ${env:LEASE_NAMESPACE}
+    asserts:
+      - equal:
+          path: spec.config.receivers
+          value:
+            k8s_events:
+              auth_type: serviceAccount
+              k8s_leader_elector: k8s_leader_elector
+              namespaces: [team-a, team-b]
+      - equal:
+          path: spec.config.extensions.k8s_leader_elector
+          value:
+            auth_type: serviceAccount
+            lease_name: custom-event-reader
+            lease_namespace: ${env:LEASE_NAMESPACE}
+      - equal:
+          path: spec.config.service.pipelines
+          value:
+            logs: {receivers: [k8s_events], processors: [memory_limiter], exporters: [otlp_http]}

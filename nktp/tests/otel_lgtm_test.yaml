@@ -127,6 +127,36 @@ tests:
           path: data["nktp-gateway-traces.json"]
           pattern: 'opentelemetry_allocator|metric_points|log_records'
 
+  - it: provisions cluster event activity and leadership logs without requiring scraped metrics
+    documentSelector:
+      path: metadata.name
+      value: lgtm-dashboards
+    asserts:
+      - matchRegex:
+          path: data["nktp-cluster-events.json"]
+          pattern: '"uid": "nktp-cluster-events"'
+      - matchRegex:
+          path: data["nktp-cluster-events.json"]
+          pattern: '"title": "NKTP Cluster Events"'
+      - matchRegex:
+          path: data["nktp-cluster-events.json"]
+          pattern: 'sum by \(instance\) \(increase\(otelcol_receiver_accepted_log_records_total'
+      - matchRegex:
+          path: data["nktp-cluster-events.json"]
+          pattern: 'sum by \(instance\) \(increase\(otelcol_exporter_sent_log_records_total'
+      - matchRegex:
+          path: data["nktp-cluster-events.json"]
+          pattern: 'sum by \(instance, exporter\) \(otelcol_exporter_queue_size'
+      - matchRegex:
+          path: data["nktp-cluster-events.json"]
+          pattern: 'max by \(instance\) \(otelcol_process_memory_rss_bytes'
+      - matchRegex:
+          path: data["nktp-cluster-events.json"]
+          pattern: 'Events Receiver started as leader\|no longer leader, stopping'
+      - notMatchRegex:
+          path: data["nktp-cluster-events.json"]
+          pattern: 'opentelemetry_allocator|leader_election_master_status|\$instance'
+
   - it: removes all otel-lgtm resources when disabled
     set:
       otel-lgtm:
