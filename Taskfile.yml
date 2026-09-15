@@ -1,6 +1,12 @@
 version: '3'
 
 tasks:
+  test:scale:
+    desc: 'Run a scale test plan (no cluster required for no-op components)'
+    dir: tests
+    cmds:
+      - go test -tags scale -count=1 -v -timeout=5m -run '^TestRun$' ./scale -args {{.CLI_ARGS}}
+
   test:
     desc: 'Run the NKTP chart unit tests (pass flags: task test -- -u)'
     cmds:
