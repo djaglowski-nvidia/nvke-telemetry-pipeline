@@ -222,8 +222,9 @@ tests:
 
   - it: exposes grafana and OTLP ports
     documentSelector:
-      path: kind
-      value: Service
+      path: spec.selector
+      value:
+        app: lgtm
     asserts:
       - contains:
           path: spec.ports
@@ -254,3 +255,45 @@ tests:
     asserts:
       - isNotNullOrEmpty:
           path: spec.template.metadata.annotations["checksum/dashboards"]
+
+  - it: provisions the DaemonSet and Target Allocator dashboard
+    documentSelector:
+      path: metadata.name
+      value: lgtm-dashboards
+    asserts:
+      - matchRegex:
+          path: data["nktp-daemonset.json"]
+          pattern: '"title": "NKTP DaemonSet"'
+      - matchRegex:
+          path: data["nktp-daemonset.json"]
+          pattern: otelcol_receiver_accepted_metric_points_total
+      - matchRegex:
+          path: data["nktp-daemonset.json"]
+          pattern: otelcol_receiver_accepted_log_records_total
+      - matchRegex:
+          path: data["nktp-daemonset.json"]
+          pattern: opentelemetry_allocator_targets_unassigned
+      - matchRegex:
+          path: data["nktp-daemonset.json"]
+          pattern: opentelemetry_allocator_targets_per_collector
+
+  - it: uses the bundled Prometheus configuration
+    documentSelector:
+      path: kind
+      value: Deployment
+    asserts:
+      - notContains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: prometheus-config
+            mountPath: /otel-lgtm/prometheus.yaml
+            subPath: prometheus.yaml
+      - notExists:
+          path: spec.template.metadata.annotations["checksum/prometheus"]
+
+  - it: removes all dashboard and backend resources when LGTM is disabled
+    set:
+      otel-lgtm.enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0

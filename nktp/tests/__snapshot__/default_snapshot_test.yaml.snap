@@ -187,6 +187,338 @@ matches the snapshot with default values:
           whenUnsatisfiable: ScheduleAnyway
       upgradeStrategy: automatic
   7: |
+    apiVersion: rbac.authorization.k8s.io/v1
+    kind: ClusterRole
+    metadata:
+      name: nktp-daemonset-targetallocator-NAMESPACE
+    rules:
+      - apiGroups:
+          - ""
+        resources:
+          - pods
+          - services
+          - endpoints
+          - namespaces
+          - nodes
+        verbs:
+          - get
+          - list
+          - watch
+      - apiGroups:
+          - discovery.k8s.io
+        resources:
+          - endpointslices
+        verbs:
+          - get
+          - list
+          - watch
+      - apiGroups:
+          - monitoring.coreos.com
+        resources:
+          - servicemonitors
+          - podmonitors
+          - probes
+          - scrapeconfigs
+        verbs:
+          - get
+          - list
+          - watch
+  8: |
+    apiVersion: rbac.authorization.k8s.io/v1
+    kind: ClusterRoleBinding
+    metadata:
+      name: nktp-daemonset-targetallocator-NAMESPACE
+    roleRef:
+      apiGroup: rbac.authorization.k8s.io
+      kind: ClusterRole
+      name: nktp-daemonset-targetallocator-NAMESPACE
+    subjects:
+      - kind: ServiceAccount
+        name: nktp-daemonset-targetallocator
+        namespace: NAMESPACE
+  9: |
+    apiVersion: rbac.authorization.k8s.io/v1
+    kind: Role
+    metadata:
+      name: nktp-daemonset-targetallocator-metrics
+      namespace: NAMESPACE
+    rules:
+      - apiGroups:
+          - ""
+        resources:
+          - pods
+        verbs:
+          - get
+          - list
+          - watch
+  10: |
+    apiVersion: rbac.authorization.k8s.io/v1
+    kind: RoleBinding
+    metadata:
+      name: nktp-daemonset-targetallocator-metrics
+      namespace: NAMESPACE
+    roleRef:
+      apiGroup: rbac.authorization.k8s.io
+      kind: Role
+      name: nktp-daemonset-targetallocator-metrics
+    subjects:
+      - kind: ServiceAccount
+        name: nktp-daemonset-collector
+        namespace: NAMESPACE
+  11: |
+    apiVersion: opentelemetry.io/v1beta1
+    kind: OpenTelemetryCollector
+    metadata:
+      labels:
+        helm.sh/chart: opentelemetry-kube-stack-0.20.8
+      name: nktp-daemonset
+      namespace: NAMESPACE
+    spec:
+      config:
+        exporters:
+          otlp_http/logs:
+            endpoint: http://nktp-gateway-logs-collector:4318
+            retry_on_failure:
+              max_elapsed_time: 30m
+            sending_queue:
+              batch:
+                flush_timeout: 1s
+                max_size: 2097152
+                min_size: 1048576
+                sizer: bytes
+              num_consumers: 32
+              queue_size: 8388608
+              sizer: bytes
+          otlp_http/metrics:
+            endpoint: http://nktp-gateway-metrics-collector:4318
+            retry_on_failure:
+              max_elapsed_time: 30m
+            sending_queue:
+              batch:
+                flush_timeout: 1s
+                max_size: 2097152
+                min_size: 1048576
+                sizer: bytes
+              num_consumers: 32
+              queue_size: 8388608
+              sizer: bytes
+          otlp_http/watchdog:
+            endpoint: http://nktp-watchdog-collector:4318
+            retry_on_failure:
+              max_elapsed_time: 30m
+            sending_queue:
+              batch:
+                flush_timeout: 1s
+                max_size: 262144
+                min_size: 65536
+                sizer: bytes
+              num_consumers: 2
+              queue_size: 1048576
+              sizer: bytes
+        extensions:
+          health_check:
+            endpoint: 0.0.0.0:13133
+        processors:
+          memory_limiter:
+            check_interval: 500ms
+            limit_percentage: 80
+            spike_limit_percentage: 25
+          memory_limiter/targetallocator:
+            check_interval: 500ms
+            limit_percentage: 80
+            spike_limit_percentage: 25
+          resource/node:
+            attributes:
+              - action: upsert
+                key: k8s.node.name
+                value: ${env:NODE_NAME}
+          resource/targetallocator:
+            attributes:
+              - action: upsert
+                key: k8s.node.name
+                value: ${env:NODE_NAME}
+        receivers:
+          filelog:
+            exclude:
+              - /var/log/pods/${env:POD_NAMESPACE}_nktp-*-collector-*_*/*/*.log
+            include:
+              - /var/log/pods/*/*/*.log
+            include_file_path: true
+            operators:
+              - type: container
+            retry_on_failure:
+              enabled: true
+            start_at: end
+          hostmetrics:
+            collection_interval: 1m
+            root_path: /hostfs
+            scrapers:
+              process:
+                resource_attributes:
+                  process.command_line:
+                    enabled: false
+          prometheus:
+            config:
+              scrape_configs: []
+          prometheus/targetallocator:
+            config:
+              scrape_configs:
+                - job_name: nktp-targetallocator
+                  kubernetes_sd_configs:
+                    - namespaces:
+                        names:
+                          - ${env:POD_NAMESPACE}
+                      role: pod
+                      selectors:
+                        - field: spec.nodeName=${env:NODE_NAME}
+                          label: app.kubernetes.io/name=nktp-daemonset-targetallocator,app.kubernetes.io/component=opentelemetry-targetallocator
+                          role: pod
+                  relabel_configs:
+                    - action: keep
+                      regex: http
+                      source_labels:
+                        - __meta_kubernetes_pod_container_port_name
+                    - source_labels:
+                        - __meta_kubernetes_pod_name
+                      target_label: instance
+                  scrape_interval: 30s
+        service:
+          extensions:
+            - health_check
+          pipelines:
+            logs:
+              exporters:
+                - otlp_http/logs
+              processors:
+                - memory_limiter
+                - resource/node
+              receivers:
+                - filelog
+            metrics:
+              exporters:
+                - otlp_http/metrics
+              processors:
+                - memory_limiter
+                - resource/node
+              receivers:
+                - prometheus
+                - hostmetrics
+            metrics/targetallocator:
+              exporters:
+                - otlp_http/watchdog
+              processors:
+                - memory_limiter/targetallocator
+                - resource/targetallocator
+              receivers:
+                - prometheus/targetallocator
+          telemetry:
+            logs:
+              processors:
+                - batch:
+                    exporter:
+                      otlp:
+                        endpoint: http://nktp-watchdog-collector:4318
+                        protocol: http/protobuf
+            metrics:
+              readers:
+                - periodic:
+                    exporter:
+                      otlp:
+                        endpoint: http://nktp-watchdog-collector:4318
+                        protocol: http/protobuf
+            resource:
+              k8s.node.name: ${env:NODE_NAME}
+              service.name: nktp-daemonset
+            traces:
+              processors:
+                - batch:
+                    exporter:
+                      otlp:
+                        endpoint: http://nktp-watchdog-collector:4318
+                        protocol: http/protobuf
+      env:
+        - name: GOMEMLIMIT
+          value: 448MiB
+        - name: GOGC
+          value: "50"
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+      image: otel/opentelemetry-collector-k8s:0.159.0
+      managementState: managed
+      mode: daemonset
+      podSecurityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      resources:
+        limits:
+          cpu: 500m
+          memory: 512Mi
+        requests:
+          cpu: 100m
+          memory: 256Mi
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop:
+            - ALL
+        readOnlyRootFilesystem: true
+        runAsUser: 0
+      targetAllocator:
+        allocationStrategy: per-node
+        enabled: true
+        prometheusCR:
+          denyFSAccessThroughSMs: true
+          enabled: true
+          podMonitorSelector:
+            matchExpressions:
+              - key: nktp.nvidia.io/large-target
+                operator: NotIn
+                values:
+                  - "true"
+          probeSelector:
+            matchExpressions:
+              - key: nktp.nvidia.io/large-target
+                operator: NotIn
+                values:
+                  - "true"
+          scrapeConfigSelector:
+            matchExpressions:
+              - key: nktp.nvidia.io/large-target
+                operator: NotIn
+                values:
+                  - "true"
+          serviceMonitorSelector:
+            matchExpressions:
+              - key: nktp.nvidia.io/large-target
+                operator: NotIn
+                values:
+                  - "true"
+        replicas: 1
+      terminationGracePeriodSeconds: 60
+      upgradeStrategy: automatic
+      volumeMounts:
+        - mountPath: /var/log/pods
+          name: pod-logs
+          readOnly: true
+        - mountPath: /hostfs/proc
+          name: host-proc
+          readOnly: true
+      volumes:
+        - hostPath:
+            path: /var/log/pods
+            type: Directory
+          name: pod-logs
+        - hostPath:
+            path: /proc
+            type: Directory
+          name: host-proc
+  12: |
     apiVersion: opentelemetry.io/v1beta1
     kind: OpenTelemetryCollector
     metadata:
@@ -308,7 +640,7 @@ matches the snapshot with default values:
           topologyKey: kubernetes.io/hostname
           whenUnsatisfiable: ScheduleAnyway
       upgradeStrategy: automatic
-  8: |
+  13: |
     apiVersion: opentelemetry.io/v1beta1
     kind: OpenTelemetryCollector
     metadata:
@@ -430,7 +762,7 @@ matches the snapshot with default values:
           topologyKey: kubernetes.io/hostname
           whenUnsatisfiable: ScheduleAnyway
       upgradeStrategy: automatic
-  9: |
+  14: |
     apiVersion: opentelemetry.io/v1beta1
     kind: OpenTelemetryCollector
     metadata:
@@ -552,7 +884,7 @@ matches the snapshot with default values:
           topologyKey: kubernetes.io/hostname
           whenUnsatisfiable: ScheduleAnyway
       upgradeStrategy: automatic
-  10: |
+  15: |
     apiVersion: v1
     data:
       nktp.yaml: |
@@ -569,7 +901,7 @@ matches the snapshot with default values:
     kind: ConfigMap
     metadata:
       name: lgtm-dashboard-provider
-  11: |
+  16: |
     apiVersion: v1
     data:
       nktp-cluster-events.json: |
@@ -862,6 +1194,440 @@ matches the snapshot with default values:
                 "sortOrder": "Descending",
                 "enableLogDetails": true
               }
+            }
+          ]
+        }
+      nktp-daemonset.json: |
+        {
+          "uid": "nktp-daemonset",
+          "title": "NKTP DaemonSet",
+          "schemaVersion": 39,
+          "refresh": "30s",
+          "time": {
+            "from": "now-30m",
+            "to": "now"
+          },
+          "panels": [
+            {
+              "id": 1,
+              "type": "timeseries",
+              "title": "DaemonSet received /s",
+              "gridPos": {
+                "x": 0,
+                "y": 0,
+                "w": 12,
+                "h": 7
+              },
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0
+                }
+              },
+              "targets": [
+                {
+                  "expr": "sum by (k8s_node_name) (rate(otelcol_receiver_accepted_metric_points_total{job=\"nktp-daemonset\"}[5m]))",
+                  "legendFormat": "{{k8s_node_name}} metric points",
+                  "refId": "A"
+                },
+                {
+                  "expr": "sum by (k8s_node_name) (rate(otelcol_receiver_accepted_log_records_total{job=\"nktp-daemonset\"}[5m]))",
+                  "legendFormat": "{{k8s_node_name}} log records",
+                  "refId": "B"
+                }
+              ]
+            },
+            {
+              "id": 2,
+              "type": "timeseries",
+              "title": "DaemonSet exported /s",
+              "gridPos": {
+                "x": 12,
+                "y": 0,
+                "w": 12,
+                "h": 7
+              },
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0
+                }
+              },
+              "targets": [
+                {
+                  "expr": "sum by (k8s_node_name) (rate(otelcol_exporter_sent_metric_points_total{job=\"nktp-daemonset\"}[5m]))",
+                  "legendFormat": "{{k8s_node_name}} metric points",
+                  "refId": "A"
+                },
+                {
+                  "expr": "sum by (k8s_node_name) (rate(otelcol_exporter_sent_log_records_total{job=\"nktp-daemonset\"}[5m]))",
+                  "legendFormat": "{{k8s_node_name}} log records",
+                  "refId": "B"
+                }
+              ]
+            },
+            {
+              "id": 3,
+              "type": "timeseries",
+              "title": "DaemonSet export failures /s",
+              "gridPos": {
+                "x": 0,
+                "y": 7,
+                "w": 12,
+                "h": 7
+              },
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0
+                }
+              },
+              "targets": [
+                {
+                  "expr": "sum by (k8s_node_name) (rate(otelcol_exporter_send_failed_metric_points_total{job=\"nktp-daemonset\"}[5m]))",
+                  "legendFormat": "{{k8s_node_name}} metric points",
+                  "refId": "A"
+                },
+                {
+                  "expr": "sum by (k8s_node_name) (rate(otelcol_exporter_send_failed_log_records_total{job=\"nktp-daemonset\"}[5m]))",
+                  "legendFormat": "{{k8s_node_name}} log records",
+                  "refId": "B"
+                }
+              ]
+            },
+            {
+              "id": 4,
+              "type": "timeseries",
+              "title": "DaemonSet refused /s",
+              "gridPos": {
+                "x": 12,
+                "y": 7,
+                "w": 12,
+                "h": 7
+              },
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0
+                }
+              },
+              "targets": [
+                {
+                  "expr": "sum by (k8s_node_name) (rate(otelcol_receiver_refused_metric_points_total{job=\"nktp-daemonset\"}[5m]))",
+                  "legendFormat": "{{k8s_node_name}} metric points",
+                  "refId": "A"
+                },
+                {
+                  "expr": "sum by (k8s_node_name) (rate(otelcol_receiver_refused_log_records_total{job=\"nktp-daemonset\"}[5m]))",
+                  "legendFormat": "{{k8s_node_name}} log records",
+                  "refId": "B"
+                }
+              ]
+            },
+            {
+              "id": 5,
+              "type": "timeseries",
+              "title": "DaemonSet exporter queue use",
+              "gridPos": {
+                "x": 0,
+                "y": 14,
+                "w": 12,
+                "h": 7
+              },
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "unit": "percent"
+                }
+              },
+              "targets": [
+                {
+                  "expr": "100 * max by (k8s_node_name, exporter, data_type) (otelcol_exporter_queue_size{job=\"nktp-daemonset\"} / otelcol_exporter_queue_capacity{job=\"nktp-daemonset\"})",
+                  "legendFormat": "{{k8s_node_name}} {{exporter}} {{data_type}}",
+                  "refId": "A"
+                }
+              ]
+            },
+            {
+              "id": 6,
+              "type": "timeseries",
+              "title": "DaemonSet reporting collectors",
+              "gridPos": {
+                "x": 12,
+                "y": 14,
+                "w": 12,
+                "h": 7
+              },
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0
+                }
+              },
+              "targets": [
+                {
+                  "expr": "count(count by (instance) (otelcol_process_memory_rss_bytes{job=\"nktp-daemonset\"}))",
+                  "legendFormat": "reporting collectors",
+                  "refId": "A"
+                }
+              ],
+              "description": "Collectors with recent self metrics. This is not the desired DaemonSet pod count."
+            },
+            {
+              "id": 7,
+              "type": "timeseries",
+              "title": "DaemonSet CPU cores",
+              "gridPos": {
+                "x": 0,
+                "y": 21,
+                "w": 12,
+                "h": 7
+              },
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "unit": "cores"
+                }
+              },
+              "targets": [
+                {
+                  "expr": "sum by (k8s_node_name) (rate(otelcol_process_cpu_seconds_total{job=\"nktp-daemonset\"}[5m]))",
+                  "legendFormat": "{{k8s_node_name}}",
+                  "refId": "A"
+                }
+              ]
+            },
+            {
+              "id": 8,
+              "type": "timeseries",
+              "title": "DaemonSet memory (RSS)",
+              "gridPos": {
+                "x": 12,
+                "y": 21,
+                "w": 12,
+                "h": 7
+              },
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "unit": "bytes"
+                }
+              },
+              "targets": [
+                {
+                  "expr": "sum by (k8s_node_name) (otelcol_process_memory_rss_bytes{job=\"nktp-daemonset\"})",
+                  "legendFormat": "{{k8s_node_name}}",
+                  "refId": "A"
+                }
+              ]
+            },
+            {
+              "id": 9,
+              "type": "timeseries",
+              "title": "Target Allocator scrape health",
+              "gridPos": {
+                "x": 0,
+                "y": 28,
+                "w": 12,
+                "h": 7
+              },
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0
+                }
+              },
+              "targets": [
+                {
+                  "expr": "up{job=\"nktp-targetallocator\"}",
+                  "legendFormat": "{{instance}}",
+                  "refId": "A"
+                }
+              ],
+              "description": "One series per Target Allocator pod. Zero means its scrape failed. No data means no local Target Allocator pods were discovered or metrics collection is unavailable."
+            },
+            {
+              "id": 10,
+              "type": "timeseries",
+              "title": "Target Allocator collectors",
+              "gridPos": {
+                "x": 12,
+                "y": 28,
+                "w": 12,
+                "h": 7
+              },
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0
+                }
+              },
+              "targets": [
+                {
+                  "expr": "opentelemetry_allocator_collectors_discovered{job=\"nktp-targetallocator\"}",
+                  "legendFormat": "{{instance}} discovered",
+                  "refId": "A"
+                },
+                {
+                  "expr": "opentelemetry_allocator_collectors_allocatable{job=\"nktp-targetallocator\"}",
+                  "legendFormat": "{{instance}} allocatable",
+                  "refId": "B"
+                }
+              ]
+            },
+            {
+              "id": 11,
+              "type": "timeseries",
+              "title": "Target Allocator targets",
+              "gridPos": {
+                "x": 0,
+                "y": 35,
+                "w": 12,
+                "h": 7
+              },
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0
+                }
+              },
+              "targets": [
+                {
+                  "expr": "opentelemetry_allocator_targets{job=\"nktp-targetallocator\"}",
+                  "legendFormat": "{{instance}} discovered",
+                  "refId": "A"
+                },
+                {
+                  "expr": "opentelemetry_allocator_targets_remaining{job=\"nktp-targetallocator\"}",
+                  "legendFormat": "{{instance}} after filtering",
+                  "refId": "B"
+                },
+                {
+                  "expr": "opentelemetry_allocator_targets_unassigned{job=\"nktp-targetallocator\"}",
+                  "legendFormat": "{{instance}} unassigned",
+                  "refId": "C"
+                }
+              ],
+              "description": "Counts per Target Allocator replica. Replicas can report the same target set, so these counts are not summed."
+            },
+            {
+              "id": 12,
+              "type": "timeseries",
+              "title": "Targets per collector",
+              "gridPos": {
+                "x": 12,
+                "y": 35,
+                "w": 12,
+                "h": 7
+              },
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0
+                }
+              },
+              "targets": [
+                {
+                  "expr": "opentelemetry_allocator_targets_per_collector{job=\"nktp-targetallocator\"}",
+                  "legendFormat": "{{instance}} / {{collector_name}}",
+                  "refId": "A"
+                }
+              ]
+            },
+            {
+              "id": 13,
+              "type": "timeseries",
+              "title": "Target Allocator CPU cores",
+              "gridPos": {
+                "x": 0,
+                "y": 42,
+                "w": 12,
+                "h": 7
+              },
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "unit": "cores"
+                }
+              },
+              "targets": [
+                {
+                  "expr": "rate(process_cpu_seconds_total{job=\"nktp-targetallocator\"}[5m])",
+                  "legendFormat": "{{instance}}",
+                  "refId": "A"
+                }
+              ]
+            },
+            {
+              "id": 14,
+              "type": "timeseries",
+              "title": "Target Allocator memory (RSS)",
+              "gridPos": {
+                "x": 12,
+                "y": 42,
+                "w": 12,
+                "h": 7
+              },
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "unit": "bytes"
+                }
+              },
+              "targets": [
+                {
+                  "expr": "process_resident_memory_bytes{job=\"nktp-targetallocator\"}",
+                  "legendFormat": "{{instance}}",
+                  "refId": "A"
+                }
+              ]
             }
           ]
         }
@@ -1406,7 +2172,7 @@ matches the snapshot with default values:
     kind: ConfigMap
     metadata:
       name: lgtm-dashboards
-  12: |
+  17: |
     apiVersion: v1
     kind: Service
     metadata:
@@ -1427,7 +2193,7 @@ matches the snapshot with default values:
           targetPort: 4318
       selector:
         app: lgtm
-  13: |
+  18: |
     apiVersion: apps/v1
     kind: Deployment
     metadata:
@@ -1440,7 +2206,7 @@ matches the snapshot with default values:
       template:
         metadata:
           annotations:
-            checksum/dashboards: ab1416b46cc4771c831861c1b47aaa4a6600404645f06038378822744ffc5895
+            checksum/dashboards: d110c7b76661dc41787d766e68c592b184095724990172fcdfe5fa9f8de74f0c
           labels:
             app: lgtm
         spec:
@@ -1501,7 +2267,7 @@ matches the snapshot with default values:
               name: p8s-storage
             - emptyDir: {}
               name: pyroscope-storage
-  14: |
+  19: |
     apiVersion: rbac.authorization.k8s.io/v1
     kind: ClusterRoleBinding
     metadata:
@@ -1514,7 +2280,7 @@ matches the snapshot with default values:
       - kind: ServiceAccount
         name: nktp-watchdog-collector
         namespace: NAMESPACE
-  15: |
+  20: |
     apiVersion: rbac.authorization.k8s.io/v1
     kind: Role
     metadata:
@@ -1538,7 +2304,7 @@ matches the snapshot with default values:
           - get
           - list
           - watch
-  16: |
+  21: |
     apiVersion: rbac.authorization.k8s.io/v1
     kind: RoleBinding
     metadata:
@@ -1552,7 +2318,7 @@ matches the snapshot with default values:
       - kind: ServiceAccount
         name: nktp-watchdog-targetallocator
         namespace: NAMESPACE
-  17: |
+  22: |
     apiVersion: opentelemetry.io/v1beta1
     kind: OpenTelemetryCollector
     metadata:

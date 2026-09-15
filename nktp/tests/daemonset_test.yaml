@@ -1,0 +1,449 @@
+suite: node collector
+release:
+  namespace: nktp
+templates:
+  - templates/daemonset.yaml
+tests:
+  - it: rejects disabled target allocation
+    set:
+      daemonset.kubernetes.targetAllocator.enabled: false
+    asserts:
+      - failedTemplate:
+          errorMessage: daemonset.kubernetes.targetAllocator.enabled must be true to assign scrape targets to Collectors on the same node
+
+  - it: rejects removed target allocation
+    set:
+      daemonset.kubernetes.targetAllocator: null
+    asserts:
+      - failedTemplate:
+          errorMessage: daemonset.kubernetes.targetAllocator.enabled must be true to assign scrape targets to Collectors on the same node
+
+  - it: routes local pod logs and assigned metrics to their gateways
+    asserts:
+      - equal:
+          path: metadata.name
+          value: nktp-daemonset
+      - equal:
+          path: spec.mode
+          value: daemonset
+      - notExists:
+          path: spec.replicas
+      - notExists:
+          path: spec.autoscaler
+      - equal:
+          path: spec.config.service.pipelines
+          value:
+            logs: {receivers: [filelog], processors: [memory_limiter, resource/node], exporters: [otlp_http/logs]}
+            metrics: {receivers: [prometheus, hostmetrics], processors: [memory_limiter, resource/node], exporters: [otlp_http/metrics]}
+            metrics/targetallocator: {receivers: [prometheus/targetallocator], processors: [memory_limiter/targetallocator, resource/targetallocator], exporters: [otlp_http/watchdog]}
+      - equal:
+          path: spec.config.exporters["otlp_http/logs"].endpoint
+          value: http://nktp-gateway-logs-collector:4318
+      - equal:
+          path: spec.config.exporters["otlp_http/metrics"].endpoint
+          value: http://nktp-gateway-metrics-collector:4318
+      - equal:
+          path: spec.config.receivers.prometheus.config
+          value: {scrape_configs: []}
+      - notExists:
+          path: spec.config.processors.batch
+
+  - it: parses container records from a read-only host mount and excludes NKTP Collector logs
+    asserts:
+      - equal:
+          path: spec.config.receivers.filelog
+          value:
+            include: [/var/log/pods/*/*/*.log]
+            exclude: ["/var/log/pods/${env:POD_NAMESPACE}_nktp-*-collector-*_*/*/*.log"]
+            start_at: end
+            include_file_path: true
+            retry_on_failure: {enabled: true}
+            operators: [{type: container}]
+      - equal:
+          path: spec.volumes
+          value:
+            - name: pod-logs
+              hostPath: {path: /var/log/pods, type: Directory}
+            - name: host-proc
+              hostPath: {path: /proc, type: Directory}
+      - equal:
+          path: spec.volumeMounts
+          value:
+            - name: pod-logs
+              mountPath: /var/log/pods
+              readOnly: true
+            - name: host-proc
+              mountPath: /hostfs/proc
+              readOnly: true
+      - equal:
+          path: spec.securityContext
+          value:
+            runAsUser: 0
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+
+  - it: carries node identity through native environment references
+    asserts:
+      - contains:
+          path: spec.env
+          content:
+            name: NODE_NAME
+            valueFrom:
+              fieldRef: {fieldPath: spec.nodeName}
+      - contains:
+          path: spec.env
+          content:
+            name: POD_NAMESPACE
+            valueFrom:
+              fieldRef: {fieldPath: metadata.namespace}
+      - equal:
+          path: spec.config.processors["resource/node"].attributes
+          value:
+            - key: k8s.node.name
+              value: ${env:NODE_NAME}
+              action: upsert
+      - equal:
+          path: spec.config.service.telemetry.resource
+          value:
+            service.name: nktp-daemonset
+            k8s.node.name: ${env:NODE_NAME}
+
+  - it: allocates per node and excludes large-target monitoring CRs
+    asserts:
+      - equal:
+          path: spec.targetAllocator
+          value:
+            enabled: true
+            replicas: 1
+            allocationStrategy: per-node
+            prometheusCR:
+              enabled: true
+              denyFSAccessThroughSMs: true
+              serviceMonitorSelector:
+                matchExpressions: [{key: nktp.nvidia.io/large-target, operator: NotIn, values: ["true"]}]
+              podMonitorSelector:
+                matchExpressions: [{key: nktp.nvidia.io/large-target, operator: NotIn, values: ["true"]}]
+              probeSelector:
+                matchExpressions: [{key: nktp.nvidia.io/large-target, operator: NotIn, values: ["true"]}]
+              scrapeConfigSelector:
+                matchExpressions: [{key: nktp.nvidia.io/large-target, operator: NotIn, values: ["true"]}]
+
+  - it: uses the global image and release namespace with an existing Operator
+    release:
+      namespace: telemetry
+    set:
+      otelcol_image: example.com/collector:global
+      opentelemetry-kube-stack.opentelemetry-operator.enabled: false
+    asserts:
+      - equal:
+          path: metadata.namespace
+          value: telemetry
+      - equal:
+          path: metadata.labels["helm.sh/chart"]
+          value: opentelemetry-kube-stack-0.20.8
+      - equal:
+          path: spec.image
+          value: example.com/collector:global
+
+  - it: passes workload overrides through while resolving Collector configuration separately
+    set:
+      daemonset.otelcol.image: example.com/collector:node
+      daemonset.kubernetes:
+        image: example.com/collector:ignored
+        config: {ignored: true}
+        nodeSelector: {workload: telemetry}
+        tolerations: [{key: dedicated, operator: Exists}]
+        env:
+          - name: NODE_NAME
+            value: custom-node
+          - name: POD_NAMESPACE
+            value: telemetry
+        resources:
+          requests: {cpu: 200m}
+    asserts:
+      - equal:
+          path: spec.image
+          value: example.com/collector:node
+      - equal:
+          path: spec.nodeSelector
+          value: {workload: telemetry}
+      - equal:
+          path: spec.tolerations
+          value: [{key: dedicated, operator: Exists}]
+      - equal:
+          path: spec.env
+          value:
+            - name: NODE_NAME
+              value: custom-node
+            - name: POD_NAMESPACE
+              value: telemetry
+      - equal:
+          path: spec.resources
+          value:
+            requests: {cpu: 200m, memory: 256Mi}
+            limits: {cpu: 500m, memory: 512Mi}
+      - notExists:
+          path: spec.config.ignored
+
+  - it: extends file parsing and changes one destination without altering metrics or own telemetry
+    set:
+      daemonset.otelcol.config.receivers.filelog.include: [/custom/pods/*/*/*.log]
+      daemonset.otelcol.config.receivers.filelog.operators:
+        - type: container
+        - type: json_parser
+      daemonset.otelcol.config.exporters.otlp_http/logs.endpoint: ${env:LOGS_DESTINATION}
+      daemonset.otelcol.config.exporters.otlp_http/logs.headers:
+        x-literal: "{{ preserved }} $$TOKEN"
+    asserts:
+      - equal:
+          path: spec.config.receivers.filelog.include
+          value: [/custom/pods/*/*/*.log]
+      - equal:
+          path: spec.config.receivers.filelog.operators
+          value: [{type: container}, {type: json_parser}]
+      - equal:
+          path: spec.config.exporters["otlp_http/logs"].endpoint
+          value: ${env:LOGS_DESTINATION}
+      - equal:
+          path: spec.config.exporters["otlp_http/logs"].headers
+          value: {x-literal: "{{ preserved }} $$TOKEN"}
+      - equal:
+          path: spec.config.exporters["otlp_http/metrics"].endpoint
+          value: http://nktp-gateway-metrics-collector:4318
+      - equal:
+          path: spec.config.service.telemetry.logs.processors[0].batch.exporter.otlp.endpoint
+          value: http://nktp-watchdog-collector:4318
+
+  - it: replaces own metric exporters independently
+    set:
+      daemonset.otelcol.config.service.telemetry.metrics.readers:
+        - periodic:
+            exporter:
+              otlp: {protocol: grpc, endpoint: http://metrics.example:4317}
+    asserts:
+      - equal:
+          path: spec.config.service.telemetry.metrics.readers
+          value:
+            - periodic:
+                exporter:
+                  otlp: {protocol: grpc, endpoint: http://metrics.example:4317}
+      - equal:
+          path: spec.config.service.telemetry.logs.processors[0].batch.exporter.otlp.endpoint
+          value: http://nktp-watchdog-collector:4318
+      - equal:
+          path: spec.config.service.telemetry.traces.processors[0].batch.exporter.otlp.endpoint
+          value: http://nktp-watchdog-collector:4318
+      - equal:
+          path: spec.config.exporters["otlp_http/logs"].endpoint
+          value: http://nktp-gateway-logs-collector:4318
+
+  - it: replaces own log exporters independently
+    set:
+      daemonset.otelcol.config.service.telemetry.logs.processors:
+        - batch:
+            exporter:
+              otlp: {protocol: grpc, endpoint: http://logs.example:4317}
+    asserts:
+      - equal:
+          path: spec.config.service.telemetry.logs.processors
+          value:
+            - batch:
+                exporter:
+                  otlp: {protocol: grpc, endpoint: http://logs.example:4317}
+      - equal:
+          path: spec.config.service.telemetry.metrics.readers[0].periodic.exporter.otlp.endpoint
+          value: http://nktp-watchdog-collector:4318
+      - equal:
+          path: spec.config.service.telemetry.traces.processors[0].batch.exporter.otlp.endpoint
+          value: http://nktp-watchdog-collector:4318
+      - equal:
+          path: spec.config.exporters["otlp_http/logs"].endpoint
+          value: http://nktp-gateway-logs-collector:4318
+
+  - it: replaces own trace exporters independently
+    set:
+      daemonset.otelcol.config.service.telemetry.traces.processors:
+        - batch:
+            exporter:
+              otlp: {protocol: grpc, endpoint: http://traces.example:4317}
+    asserts:
+      - equal:
+          path: spec.config.service.telemetry.traces.processors
+          value:
+            - batch:
+                exporter:
+                  otlp: {protocol: grpc, endpoint: http://traces.example:4317}
+      - equal:
+          path: spec.config.service.telemetry.metrics.readers[0].periodic.exporter.otlp.endpoint
+          value: http://nktp-watchdog-collector:4318
+      - equal:
+          path: spec.config.service.telemetry.logs.processors[0].batch.exporter.otlp.endpoint
+          value: http://nktp-watchdog-collector:4318
+      - equal:
+          path: spec.config.exporters["otlp_http/logs"].endpoint
+          value: http://nktp-gateway-logs-collector:4318
+
+
+  - it: scrapes only its own local Target Allocator pods directly and exports to watchdog without LGTM
+    set:
+      otel-lgtm.enabled: false
+      daemonset.kubernetes.targetAllocator.replicas: 3
+    asserts:
+      - equal:
+          path: spec.config.receivers["prometheus/targetallocator"].config.scrape_configs
+          value:
+            - job_name: nktp-targetallocator
+              scrape_interval: 30s
+              kubernetes_sd_configs:
+                - role: pod
+                  namespaces:
+                    names: ["${env:POD_NAMESPACE}"]
+                  selectors:
+                    - role: pod
+                      label: app.kubernetes.io/name=nktp-daemonset-targetallocator,app.kubernetes.io/component=opentelemetry-targetallocator
+                      field: spec.nodeName=${env:NODE_NAME}
+              relabel_configs:
+                - source_labels: [__meta_kubernetes_pod_container_port_name]
+                  regex: http
+                  action: keep
+                - source_labels: [__meta_kubernetes_pod_name]
+                  target_label: instance
+      - notExists:
+          path: spec.config.receivers["prometheus/targetallocator"].target_allocator
+      - equal:
+          path: spec.config.service.pipelines["metrics/targetallocator"]
+          value:
+            receivers: [prometheus/targetallocator]
+            processors: [memory_limiter/targetallocator, resource/targetallocator]
+            exporters: [otlp_http/watchdog]
+      - equal:
+          path: spec.config.exporters["otlp_http/watchdog"].endpoint
+          value: http://nktp-watchdog-collector:4318
+
+  - it: adds self-contained monitoring after replacing user pipelines and components
+    set:
+      daemonset.kubernetes.env: [{name: CUSTOM, value: literal}]
+      daemonset.otelcol.config:
+        extensions: null
+        receivers:
+          filelog: null
+          prometheus: null
+          hostmetrics: null
+          otlp:
+            protocols:
+              http: {endpoint: "0.0.0.0:4318"}
+        processors:
+          memory_limiter: null
+          resource/node: null
+        exporters:
+          otlp_http/logs: null
+          otlp_http/metrics: null
+          debug: {}
+        service:
+          extensions: null
+          telemetry: null
+          pipelines:
+            logs: null
+            metrics: null
+            traces/custom: {receivers: [otlp], exporters: [debug]}
+    asserts:
+      - equal:
+          path: spec.config.service.pipelines
+          value:
+            traces/custom: {receivers: [otlp], exporters: [debug]}
+            metrics/targetallocator:
+              receivers: [prometheus/targetallocator]
+              processors: [memory_limiter/targetallocator, resource/targetallocator]
+              exporters: [otlp_http/watchdog]
+      - equal:
+          path: spec.config.receivers.otlp.protocols.http.endpoint
+          value: "0.0.0.0:4318"
+      - equal:
+          path: spec.config.exporters.debug
+          value: {}
+      - equal:
+          path: spec.config.exporters["otlp_http/watchdog"].endpoint
+          value: http://nktp-watchdog-collector:4318
+      - equal:
+          path: spec.config.processors
+          value:
+            memory_limiter/targetallocator:
+              check_interval: 500ms
+              limit_percentage: 80
+              spike_limit_percentage: 25
+            resource/targetallocator:
+              attributes:
+                - key: k8s.node.name
+                  value: ${env:NODE_NAME}
+                  action: upsert
+      - contains:
+          path: spec.env
+          content: {name: CUSTOM, value: literal}
+      - contains:
+          path: spec.env
+          content:
+            name: NODE_NAME
+            valueFrom:
+              fieldRef: {fieldPath: spec.nodeName}
+      - contains:
+          path: spec.env
+          content:
+            name: POD_NAMESPACE
+            valueFrom:
+              fieldRef: {fieldPath: metadata.namespace}
+
+  - it: rejects a user collision with prometheus/targetallocator
+    set:
+      daemonset.otelcol.config.receivers.prometheus/targetallocator: {}
+    asserts:
+      - failedTemplate:
+          errorMessage: daemonset.otelcol.config.receivers[prometheus/targetallocator] is reserved for chart-generated Target Allocator monitoring
+
+  - it: rejects a user collision with memory_limiter/targetallocator
+    set:
+      daemonset.otelcol.config.processors.memory_limiter/targetallocator: {}
+    asserts:
+      - failedTemplate:
+          errorMessage: daemonset.otelcol.config.processors[memory_limiter/targetallocator] is reserved for chart-generated Target Allocator monitoring
+
+  - it: rejects a user collision with resource/targetallocator
+    set:
+      daemonset.otelcol.config.processors.resource/targetallocator: {}
+    asserts:
+      - failedTemplate:
+          errorMessage: daemonset.otelcol.config.processors[resource/targetallocator] is reserved for chart-generated Target Allocator monitoring
+
+  - it: rejects a user collision with otlp_http/watchdog
+    set:
+      daemonset.otelcol.config.exporters.otlp_http/watchdog: {}
+    asserts:
+      - failedTemplate:
+          errorMessage: daemonset.otelcol.config.exporters[otlp_http/watchdog] is reserved for chart-generated Target Allocator monitoring
+
+  - it: rejects a user collision with metrics/targetallocator
+    set:
+      daemonset.otelcol.config.service.pipelines.metrics/targetallocator: {}
+    asserts:
+      - failedTemplate:
+          errorMessage: daemonset.otelcol.config.service.pipelines[metrics/targetallocator] is reserved for chart-generated Target Allocator monitoring
+
+  - it: collects only per-process host metrics through the metrics gateway
+    asserts:
+      - equal:
+          path: spec.config.receivers.hostmetrics
+          value:
+            root_path: /hostfs
+            collection_interval: 1m
+            scrapers:
+              process:
+                resource_attributes:
+                  process.command_line: {enabled: false}
+      - equal:
+          path: spec.config.service.pipelines.metrics
+          value:
+            receivers: [prometheus, hostmetrics]
+            processors: [memory_limiter, resource/node]
+            exporters: [otlp_http/metrics]
+      - notExists:
+          path: spec.hostPID

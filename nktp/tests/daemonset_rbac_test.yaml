@@ -1,0 +1,140 @@
+suite: node collector RBAC
+release:
+  namespace: nktp
+templates:
+  - templates/daemonset-rbac.yaml
+tests:
+  - it: grants read-only discovery without credential access
+    asserts:
+      - hasDocuments:
+          count: 4
+      - equal:
+          path: rules
+          value:
+            - apiGroups: [""]
+              resources: [pods, services, endpoints, namespaces, nodes]
+              verbs: [get, list, watch]
+            - apiGroups: [discovery.k8s.io]
+              resources: [endpointslices]
+              verbs: [get, list, watch]
+            - apiGroups: [monitoring.coreos.com]
+              resources: [servicemonitors, podmonitors, probes, scrapeconfigs]
+              verbs: [get, list, watch]
+        documentSelector:
+          path: kind
+          value: ClusterRole
+      - equal:
+          path: subjects
+          value:
+            - kind: ServiceAccount
+              name: nktp-daemonset-targetallocator
+              namespace: nktp
+        documentSelector:
+          path: kind
+          value: ClusterRoleBinding
+
+  - it: binds a custom allocator account in another release namespace
+    release:
+      namespace: telemetry
+    set:
+      daemonset.kubernetes.targetAllocator.serviceAccount: existing-allocator
+    asserts:
+      - equal:
+          path: metadata.name
+          value: nktp-daemonset-targetallocator-telemetry
+        documentSelector:
+          path: kind
+          value: ClusterRole
+      - equal:
+          path: roleRef
+          value:
+            apiGroup: rbac.authorization.k8s.io
+            kind: ClusterRole
+            name: nktp-daemonset-targetallocator-telemetry
+        documentSelector:
+          path: kind
+          value: ClusterRoleBinding
+      - equal:
+          path: subjects
+          value:
+            - kind: ServiceAccount
+              name: existing-allocator
+              namespace: telemetry
+        documentSelector:
+          path: kind
+          value: ClusterRoleBinding
+
+  - it: grants the collector only namespace pod discovery for Target Allocator metrics
+    asserts:
+      - equal:
+          path: metadata.namespace
+          value: nktp
+        documentSelector:
+          path: kind
+          value: Role
+      - equal:
+          path: rules
+          value:
+            - apiGroups: [""]
+              resources: [pods]
+              verbs: [get, list, watch]
+        documentSelector:
+          path: kind
+          value: Role
+      - equal:
+          path: subjects
+          value:
+            - kind: ServiceAccount
+              name: nktp-daemonset-collector
+              namespace: nktp
+        documentSelector:
+          path: kind
+          value: RoleBinding
+
+  - it: binds a custom collector account in the release namespace
+    release:
+      namespace: telemetry
+    set:
+      daemonset.kubernetes.serviceAccount: existing-collector
+    asserts:
+      - equal:
+          path: metadata.namespace
+          value: telemetry
+        documentSelector:
+          path: kind
+          value: Role
+      - equal:
+          path: subjects
+          value:
+            - kind: ServiceAccount
+              name: existing-collector
+              namespace: telemetry
+        documentSelector:
+          path: kind
+          value: RoleBinding
+      - equal:
+          path: roleRef
+          value:
+            apiGroup: rbac.authorization.k8s.io
+            kind: Role
+            name: nktp-daemonset-targetallocator-metrics
+        documentSelector:
+          path: kind
+          value: RoleBinding
+
+  - it: retains collector discovery permissions with replaced user configuration
+    set:
+      daemonset.otelcol.config.receivers: null
+    asserts:
+      - hasDocuments:
+          count: 4
+      - containsDocument:
+          kind: Role
+          apiVersion: rbac.authorization.k8s.io/v1
+          name: nktp-daemonset-targetallocator-metrics
+          any: true
+      - containsDocument:
+          kind: RoleBinding
+          apiVersion: rbac.authorization.k8s.io/v1
+          name: nktp-daemonset-targetallocator-metrics
+          any: true

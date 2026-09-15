@@ -79,6 +79,52 @@ in the Collector configuration to change the name. Use a literal name so Helm ca
 create the matching Lease. If using another Lease namespace, provision the Lease
 and its RBAC there separately.
 
+### Node collector
+
+The DaemonSet reads pod logs from `/var/log/pods` and sends them to the logs
+gateway. A dedicated Target Allocator assigns monitored metric endpoints only
+to collectors on the same node. Metrics go to
+`http://nktp-gateway-metrics-collector:4318`, which requires the metrics gateway.
+The `hostmetrics` receiver reads host `/proc` through a read-only mount at
+`/hostfs/proc`. Only its `process` scraper is enabled. It collects per-process
+CPU time, physical and virtual memory, and disk I/O every minute, and sends them
+through the metrics gateway. Full process command lines are not exported.
+Restricted processes can have missing metrics or attributes and produce scrape
+errors. The collector does not gain additional Linux capabilities.
+Node exporter remains responsible for other host metrics.
+
+TODO. Add node and journal log collection.
+
+TODO. Add control-plane log collection.
+
+The collector's own metrics, logs and traces go to watchdog.
+Each collector also discovers this DaemonSet's Target Allocator pods on its node
+in the release namespace. It scrapes their HTTP metrics every 30 seconds through
+`metrics/targetallocator` and sends them to watchdog. This pipeline uses its own
+Prometheus receiver and does not depend on Target Allocator assignments.
+The chart adds this pipeline after user configuration, with dedicated processors
+and an exporter. Replacing `daemonset.otelcol.config` does not remove monitoring.
+Its component names are reserved. A conflicting name causes rendering to fail.
+A Target Allocator pod needs a DaemonSet collector on its node to be scraped.
+The collector has read-only pod discovery permissions in the release namespace.
+
+Use `daemonset.otelcol.config` for Collector configuration and
+`daemonset.kubernetes` for Kubernetes workload configuration. The pod-log mount
+is read-only, but host file permissions require the collector to run as root.
+The file reader follows new records and does not persist offsets across restarts.
+Retain `GOMEMLIMIT` and `GOGC` when replacing its environment list.
+The chart adds `NODE_NAME` and `POD_NAMESPACE` if the list omits them.
+
+Setting `daemonset.kubernetes.targetAllocator.enabled` to `false` will cause Helm
+rendering to fail.
+
+Monitoring CRs labeled `nktp.nvidia.io/large-target: "true"` are excluded.
+Unlabeled monitors remain eligible. Targets without a matching collector node
+remain unassigned.
+
+The Target Allocator rejects ServiceMonitor and PodMonitor endpoints that reference
+local bearer-token or TLS files in the Collector container.
+
 ## Managed Dependencies
 
 ### OpenTelemetry and CRDs
@@ -137,6 +183,14 @@ node-exporter:
 
 [grafana/otel-lgtm](https://github.com/grafana/docker-otel-lgtm) is an all-in-one observability backend (Grafana, Loki, Tempo, Prometheus) with OTLP ingest.
 NKTP deploys it by default so that telemetry is viewable immediately after install. Grafana is served on port 3000 of the `lgtm` service, with anonymous admin access (no login).
+
+The default **NKTP DaemonSet** dashboard shows node collector
+throughput, failures, queues, CPU and memory, plus Target Allocator scrape health,
+collector counts and target assignments. Collector panels use self metrics sent
+through watchdog, as do Target Allocator metrics collected by the DaemonSet.
+This does not require the metrics gateway. Target Allocator counts stay separate
+for each replica. Disabling LGTM removes its dashboards. Target Allocator metrics
+continue to flow to the backend configured in watchdog.
 
 **Note:** This container is intended for kicking the tires only. It will not support substantial scale and MUST be disabled for production use:
 
