@@ -5,6 +5,43 @@ The harness runs no-op components without a cluster, or finite binary workloads
 through the Kubernetes Job generator. **Measurements currently support only no-op.**
 Successful Job execution does not verify backend delivery or NKTP performance.
 
+## Local cluster
+
+Requires Docker, Kind, kubectl, Helm, and Task. From the repository root:
+
+```sh
+task scale:up
+task scale:down
+```
+
+`scale:up` creates `nktp-scale` with the [dedicated Kind config](kind-config.yaml)
+if needed, then installs or upgrades the NKTP Helm release in namespace `nktp`
+from the local chart. It prepares chart dependencies and waits for nodes and NKTP
+workloads, including workloads created by the Operator. Each readiness wait has a
+five-minute timeout. Workload readiness does not verify telemetry delivery.
+Chart dependencies are downloaded only when missing or invalid.
+
+Use `HELM_VALUES_FILE=/absolute/path/to/values.yaml` to supply Helm values.
+Relative paths are resolved from `tests/scale/`. Each run applies the current
+chart defaults and the supplied values file. Pass the file on every run that
+needs it. Omitting it restores chart defaults. Tilt is not required.
+
+Run `scale:up` again to apply local chart or values changes to the existing
+cluster. Kind configuration changes require `scale:down` followed by `scale:up`.
+Failed setup leaves the cluster for inspection. After correcting the problem,
+retry `scale:up` or run `scale:down` followed by `scale:up` for a fresh cluster.
+
+Scale commands use only `tests/scale/.kubeconfig` and the `kind-nktp-scale`
+context. For manual access:
+
+```sh
+export KUBECONFIG="$PWD/tests/scale/.kubeconfig"
+```
+
+`scale:down` deletes the scale cluster and its kubeconfig. It does not stop the
+dev Tilt session or delete the dev cluster. The no-op plans below do not require
+`scale:up`.
+
 ## Domain model
 
 | Concept | Meaning |
@@ -73,22 +110,35 @@ executor before any runnable starts.
 
 ## Running
 
-From the repository root:
+From the repository root, run the telemetrygen plan against the default scale
+Kind cluster:
+
+```sh
+task scale:up
+task test:scale -- -plan "$PWD/tests/scale/plans/telemetrygen.yaml"
+task scale:down
+```
+
+The default kubeconfig is `tests/scale/.kubeconfig`, created by `scale:up` for
+context `kind-nktp-scale`. To use another cluster:
+
+```sh
+task test:scale KUBECONFIG=/absolute/path/to/kubeconfig -- -plan "$PWD/tests/scale/plans/telemetrygen.yaml"
+```
+
+Override the default with the Task variable `KUBECONFIG` before `--`, an
+environment variable, or `-kubeconfig PATH` after `--`. The forwarded form
+`-plan PATH KUBECONFIG=/absolute/path/to/kubeconfig` also works. A trailing
+assignment takes precedence over `-kubeconfig`, which overrides the Task or
+environment default. Prefer absolute paths for overrides. Relative paths
+resolve from `tests/scale`. Kubeconfig file lists are rejected.
+
+No-op plans do not require a kubeconfig or cluster:
 
 ```sh
 task test:scale
 task test:scale -- -plan "$PWD/tests/scale/plans/noop.yaml"
-task test:scale -- -plan "$PWD/tests/scale/plans/telemetrygen.yaml"
-task test:scale KUBECONFIG=/absolute/path/to/kubeconfig -- -plan "$PWD/tests/scale/plans/telemetrygen.yaml"
 ```
-
-**The default kubeconfig is `dev/.kubeconfig`.** Override it with the Task variable
-`KUBECONFIG` before `--`, an environment variable, or `-kubeconfig PATH` after `--`.
-The forwarded form `-plan PATH KUBECONFIG=/absolute/path/to/kubeconfig` also works.
-A trailing assignment takes precedence over `-kubeconfig`, which overrides the
-Task or environment default. Prefer absolute paths for overrides. Relative paths
-resolve from `tests/scale`. Kubeconfig file lists are rejected.
-No-op plans do not require a kubeconfig or cluster.
 
 Or from `tests/`:
 
@@ -143,9 +193,9 @@ The harness can be extended with additional generators and measurements.
 - **Kubernetes Job (`job`)** runs a containerized load generator to completion.
   See the [telemetrygen plan](plans/telemetrygen.yaml) for configuration.
 
-Job workloads require an existing cluster, namespace, and their workload
-dependencies. Adjust the linked plan configuration for your environment before
-running. The harness does not provision a cluster.
+The telemetrygen plan uses namespace `nktp` and the NKTP services installed by
+`task scale:up`. When using another cluster, adjust the plan namespace and
+endpoints as needed. The test harness itself does not provision a cluster.
 
 **Jobs and pods are cleaned up before the test returns**, including after failure
 or cancellation. Workload and cleanup errors fail the test.

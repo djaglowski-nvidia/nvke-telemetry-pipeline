@@ -39,8 +39,22 @@ tasks:
     desc: Stop the Tilt session if one is running
     silent: true
     cmds:
-      # Kill the recorded pid only if it is still a tilt process.
-      - test -f .tilt.pid && ps -p "$(cat .tilt.pid)" -o comm= | grep -q tilt && kill "$(cat .tilt.pid)" || true
+      # Task's embedded shell does not implement kill, so use a real shell.
+      # Wait for Tilt to exit so its replacement can bind the same ports.
+      # Match the executable basename because ps may include its full path.
+      - |
+        sh -c '
+          if test -f .tilt.pid && ps -p "$(cat .tilt.pid)" -o comm= | grep -Eq "(^|/)tilt$"; then
+            pid=$(cat .tilt.pid)
+            kill "$pid" 2>/dev/null || true
+            for attempt in 1 2 3 4 5; do
+              ps -p "$pid" -o comm= | grep -Eq "(^|/)tilt$" || exit 0
+              sleep 1
+            done
+            echo "Tilt did not stop; retaining its PID and log." >&2
+            exit 1
+          fi
+        '
       - rm -f .tilt.pid .tilt.log
 
   cluster:up:

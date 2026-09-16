@@ -62,3 +62,18 @@ LICENSE
 NOTICE
 RELEASE.md
 ```
+
+## Submodule tooling
+
+When a project submodule needs environment bootstrap or tool installation beyond
+the main development workflow, define a minimal `Taskfile.yml` in that submodule
+with the required automation. Include it in the [root Taskfile](../../Taskfile.yml)
+with `dir` set to the submodule directory. The root exposes namespaced commands
+while the submodule owns their implementation.
+
+Examples:
+
+- [OCCT](../../occt/Taskfile.yml) owns its test and snapshot update commands,
+  exposed as `task occt:test` and `task occt:update`.
+- [Scale tests](../../tests/scale/Taskfile.yml) own cluster bootstrap, Helm
+  deployment, and teardown, exposed as `task scale:up` and `task scale:down`.

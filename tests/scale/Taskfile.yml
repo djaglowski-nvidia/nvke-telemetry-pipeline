@@ -1,0 +1,112 @@
+version: '3'
+
+vars:
+  HELM_VALUES_FILE: '{{.HELM_VALUES_FILE | default ""}}'
+
+tasks:
+  up:
+    desc: Create or reuse the scale test Kind cluster and deploy NKTP
+    deps: [check-local-deps]
+    preconditions:
+      - sh: test -f kind-config.yaml
+        msg: 'Kind config file not found: tests/scale/kind-config.yaml'
+      - sh: '{{if .HELM_VALUES_FILE}}test -f {{.HELM_VALUES_FILE | shellQuote}}{{else}}true{{end}}'
+        msg: 'Helm values file not found (paths are relative to tests/scale/)'
+      - sh: docker info >/dev/null 2>&1
+        msg: 'Docker daemon is not running. Start it and retry.'
+      - sh: test -z {{.CLI_ARGS | shellQuote}}
+        msg: 'Use HELM_VALUES_FILE=<file> to supply Helm values.'
+    silent: true
+    cmds:
+      - defer: |
+          {{if .EXIT_CODE}}
+          echo "Scale setup failed. Inspect the output and retry task scale:up. To recreate the cluster, run task scale:down first." >&2
+          {{end}}
+      - task: chart:deps
+      - |
+        clusters=$(kind get clusters) || exit $?
+        if printf '%s\n' "$clusters" | grep -Fxq -- nktp-scale; then
+          echo "Cluster nktp-scale already exists. Updating NKTP from the local chart."
+        else
+          kind create cluster --name nktp-scale --config kind-config.yaml --kubeconfig .kubeconfig || exit $?
+        fi
+      - kind export kubeconfig --name nktp-scale --kubeconfig .kubeconfig
+      - kubectl --kubeconfig .kubeconfig --context kind-nktp-scale wait --for=condition=Ready nodes --all --timeout=5m
+      - helm upgrade --install nktp ../../nktp --reset-values --namespace nktp --create-namespace --kubeconfig .kubeconfig --kube-context kind-nktp-scale --wait --timeout 5m {{if .HELM_VALUES_FILE}}--values {{.HELM_VALUES_FILE | shellQuote}}{{end}}
+      - task: wait-ready
+      - 'echo "NKTP is ready. Kubeconfig: $(pwd)/.kubeconfig"'
+
+  down:
+    desc: Delete the scale test Kind cluster
+    cmds:
+      - kind delete cluster --name nktp-scale --kubeconfig .kubeconfig
+      - rm -f .kubeconfig
+
+  chart:deps:
+    internal: true
+    silent: true
+    cmds:
+      - |
+        dependencies_ready() {
+          dependencies=$(helm dependency list ../../nktp --max-col-width 0) || exit $?
+          # Helm can report missing or wrong versions with exit code zero.
+          printf '%s\n' "$dependencies" | awk -F '\t' '
+            /^[[:space:]]*$/ { next }
+            { for (i = 1; i <= NF; i++) gsub(/^[[:space:]]+|[[:space:]]+$/, "", $i) }
+            NR == 1 && NF == 4 && $1 == "NAME" && $2 == "VERSION" && $3 == "REPOSITORY" && $4 == "STATUS" { header = 1; next }
+            !header || NF != 4 || $1 == "" || $2 == "" || $4 == "" { malformed = 1; next }
+            { rows++; if ($4 != "ok" && $4 != "unpacked") unhealthy = 1 }
+            END { if (malformed || !rows) exit 2; exit unhealthy }
+          '
+        }
+        dependency_status=0
+        dependencies_ready || dependency_status=$?
+        case "$dependency_status" in
+          0) exit 0 ;;
+          1) ;;
+          *) echo "Unexpected Helm dependency list output." >&2; exit "$dependency_status" ;;
+        esac
+        helm repo add open-telemetry https://open-telemetry.github.io/opentelemetry-helm-charts --force-update || exit $?
+        helm repo add prometheus-community https://prometheus-community.github.io/helm-charts --force-update || exit $?
+        helm dependency build ../../nktp --skip-refresh || exit $?
+        dependencies_ready || { echo "Chart dependencies are not ready after building." >&2; exit 1; }
+
+  wait-ready:
+    internal: true
+    silent: true
+    cmds:
+      # Helm does not wait for workloads created later by the Operator.
+      - |
+        kubectl_scale() {
+          kubectl --kubeconfig .kubeconfig --context kind-nktp-scale --namespace nktp "$@"
+        }
+        collectors=$(kubectl_scale get opentelemetrycollectors -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.spec.mode}{" "}{.spec.targetAllocator.enabled}{"\n"}{end}') || exit $?
+        test -n "$collectors" || { echo "No NKTP collectors found in namespace nktp." >&2; exit 1; }
+        while read -r name mode allocator; do
+          case "$mode" in
+            deployment|statefulset|daemonset)
+              kubectl_scale wait --for=create "$mode/$name-collector" --timeout=5m || exit $?
+              ;;
+            sidecar) ;;
+            *) echo "Unsupported collector mode: $mode" >&2; exit 1 ;;
+          esac
+          if [ "$allocator" = true ]; then
+            kubectl_scale wait --for=create "deployment/$name-targetallocator" --timeout=5m || exit $?
+          fi
+        done <<EOF
+        $collectors
+        EOF
+        workloads=$(kubectl_scale get deployment,statefulset,daemonset -o name) || exit $?
+        test -n "$workloads" || { echo "No NKTP workloads found in namespace nktp." >&2; exit 1; }
+        kubectl_scale rollout status $workloads --timeout=5m
+
+  check-local-deps:
+    internal: true
+    silent: true
+    cmds:
+      - |
+        missing=0
+        for tool in docker kind kubectl helm; do
+          command -v "$tool" >/dev/null || { echo "missing: $tool"; missing=1; }
+        done
+        exit $missing

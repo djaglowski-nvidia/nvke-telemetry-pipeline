@@ -5,7 +5,7 @@ tasks:
     desc: 'Run a scale test plan (no cluster required for no-op components)'
     dir: tests
     cmds:
-      - go test -tags scale -count=1 -v -timeout=5m -run '^TestRun$' ./scale -args -kubeconfig {{.KUBECONFIG | default (printf "%s/dev/.kubeconfig" .ROOT_DIR) | shellQuote}} {{.CLI_ARGS}}
+      - go test -tags scale -count=1 -v -timeout=5m -run '^TestRun$' ./scale -args -kubeconfig {{.KUBECONFIG | default (printf "%s/tests/scale/.kubeconfig" .ROOT_DIR) | shellQuote}} {{.CLI_ARGS}}
 
   test:
     desc: 'Run the NKTP chart unit tests (pass flags: task test -- -u)'
@@ -16,6 +16,9 @@ tasks:
       - helm unittest {{.CLI_ARGS}} nktp
 
 includes:
+  scale:
+    taskfile: ./tests/scale/Taskfile.yml
+    dir: ./tests/scale
   dev:
     taskfile: ./dev/Taskfile.yml
     dir: ./dev

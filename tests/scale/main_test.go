@@ -17,7 +17,7 @@ import (
 var planPath = flag.String("plan", "plans/noop.yaml", "scale test plan file")
 
 // kubeconfigPath selects one file for every Job generator in the plan.
-var kubeconfigPath = flag.String("kubeconfig", os.Getenv("KUBECONFIG"), "kubeconfig file (default: dev/.kubeconfig)")
+var kubeconfigPath = flag.String("kubeconfig", os.Getenv("KUBECONFIG"), "kubeconfig file (default: tests/scale/.kubeconfig)")
 
 // TestRun loads a plan and logs consolidated reports after every stage completes.
 // The initial no-op implementations require neither Kubernetes nor a load backend.
@@ -57,7 +57,7 @@ func resolveKubeconfig(path string, args []string) (string, error) {
 	}
 	if path == "" {
 		// Go runs this package's tests from tests/scale.
-		path = "../../dev/.kubeconfig"
+		path = ".kubeconfig"
 	}
 	if paths := filepath.SplitList(path); len(paths) > 1 {
 		return "", fmt.Errorf("kubeconfig %q lists multiple files: pass one path", path)

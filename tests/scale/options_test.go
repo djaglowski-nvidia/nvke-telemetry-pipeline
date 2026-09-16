@@ -19,7 +19,7 @@ func TestResolveKubeconfig(t *testing.T) {
 		want      string
 		wantError string
 	}{
-		{name: "dev default", want: "../../dev/.kubeconfig"},
+		{name: "scale default", want: ".kubeconfig"},
 		{name: "explicit path", path: "/tmp/custom kubeconfig", want: "/tmp/custom kubeconfig"},
 		{name: "relative path", path: "fixtures/kubeconfig", want: "fixtures/kubeconfig"},
 		{name: "trailing assignment overrides default", path: "/tmp/default", args: []string{"KUBECONFIG=/tmp/selected kubeconfig"}, want: "/tmp/selected kubeconfig"},
