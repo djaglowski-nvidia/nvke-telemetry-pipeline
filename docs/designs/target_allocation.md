@@ -11,5 +11,5 @@ Disabling or removing target allocation must fail Helm rendering with a clear
 message. Grant discovery permissions to the Target Allocator service account.
 Collectors retain the permissions needed to scrape their assigned endpoints.
 
-Watchdog and the DaemonSet enforce this requirement. Apply the same requirement
-when integrating the large-target metrics workload.
+Watchdog monitors the large-target Target Allocator through its own allocated
+scrape jobs. The large-target Collectors scrape application targets.

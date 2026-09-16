@@ -1,0 +1,211 @@
+suite: large-target metrics
+release:
+  namespace: nktp
+templates:
+  - templates/large-target-metrics.yaml
+tests:
+  - it: reserves memory for large-target scrapes
+    asserts:
+      - hasDocuments:
+          count: 1
+      - equal:
+          path: "metadata.name"
+          value: "nktp-large-target-metrics"
+        documentIndex: 0
+      - equal:
+          path: "spec.mode"
+          value: "statefulset"
+        documentIndex: 0
+      - equal:
+          path: "spec.resources.requests.memory"
+          value: "8Gi"
+        documentIndex: 0
+      - equal:
+          path: "spec.resources.limits.memory"
+          value: "16Gi"
+        documentIndex: 0
+      - equal:
+          path: "spec.targetAllocator.allocationStrategy"
+          value: "consistent-hashing"
+        documentIndex: 0
+      - equal:
+          path: "spec.config.receivers.prometheus.config.global.external_labels.nktp_metrics_pool"
+          value: large-target
+        documentIndex: 0
+      - equal:
+          path: "spec.config.receivers.prometheus.config.scrape_configs"
+          value: []
+        documentIndex: 0
+      - equal:
+          path: "spec.config.service.pipelines.metrics"
+          value: {"receivers": ["prometheus"], "processors": ["memory_limiter"], "exporters": ["otlp_http"]}
+        documentIndex: 0
+      - equal:
+          path: "spec.config.exporters.otlp_http.endpoint"
+          value: "http://nktp-gateway-metrics-collector:4318"
+        documentIndex: 0
+      - equal:
+          path: "spec.targetAllocator.prometheusCR.denyFSAccessThroughSMs"
+          value: true
+        documentIndex: 0
+      - equal:
+          path: "spec.targetAllocator.prometheusCR.serviceMonitorSelector"
+          value: {"matchExpressions": [{"key": "nktp.nvidia.io/large-target", "operator": "In", "values": ["true"]}]}
+        documentIndex: 0
+      - equal:
+          path: "spec.targetAllocator.prometheusCR.podMonitorSelector"
+          value: {"matchExpressions": [{"key": "nktp.nvidia.io/large-target", "operator": "In", "values": ["true"]}]}
+        documentIndex: 0
+      - equal:
+          path: "spec.targetAllocator.prometheusCR.probeSelector"
+          value: {"matchExpressions": [{"key": "nktp.nvidia.io/large-target", "operator": "In", "values": ["true"]}]}
+        documentIndex: 0
+      - equal:
+          path: "spec.targetAllocator.prometheusCR.scrapeConfigSelector"
+          value: {"matchExpressions": [{"key": "nktp.nvidia.io/large-target", "operator": "In", "values": ["true"]}]}
+        documentIndex: 0
+      - equal:
+          path: "spec.config.service.telemetry.metrics.readers[0].periodic.exporter.otlp"
+          value: {"protocol": "http/protobuf", "endpoint": "http://nktp-watchdog-collector:4318"}
+        documentIndex: 0
+      - equal:
+          path: "spec.config.service.telemetry.logs.processors[0].batch.exporter.otlp"
+          value: {"protocol": "http/protobuf", "endpoint": "http://nktp-watchdog-collector:4318"}
+        documentIndex: 0
+      - equal:
+          path: "spec.config.service.telemetry.traces.processors[0].batch.exporter.otlp"
+          value: {"protocol": "http/protobuf", "endpoint": "http://nktp-watchdog-collector:4318"}
+        documentIndex: 0
+  - it: sets independent allocator security contexts and resource budgets
+    asserts:
+      - equal:
+          path: spec.targetAllocator.resources
+          value:
+            requests: {cpu: 100m, memory: 256Mi}
+            limits: {cpu: "1", memory: 1Gi}
+      - equal:
+          path: spec.targetAllocator.podSecurityContext
+          value:
+            runAsNonRoot: true
+            seccompProfile: {type: RuntimeDefault}
+      - equal:
+          path: spec.targetAllocator.securityContext
+          value:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+  - it: preserves native config and workload map overrides for large_target_metrics
+    set:
+      otelcol_image: "example.com/collector:global"
+      large_target_metrics.otelcol.image: "example.com/collector:custom"
+      large_target_metrics.kubernetes.image: "ignored:latest"
+      large_target_metrics.kubernetes.config: {"ignored": true}
+      large_target_metrics.kubernetes.nodeSelector: {"telemetry": "large"}
+      large_target_metrics.kubernetes.resources.requests.cpu: "750m"
+      large_target_metrics.otelcol.config.exporters.otlp_http.endpoint: "${env:METRICS_ENDPOINT}"
+      large_target_metrics.otelcol.config.receivers.prometheus.config.scrape_configs: [{"job_name": "custom", "static_configs": [{"targets": ["${env:SCRAPE_TARGET}"]}], "relabel_configs": [{"source_labels": ["__address__"], "target_label": "instance", "replacement": "$1"}]}]
+    asserts:
+      - equal:
+          path: "spec.image"
+          value: "example.com/collector:custom"
+        documentIndex: 0
+      - equal:
+          path: "spec.nodeSelector"
+          value: {"telemetry": "large"}
+        documentIndex: 0
+      - equal:
+          path: "spec.resources.requests.cpu"
+          value: "750m"
+        documentIndex: 0
+      - equal:
+          path: "spec.resources.requests.memory"
+          value: "8Gi"
+        documentIndex: 0
+      - notExists:
+          path: "spec.config.ignored"
+        documentIndex: 0
+      - equal:
+          path: "spec.config.exporters.otlp_http.endpoint"
+          value: "${env:METRICS_ENDPOINT}"
+        documentIndex: 0
+      - equal:
+          path: "spec.config.receivers.prometheus.config.scrape_configs[0].static_configs[0].targets"
+          value: ["${env:SCRAPE_TARGET}"]
+        documentIndex: 0
+      - equal:
+          path: "spec.config.receivers.prometheus.config.scrape_configs[0].relabel_configs[0].replacement"
+          value: "$1"
+        documentIndex: 0
+  - it: uses the global image for large_target_metrics
+    set:
+      otelcol_image: "example.com/collector:global"
+    asserts:
+      - equal:
+          path: "spec.image"
+          value: "example.com/collector:global"
+        documentIndex: 0
+  - it: replaces all own telemetry exporter lists with gRPC for large_target_metrics
+    set:
+      large_target_metrics.otelcol.config.service.telemetry.metrics.readers: [{"periodic": {"exporter": {"otlp": {"protocol": "grpc", "endpoint": "http://own-metrics:4317"}}}}]
+      large_target_metrics.otelcol.config.service.telemetry.logs.processors: [{"batch": {"exporter": {"otlp": {"protocol": "grpc", "endpoint": "http://own-logs:4317"}}}}]
+      large_target_metrics.otelcol.config.service.telemetry.traces.processors: [{"batch": {"exporter": {"otlp": {"protocol": "grpc", "endpoint": "http://own-traces:4317"}}}}]
+    asserts:
+      - equal:
+          path: "spec.config.service.telemetry.metrics.readers"
+          value: [{"periodic": {"exporter": {"otlp": {"protocol": "grpc", "endpoint": "http://own-metrics:4317"}}}}]
+        documentIndex: 0
+      - equal:
+          path: "spec.config.service.telemetry.logs.processors"
+          value: [{"batch": {"exporter": {"otlp": {"protocol": "grpc", "endpoint": "http://own-logs:4317"}}}}]
+        documentIndex: 0
+      - equal:
+          path: "spec.config.service.telemetry.traces.processors"
+          value: [{"batch": {"exporter": {"otlp": {"protocol": "grpc", "endpoint": "http://own-traces:4317"}}}}]
+        documentIndex: 0
+      - equal:
+          path: "spec.config.exporters.otlp_http.endpoint"
+          value: "http://nktp-gateway-metrics-collector:4318"
+        documentIndex: 0
+
+  - it: renders only the workload pipeline and leaves TA monitoring to watchdog
+    asserts:
+      - notExists:
+          path: spec.config.connectors
+      - equal:
+          path: spec.config.service.pipelines
+          value:
+            metrics:
+              receivers: [prometheus]
+              processors: [memory_limiter]
+              exporters: [otlp_http]
+      - notExists:
+          path: spec.config.exporters["otlp_http/watchdog"]
+      - equal:
+          path: spec.targetAllocator.observability.metrics.enableMetrics
+          value: false
+
+  - it: preserves user processing without inserting a routing connector
+    set:
+      large_target_metrics.otelcol.config.service.pipelines.metrics.processors: [memory_limiter, resource/custom]
+      large_target_metrics.otelcol.config.processors.resource/custom: {attributes: []}
+    asserts:
+      - equal:
+          path: spec.config.service.pipelines.metrics.processors
+          value: [memory_limiter, resource/custom]
+      - equal:
+          path: spec.config.service.pipelines.metrics.receivers
+          value: [prometheus]
+
+  - it: rejects disabled target allocation
+    set:
+      large_target_metrics.kubernetes.targetAllocator.enabled: false
+    asserts:
+      - failedTemplate:
+          errorMessage: large_target_metrics.kubernetes.targetAllocator.enabled must be true to assign each scrape target to one Collector replica
+
+  - it: rejects removed target allocation
+    set:
+      large_target_metrics.kubernetes.targetAllocator: null
+    asserts:
+      - failedTemplate:
+          errorMessage: large_target_metrics.kubernetes.targetAllocator.enabled must be true to assign each scrape target to one Collector replica

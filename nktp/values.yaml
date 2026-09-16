@@ -109,10 +109,28 @@ watchdog:
                     target_label: namespace
                   - source_labels: [__meta_kubernetes_endpointslice_address_target_name]
                     target_label: pod
+              # TODO: Replace both TA scrape jobs with native TA OTLP metrics export
+              # to watchdog after an aligned Operator, Target Allocator and CRD upgrade.
               - job_name: nktp-watchdog-targetallocator
                 scrape_interval: 30s
                 static_configs:
                   - targets: [nktp-watchdog-targetallocator:80]
+              # Watchdog's allocator assigns each TA Pod to one watchdog replica.
+              - job_name: nktp-large-target-metrics-targetallocator
+                scrape_interval: 30s
+                kubernetes_sd_configs:
+                  - role: pod
+                    namespaces:
+                      own_namespace: true
+                    selectors:
+                      - role: pod
+                        label: app.kubernetes.io/name=nktp-large-target-metrics-targetallocator,app.kubernetes.io/component=opentelemetry-targetallocator
+                relabel_configs:
+                  - source_labels: [__meta_kubernetes_pod_container_port_name]
+                    regex: http
+                    action: keep
+                  - source_labels: [__meta_kubernetes_pod_name]
+                    target_label: instance
       processors:
         memory_limiter:
           check_interval: 500ms # Poll Go heap Alloc. Bursts can allocate between checks.
@@ -690,13 +708,172 @@ daemonset:
             processors: [memory_limiter, resource/node]
             exporters: [otlp_http/metrics]
 
-# Cluster-level scraper pool.
-cluster_metrics:
-  kubernetes: {}
+# Scrapes monitoring CRs labeled nktp.nvidia.io/large-target: "true".
+large_target_metrics:
+  kubernetes:
+    mode: statefulset # The Target Allocator uses stable Collector identities.
+    replicas: 2
+    targetAllocator:
+      enabled: true
+      replicas: 1
+      allocationStrategy: consistent-hashing
+      resources:
+        requests:
+          cpu: 100m
+          memory: 256Mi # Discovery cache size depends on Kubernetes objects and target count.
+        limits:
+          cpu: "1"
+          memory: 1Gi
+      podSecurityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: [ALL]
+      observability:
+        metrics:
+          enableMetrics: false # Watchdog owns the explicit TA scrape job.
+      prometheusCR:
+        enabled: true
+        denyFSAccessThroughSMs: true # Reject monitor endpoints that reference files in the Collector container.
+        serviceMonitorSelector:
+          matchExpressions:
+            - key: nktp.nvidia.io/large-target
+              operator: In
+              values: ["true"]
+        podMonitorSelector:
+          matchExpressions:
+            - key: nktp.nvidia.io/large-target
+              operator: In
+              values: ["true"]
+        probeSelector:
+          matchExpressions:
+            - key: nktp.nvidia.io/large-target
+              operator: In
+              values: ["true"]
+        scrapeConfigSelector:
+          matchExpressions:
+            - key: nktp.nvidia.io/large-target
+              operator: In
+              values: ["true"]
+    autoscaler:
+      minReplicas: 2
+      maxReplicas: 16
+      targetCPUUtilization: 75
+      targetMemoryUtilization: 100 # Scale at 8Gi working set. The limiter checks Go heap separately.
+    resources:
+      requests:
+        cpu: 500m
+        memory: 8Gi # Reserve memory for parsing and retained scrape data.
+      limits:
+        cpu: "2"
+        memory: 16Gi # Allow headroom for overlapping scrapes and the exporter queue.
+    env:
+      - name: GOMEMLIMIT
+        # Large responses allocate before the memory limiter, while earlier scrapes may remain queued.
+        # Use half the container limit as a soft runtime target to leave room for overlapping allocations.
+        value: 8GiB
+      - name: GOGC
+        value: "50" # More frequent GC trades CPU for lower heap growth.
+    podDisruptionBudget:
+      maxUnavailable: 25%
+    terminationGracePeriodSeconds: 60
+    topologySpreadConstraints:
+      - maxSkew: 1
+        topologyKey: topology.kubernetes.io/zone
+        whenUnsatisfiable: ScheduleAnyway
+        labelSelector:
+          matchLabels:
+            app.kubernetes.io/name: nktp-large-target-metrics-collector
+      - maxSkew: 1
+        topologyKey: kubernetes.io/hostname
+        whenUnsatisfiable: ScheduleAnyway
+        labelSelector:
+          matchLabels:
+            app.kubernetes.io/name: nktp-large-target-metrics-collector
+    podSecurityContext:
+      runAsNonRoot: true
+      seccompProfile:
+        type: RuntimeDefault
+    securityContext:
+      allowPrivilegeEscalation: false
+      readOnlyRootFilesystem: true
+      capabilities:
+        drop: [ALL]
   otelcol:
     # Set a custom image for this workload only.
     # image: otel/opentelemetry-collector-k8s:0.159.0
-    config: {}
+    config:
+      extensions:
+        health_check:
+          endpoint: 0.0.0.0:13133
+      receivers:
+        prometheus:
+          config:
+            global:
+              # Defaults for allocator jobs. Monitor-specific limits can override them.
+              sample_limit: 1000000 # Samples after metric relabeling, per scrape.
+              body_size_limit: 1GiB # Bound the uncompressed response buffer before parsing.
+              label_limit: 64 # Bound label-map growth per sample.
+              label_name_length_limit: 256 # Bytes per label name.
+              label_value_length_limit: 4096 # Bytes per label value.
+              external_labels:
+                nktp_metrics_pool: large-target # Identifies this pool's scraped metrics.
+            # The Target Allocator supplies scrape jobs and assigned targets from monitoring CRs.
+            scrape_configs: []
+      processors:
+        memory_limiter:
+          check_interval: 500ms # Poll Go heap Alloc. Bursts can allocate between checks.
+          limit_percentage: 80 # Hard heap threshold, 12.8Gi. The Go runtime target is 8GiB.
+          spike_limit_percentage: 25 # Subtract from hard threshold for soft refusal at 55% (8.8Gi).
+      exporters:
+        otlp_http:
+          endpoint: http://nktp-gateway-metrics-collector:4318
+          retry_on_failure:
+            max_elapsed_time: 30m
+          sending_queue:
+            sizer: bytes # Counts serialized bytes. Go heap use can be several times larger.
+            queue_size: 2147483648 # 2GiB serialized. Whole scrapes enter before batch splitting.
+            num_consumers: 32 # Export concurrency. Idle worker slots hold no batch payload.
+            batch:
+              sizer: bytes # Batch sizes use serialized bytes, matching queue accounting.
+              min_size: 1048576 # Batch at 1MiB to amortize export overhead.
+              max_size: 2097152 # Split above 2MiB serialized. Decoded heap can be larger.
+              flush_timeout: 1s # Flush partial batches to limit low-volume buffering time.
+      service:
+        extensions: [health_check]
+        telemetry:
+          resource:
+            service.name: nktp-large-target-metrics
+          metrics:
+            readers:
+              - periodic:
+                  exporter:
+                    otlp:
+                      protocol: http/protobuf
+                      endpoint: http://nktp-watchdog-collector:4318
+          logs:
+            processors:
+              - batch:
+                  exporter:
+                    otlp:
+                      protocol: http/protobuf
+                      endpoint: http://nktp-watchdog-collector:4318
+          traces:
+            processors:
+              - batch:
+                  exporter:
+                    otlp:
+                      protocol: http/protobuf
+                      endpoint: http://nktp-watchdog-collector:4318
+        pipelines:
+          metrics:
+            receivers: [prometheus]
+            processors: [memory_limiter]
+            exporters: [otlp_http]
 
 # Cluster event reader. One elected replica watches Kubernetes Events.
 cluster_events:

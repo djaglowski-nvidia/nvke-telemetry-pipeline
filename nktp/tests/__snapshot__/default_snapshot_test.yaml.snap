@@ -885,6 +885,234 @@ matches the snapshot with default values:
           whenUnsatisfiable: ScheduleAnyway
       upgradeStrategy: automatic
   15: |
+    apiVersion: rbac.authorization.k8s.io/v1
+    kind: ClusterRole
+    metadata:
+      name: nktp-large-target-metrics-targetallocator-NAMESPACE
+    rules:
+      - apiGroups:
+          - ""
+        resources:
+          - pods
+          - services
+          - endpoints
+          - namespaces
+          - nodes
+        verbs:
+          - get
+          - list
+          - watch
+      - apiGroups:
+          - discovery.k8s.io
+        resources:
+          - endpointslices
+        verbs:
+          - get
+          - list
+          - watch
+      - apiGroups:
+          - monitoring.coreos.com
+        resources:
+          - servicemonitors
+          - podmonitors
+          - probes
+          - scrapeconfigs
+        verbs:
+          - get
+          - list
+          - watch
+  16: |
+    apiVersion: rbac.authorization.k8s.io/v1
+    kind: ClusterRoleBinding
+    metadata:
+      name: nktp-large-target-metrics-targetallocator-NAMESPACE
+    roleRef:
+      apiGroup: rbac.authorization.k8s.io
+      kind: ClusterRole
+      name: nktp-large-target-metrics-targetallocator-NAMESPACE
+    subjects:
+      - kind: ServiceAccount
+        name: nktp-large-target-metrics-targetallocator
+        namespace: NAMESPACE
+  17: |
+    apiVersion: opentelemetry.io/v1beta1
+    kind: OpenTelemetryCollector
+    metadata:
+      labels:
+        helm.sh/chart: opentelemetry-kube-stack-0.20.8
+      name: nktp-large-target-metrics
+      namespace: NAMESPACE
+    spec:
+      autoscaler:
+        maxReplicas: 16
+        minReplicas: 2
+        targetCPUUtilization: 75
+        targetMemoryUtilization: 100
+      config:
+        exporters:
+          otlp_http:
+            endpoint: http://nktp-gateway-metrics-collector:4318
+            retry_on_failure:
+              max_elapsed_time: 30m
+            sending_queue:
+              batch:
+                flush_timeout: 1s
+                max_size: 2097152
+                min_size: 1048576
+                sizer: bytes
+              num_consumers: 32
+              queue_size: 2147483648
+              sizer: bytes
+        extensions:
+          health_check:
+            endpoint: 0.0.0.0:13133
+        processors:
+          memory_limiter:
+            check_interval: 500ms
+            limit_percentage: 80
+            spike_limit_percentage: 25
+        receivers:
+          prometheus:
+            config:
+              global:
+                body_size_limit: 1GiB
+                external_labels:
+                  nktp_metrics_pool: large-target
+                label_limit: 64
+                label_name_length_limit: 256
+                label_value_length_limit: 4096
+                sample_limit: 1000000
+              scrape_configs: []
+        service:
+          extensions:
+            - health_check
+          pipelines:
+            metrics:
+              exporters:
+                - otlp_http
+              processors:
+                - memory_limiter
+              receivers:
+                - prometheus
+          telemetry:
+            logs:
+              processors:
+                - batch:
+                    exporter:
+                      otlp:
+                        endpoint: http://nktp-watchdog-collector:4318
+                        protocol: http/protobuf
+            metrics:
+              readers:
+                - periodic:
+                    exporter:
+                      otlp:
+                        endpoint: http://nktp-watchdog-collector:4318
+                        protocol: http/protobuf
+            resource:
+              service.name: nktp-large-target-metrics
+            traces:
+              processors:
+                - batch:
+                    exporter:
+                      otlp:
+                        endpoint: http://nktp-watchdog-collector:4318
+                        protocol: http/protobuf
+      env:
+        - name: GOMEMLIMIT
+          value: 8GiB
+        - name: GOGC
+          value: "50"
+      image: otel/opentelemetry-collector-k8s:0.159.0
+      managementState: managed
+      mode: statefulset
+      podDisruptionBudget:
+        maxUnavailable: 25%
+      podSecurityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      replicas: 2
+      resources:
+        limits:
+          cpu: "2"
+          memory: 16Gi
+        requests:
+          cpu: 500m
+          memory: 8Gi
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop:
+            - ALL
+        readOnlyRootFilesystem: true
+      targetAllocator:
+        allocationStrategy: consistent-hashing
+        enabled: true
+        observability:
+          metrics:
+            enableMetrics: false
+        podSecurityContext:
+          runAsNonRoot: true
+          seccompProfile:
+            type: RuntimeDefault
+        prometheusCR:
+          denyFSAccessThroughSMs: true
+          enabled: true
+          podMonitorSelector:
+            matchExpressions:
+              - key: nktp.nvidia.io/large-target
+                operator: In
+                values:
+                  - "true"
+          probeSelector:
+            matchExpressions:
+              - key: nktp.nvidia.io/large-target
+                operator: In
+                values:
+                  - "true"
+          scrapeConfigSelector:
+            matchExpressions:
+              - key: nktp.nvidia.io/large-target
+                operator: In
+                values:
+                  - "true"
+          serviceMonitorSelector:
+            matchExpressions:
+              - key: nktp.nvidia.io/large-target
+                operator: In
+                values:
+                  - "true"
+        replicas: 1
+        resources:
+          limits:
+            cpu: "1"
+            memory: 1Gi
+          requests:
+            cpu: 100m
+            memory: 256Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+              - ALL
+          readOnlyRootFilesystem: true
+      terminationGracePeriodSeconds: 60
+      topologySpreadConstraints:
+        - labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: nktp-large-target-metrics-collector
+          maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+        - labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: nktp-large-target-metrics-collector
+          maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+      upgradeStrategy: automatic
+  18: |
     apiVersion: v1
     data:
       nktp.yaml: |
@@ -901,7 +1129,7 @@ matches the snapshot with default values:
     kind: ConfigMap
     metadata:
       name: lgtm-dashboard-provider
-  16: |
+  19: |
     apiVersion: v1
     data:
       nktp-cluster-events.json: |
@@ -1892,6 +2120,504 @@ matches the snapshot with default values:
             }
           ]
         }
+      nktp-large-target-metrics.json: |
+        {
+          "uid": "nktp-large-target-metrics",
+          "title": "NKTP Large-target Metrics",
+          "schemaVersion": 39,
+          "refresh": "30s",
+          "time": {
+            "from": "now-30m",
+            "to": "now"
+          },
+          "panels": [
+            {
+              "id": 1,
+              "type": "timeseries",
+              "title": "Received metrics /s",
+              "gridPos": {
+                "x": 0,
+                "y": 0,
+                "w": 12,
+                "h": 7
+              },
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0
+                }
+              },
+              "targets": [
+                {
+                  "expr": "sum by (instance) (rate(otelcol_receiver_accepted_metric_points_total{job=\"nktp-large-target-metrics\"}[5m]))",
+                  "legendFormat": "{{instance}}",
+                  "refId": "A"
+                }
+              ]
+            },
+            {
+              "id": 2,
+              "type": "timeseries",
+              "title": "Exported metrics /s",
+              "gridPos": {
+                "x": 12,
+                "y": 0,
+                "w": 12,
+                "h": 7
+              },
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0
+                }
+              },
+              "targets": [
+                {
+                  "expr": "sum by (instance) (rate(otelcol_exporter_sent_metric_points_total{job=\"nktp-large-target-metrics\"}[5m]))",
+                  "legendFormat": "{{instance}}",
+                  "refId": "A"
+                }
+              ]
+            },
+            {
+              "id": 3,
+              "type": "timeseries",
+              "title": "Export failures /s",
+              "gridPos": {
+                "x": 0,
+                "y": 7,
+                "w": 12,
+                "h": 7
+              },
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0
+                }
+              },
+              "targets": [
+                {
+                  "expr": "sum by (instance) (rate(otelcol_exporter_send_failed_metric_points_total{job=\"nktp-large-target-metrics\"}[5m]))",
+                  "legendFormat": "{{instance}}",
+                  "refId": "A"
+                }
+              ]
+            },
+            {
+              "id": 4,
+              "type": "timeseries",
+              "title": "Refused metrics /s",
+              "gridPos": {
+                "x": 12,
+                "y": 7,
+                "w": 12,
+                "h": 7
+              },
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0
+                }
+              },
+              "targets": [
+                {
+                  "expr": "sum by (instance) (rate(otelcol_receiver_refused_metric_points_total{job=\"nktp-large-target-metrics\"}[5m]))",
+                  "legendFormat": "{{instance}}",
+                  "refId": "A"
+                }
+              ]
+            },
+            {
+              "id": 5,
+              "type": "timeseries",
+              "title": "Exporter queue use",
+              "gridPos": {
+                "x": 0,
+                "y": 14,
+                "w": 24,
+                "h": 7
+              },
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "percent",
+                  "min": 0,
+                  "max": 100
+                }
+              },
+              "targets": [
+                {
+                  "expr": "100 * sum by (instance, exporter) (otelcol_exporter_queue_size{job=\"nktp-large-target-metrics\",data_type=\"metrics\"}) / sum by (instance, exporter) (otelcol_exporter_queue_capacity{job=\"nktp-large-target-metrics\",data_type=\"metrics\"})",
+                  "legendFormat": "{{instance}} {{exporter}}",
+                  "refId": "A"
+                }
+              ]
+            },
+            {
+              "id": 6,
+              "type": "timeseries",
+              "title": "CPU cores",
+              "gridPos": {
+                "x": 0,
+                "y": 21,
+                "w": 12,
+                "h": 7
+              },
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "cores",
+                  "min": 0
+                }
+              },
+              "targets": [
+                {
+                  "expr": "sum by (instance) (rate(otelcol_process_cpu_seconds_total{job=\"nktp-large-target-metrics\"}[5m]))",
+                  "legendFormat": "{{instance}}",
+                  "refId": "A"
+                }
+              ]
+            },
+            {
+              "id": 7,
+              "type": "timeseries",
+              "title": "Memory (RSS)",
+              "gridPos": {
+                "x": 12,
+                "y": 21,
+                "w": 12,
+                "h": 7
+              },
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "bytes",
+                  "min": 0
+                }
+              },
+              "targets": [
+                {
+                  "expr": "sum by (instance) (otelcol_process_memory_rss_bytes{job=\"nktp-large-target-metrics\"})",
+                  "legendFormat": "{{instance}}",
+                  "refId": "A"
+                }
+              ]
+            },
+            {
+              "id": 8,
+              "type": "histogram",
+              "title": "Samples per scrape",
+              "description": "Latest sample count per target before metric filtering. Sample count indicates scrape work. It does not measure response bytes or memory use.",
+              "gridPos": {
+                "x": 0,
+                "y": 28,
+                "w": 12,
+                "h": 7
+              },
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "unit": "short"
+                }
+              },
+              "options": {
+                "combine": true,
+                "bucketCount": 20
+              },
+              "targets": [
+                {
+                  "expr": "max by (job, instance) (scrape_samples_scraped{nktp_metrics_pool=\"large-target\",job!=\"nktp-large-target-metrics-targetallocator\"})",
+                  "refId": "A",
+                  "instant": true,
+                  "range": false,
+                  "format": "table"
+                }
+              ],
+              "transformations": [
+                {
+                  "id": "filterFieldsByName",
+                  "options": {
+                    "include": {
+                      "names": [
+                        "Value"
+                      ]
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "id": 9,
+              "type": "timeseries",
+              "title": "Target Allocator scrape health",
+              "gridPos": {
+                "x": 12,
+                "y": 28,
+                "w": 12,
+                "h": 7
+              },
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0
+                }
+              },
+              "targets": [
+                {
+                  "expr": "up{job=\"nktp-large-target-metrics-targetallocator\"}",
+                  "legendFormat": "{{instance}}",
+                  "refId": "A"
+                }
+              ],
+              "description": "Zero means the scrape failed. No data means Target Allocator metrics are unavailable."
+            },
+            {
+              "id": 10,
+              "type": "timeseries",
+              "title": "Target Allocator collectors",
+              "gridPos": {
+                "x": 0,
+                "y": 35,
+                "w": 12,
+                "h": 7
+              },
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0
+                }
+              },
+              "targets": [
+                {
+                  "expr": "opentelemetry_allocator_collectors_discovered{job=\"nktp-large-target-metrics-targetallocator\"}",
+                  "legendFormat": "{{instance}} discovered",
+                  "refId": "A"
+                },
+                {
+                  "expr": "opentelemetry_allocator_collectors_allocatable{job=\"nktp-large-target-metrics-targetallocator\"}",
+                  "legendFormat": "{{instance}} allocatable",
+                  "refId": "B"
+                }
+              ]
+            },
+            {
+              "id": 11,
+              "type": "timeseries",
+              "title": "Targets per collector",
+              "gridPos": {
+                "x": 12,
+                "y": 35,
+                "w": 12,
+                "h": 7
+              },
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0
+                }
+              },
+              "targets": [
+                {
+                  "expr": "opentelemetry_allocator_targets_per_collector{job=\"nktp-large-target-metrics-targetallocator\"}",
+                  "legendFormat": "{{collector_name}}",
+                  "refId": "A"
+                }
+              ]
+            },
+            {
+              "id": 12,
+              "type": "timeseries",
+              "title": "Target Allocator CPU cores",
+              "gridPos": {
+                "x": 0,
+                "y": 42,
+                "w": 12,
+                "h": 7
+              },
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "unit": "cores"
+                }
+              },
+              "targets": [
+                {
+                  "expr": "rate(process_cpu_seconds_total{job=\"nktp-large-target-metrics-targetallocator\"}[5m])",
+                  "legendFormat": "{{instance}}",
+                  "refId": "A"
+                }
+              ]
+            },
+            {
+              "id": 13,
+              "type": "timeseries",
+              "title": "Target Allocator memory (RSS)",
+              "gridPos": {
+                "x": 12,
+                "y": 42,
+                "w": 12,
+                "h": 7
+              },
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "unit": "bytes"
+                }
+              },
+              "targets": [
+                {
+                  "expr": "process_resident_memory_bytes{job=\"nktp-large-target-metrics-targetallocator\"}",
+                  "legendFormat": "{{instance}}",
+                  "refId": "A"
+                }
+              ]
+            },
+            {
+              "id": 14,
+              "type": "table",
+              "title": "Largest targets by sample count",
+              "description": "The 20 targets with the largest latest sample counts, with scrape duration matched by job and instance.",
+              "gridPos": {
+                "x": 0,
+                "y": 49,
+                "w": 24,
+                "h": 8
+              },
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0
+                },
+                "overrides": [
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "Samples"
+                    },
+                    "properties": [
+                      {
+                        "id": "unit",
+                        "value": "short"
+                      },
+                      {
+                        "id": "decimals",
+                        "value": 0
+                      }
+                    ]
+                  },
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "Scrape duration"
+                    },
+                    "properties": [
+                      {
+                        "id": "unit",
+                        "value": "s"
+                      }
+                    ]
+                  }
+                ]
+              },
+              "options": {
+                "showHeader": true,
+                "sortBy": [
+                  {
+                    "displayName": "Samples",
+                    "desc": true
+                  }
+                ]
+              },
+              "targets": [
+                {
+                  "expr": "topk(20, max by (job, instance) (scrape_samples_scraped{nktp_metrics_pool=\"large-target\",job!=\"nktp-large-target-metrics-targetallocator\"}))",
+                  "refId": "A",
+                  "instant": true,
+                  "range": false,
+                  "format": "table"
+                },
+                {
+                  "expr": "max by (job, instance) (scrape_duration_seconds{nktp_metrics_pool=\"large-target\",job!=\"nktp-large-target-metrics-targetallocator\"}) and on (job, instance) topk(20, max by (job, instance) (scrape_samples_scraped{nktp_metrics_pool=\"large-target\",job!=\"nktp-large-target-metrics-targetallocator\"}))",
+                  "refId": "B",
+                  "instant": true,
+                  "range": false,
+                  "format": "table"
+                }
+              ],
+              "transformations": [
+                {
+                  "id": "merge",
+                  "options": {}
+                },
+                {
+                  "id": "organize",
+                  "options": {
+                    "excludeByName": {
+                      "Time": true
+                    },
+                    "indexByName": {
+                      "job": 0,
+                      "instance": 1,
+                      "Value #A": 2,
+                      "Value #B": 3
+                    },
+                    "renameByName": {
+                      "job": "Job",
+                      "instance": "Instance",
+                      "Value #A": "Samples",
+                      "Value #B": "Scrape duration"
+                    }
+                  }
+                }
+              ]
+            }
+          ]
+        }
       nktp-operator.json: |
         {
           "uid": "nktp-operator",
@@ -2172,7 +2898,7 @@ matches the snapshot with default values:
     kind: ConfigMap
     metadata:
       name: lgtm-dashboards
-  17: |
+  20: |
     apiVersion: v1
     kind: Service
     metadata:
@@ -2193,7 +2919,7 @@ matches the snapshot with default values:
           targetPort: 4318
       selector:
         app: lgtm
-  18: |
+  21: |
     apiVersion: apps/v1
     kind: Deployment
     metadata:
@@ -2206,7 +2932,7 @@ matches the snapshot with default values:
       template:
         metadata:
           annotations:
-            checksum/dashboards: d110c7b76661dc41787d766e68c592b184095724990172fcdfe5fa9f8de74f0c
+            checksum/dashboards: a9474acc0bc6d98f97485d33528f4e59684e1d1737e03aeca60774ae19811de1
           labels:
             app: lgtm
         spec:
@@ -2267,7 +2993,7 @@ matches the snapshot with default values:
               name: p8s-storage
             - emptyDir: {}
               name: pyroscope-storage
-  19: |
+  22: |
     apiVersion: rbac.authorization.k8s.io/v1
     kind: ClusterRoleBinding
     metadata:
@@ -2280,7 +3006,7 @@ matches the snapshot with default values:
       - kind: ServiceAccount
         name: nktp-watchdog-collector
         namespace: NAMESPACE
-  20: |
+  23: |
     apiVersion: rbac.authorization.k8s.io/v1
     kind: Role
     metadata:
@@ -2304,7 +3030,7 @@ matches the snapshot with default values:
           - get
           - list
           - watch
-  21: |
+  24: |
     apiVersion: rbac.authorization.k8s.io/v1
     kind: RoleBinding
     metadata:
@@ -2318,7 +3044,7 @@ matches the snapshot with default values:
       - kind: ServiceAccount
         name: nktp-watchdog-targetallocator
         namespace: NAMESPACE
-  22: |
+  25: |
     apiVersion: opentelemetry.io/v1beta1
     kind: OpenTelemetryCollector
     metadata:
@@ -2392,6 +3118,23 @@ matches the snapshot with default values:
                   static_configs:
                     - targets:
                         - nktp-watchdog-targetallocator:80
+                - job_name: nktp-large-target-metrics-targetallocator
+                  kubernetes_sd_configs:
+                    - namespaces:
+                        own_namespace: true
+                      role: pod
+                      selectors:
+                        - label: app.kubernetes.io/name=nktp-large-target-metrics-targetallocator,app.kubernetes.io/component=opentelemetry-targetallocator
+                          role: pod
+                  relabel_configs:
+                    - action: keep
+                      regex: http
+                      source_labels:
+                        - __meta_kubernetes_pod_container_port_name
+                    - source_labels:
+                        - __meta_kubernetes_pod_name
+                      target_label: instance
+                  scrape_interval: 30s
         service:
           extensions:
             - health_check

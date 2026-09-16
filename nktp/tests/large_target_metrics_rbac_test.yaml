@@ -1,0 +1,44 @@
+suite: large-target metrics RBAC
+release:
+  namespace: nktp
+templates:
+  - templates/large-target-metrics-rbac.yaml
+tests:
+  - it: grants discovery access to the allocator without Secret access
+    asserts:
+      - hasDocuments:
+          count: 2
+      - equal:
+          path: "kind"
+          value: "ClusterRole"
+        documentIndex: 0
+      - equal:
+          path: "metadata.name"
+          value: "nktp-large-target-metrics-targetallocator-nktp"
+        documentIndex: 0
+      - equal:
+          path: "rules"
+          value: [{"apiGroups": [""], "resources": ["pods", "services", "endpoints", "namespaces", "nodes"], "verbs": ["get", "list", "watch"]}, {"apiGroups": ["discovery.k8s.io"], "resources": ["endpointslices"], "verbs": ["get", "list", "watch"]}, {"apiGroups": ["monitoring.coreos.com"], "resources": ["servicemonitors", "podmonitors", "probes", "scrapeconfigs"], "verbs": ["get", "list", "watch"]}]
+        documentIndex: 0
+      - equal:
+          path: "kind"
+          value: "ClusterRoleBinding"
+        documentIndex: 1
+      - equal:
+          path: "subjects"
+          value: [{"kind": "ServiceAccount", "name": "nktp-large-target-metrics-targetallocator", "namespace": "nktp"}]
+        documentIndex: 1
+  - it: binds custom accounts in the release namespace
+    release:
+      namespace: "telemetry"
+    set:
+      large_target_metrics.kubernetes.targetAllocator.serviceAccount: "labeled-discovery"
+    asserts:
+      - equal:
+          path: "subjects"
+          value: [{"kind": "ServiceAccount", "name": "labeled-discovery", "namespace": "telemetry"}]
+        documentIndex: 1
+      - equal:
+          path: "roleRef.name"
+          value: "nktp-large-target-metrics-targetallocator-telemetry"
+        documentIndex: 1

@@ -125,6 +125,39 @@ remain unassigned.
 The Target Allocator rejects ServiceMonitor and PodMonitor endpoints that reference
 local bearer-token or TLS files in the Collector container.
 
+### Large-target metrics
+
+The large-target metrics pool (`large_target_metrics`) selects ServiceMonitor,
+PodMonitor, Probe, and ScrapeConfig resources with the metadata label
+`nktp.nvidia.io/large-target: "true"`.
+Apply this label to monitoring resources for endpoints with large scrape
+responses, such as kube-state-metrics.
+
+A Target Allocator distributes scrapes across the pool's replicas. Default
+discovery supports endpoints without Secret-backed credentials.
+The Target Allocator rejects ServiceMonitor and PodMonitor endpoints that reference
+local bearer-token or TLS files in the Collector container.
+Setting `large_target_metrics.kubernetes.targetAllocator.enabled` to `false`
+will cause Helm rendering to fail. Watchdog scrapes the Target Allocator's metrics.
+The allocator has its own security contexts and resource budget under
+`large_target_metrics.kubernetes.targetAllocator`. Size its resources for the
+discovered Kubernetes objects and targets.
+
+Collected metrics go to `http://nktp-gateway-metrics-collector:4318`.
+Each Collector sends its own telemetry to watchdog.
+Use `large_target_metrics.otelcol.config` for Collector internal configuration and
+`large_target_metrics.kubernetes` for workload configuration.
+
+This pool reserves more memory than the node DaemonSet for large scrape
+responses. Autoscaling requires the Kubernetes resource metrics API and
+distributes whole targets. An individual endpoint must still fit in one
+Collector. Scrape defaults limit each response to 1,000,000 samples and 1 GiB.
+Split endpoints that exceed these limits into smaller scrape targets where
+possible. If raising the scrape limits, size the exporter queue, memory request
+and limit, `GOMEMLIMIT`, and memory limiter thresholds together. Response bytes
+do not directly measure the memory needed to parse and export a scrape.
+Retain `GOMEMLIMIT` and `GOGC` when replacing environment lists.
+
 ## Managed Dependencies
 
 ### OpenTelemetry and CRDs

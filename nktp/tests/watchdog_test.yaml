@@ -132,7 +132,7 @@ tests:
           path: spec.image
           value: example.com/collector:global
 
-  - it: discovers Operator pod endpoints in its namespace and scrapes the allocator
+  - it: discovers Operator and large-target allocator pods in its namespace and scrapes its allocator
     template: templates/watchdog.yaml
     release:
       namespace: telemetry
@@ -169,6 +169,21 @@ tests:
               scrape_interval: 30s
               static_configs:
                 - targets: [nktp-watchdog-targetallocator:80]
+            - job_name: nktp-large-target-metrics-targetallocator
+              scrape_interval: 30s
+              kubernetes_sd_configs:
+                - role: pod
+                  namespaces:
+                    own_namespace: true
+                  selectors:
+                    - role: pod
+                      label: app.kubernetes.io/name=nktp-large-target-metrics-targetallocator,app.kubernetes.io/component=opentelemetry-targetallocator
+              relabel_configs:
+                - source_labels: [__meta_kubernetes_pod_container_port_name]
+                  regex: http
+                  action: keep
+                - source_labels: [__meta_kubernetes_pod_name]
+                  target_label: instance
       - equal:
           path: spec.config.service.pipelines.metrics.receivers
           value: [otlp, prometheus]
@@ -178,6 +193,30 @@ tests:
       - equal:
           path: spec.targetAllocator.observability.metrics.enableMetrics
           value: false
+
+  - it: retains allocated TA monitoring when large-target processing is replaced
+    template: templates/watchdog.yaml
+    set:
+      large_target_metrics.kubernetes.targetAllocator.replicas: 2
+      large_target_metrics.otelcol.config.receivers.prometheus: null
+      large_target_metrics.otelcol.config.receivers.otlp.protocols.http.endpoint: 0.0.0.0:4318
+      large_target_metrics.otelcol.config.service.pipelines.metrics.receivers: [otlp]
+    asserts:
+      - equal:
+          path: spec.targetAllocator.allocationStrategy
+          value: consistent-hashing
+      - equal:
+          path: spec.config.receivers.prometheus.config.scrape_configs[2].job_name
+          value: nktp-large-target-metrics-targetallocator
+      - equal:
+          path: spec.config.receivers.prometheus.config.scrape_configs[2].kubernetes_sd_configs[0].role
+          value: pod
+      - equal:
+          path: spec.config.service.pipelines.metrics
+          value:
+            receivers: [otlp, prometheus]
+            processors: [memory_limiter]
+            exporters: [otlp_http]
 
   - it: prefers the watchdog image override
     template: templates/watchdog.yaml

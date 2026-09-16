@@ -157,6 +157,45 @@ tests:
           path: data["nktp-cluster-events.json"]
           pattern: 'opentelemetry_allocator|leader_election_master_status|\$instance'
 
+  - it: provisions large-target metrics and Target Allocator health
+    documentSelector:
+      path: metadata.name
+      value: lgtm-dashboards
+    asserts:
+      - matchRegex:
+          path: data["nktp-large-target-metrics.json"]
+          pattern: '"uid": "nktp-large-target-metrics"'
+      - matchRegex:
+          path: data["nktp-large-target-metrics.json"]
+          pattern: otelcol_receiver_accepted_metric_points_total
+      - matchRegex:
+          path: data["nktp-large-target-metrics.json"]
+          pattern: opentelemetry_allocator_collectors_allocatable
+      - matchRegex:
+          path: data["nktp-large-target-metrics.json"]
+          pattern: opentelemetry_allocator_targets_per_collector
+
+  - it: shows current large-target scrape samples and matched durations
+    documentSelector:
+      path: metadata.name
+      value: lgtm-dashboards
+    asserts:
+      - matchRegex:
+          path: data["nktp-large-target-metrics.json"]
+          pattern: '"type": "histogram",\s+"title": "Samples per scrape"'
+      - matchRegex:
+          path: data["nktp-large-target-metrics.json"]
+          pattern: 'scrape_samples_scraped\{nktp_metrics_pool=\\"large-target\\",job!=\\"nktp-large-target-metrics-targetallocator\\"\}'
+      - matchRegex:
+          path: data["nktp-large-target-metrics.json"]
+          pattern: 'scrape_duration_seconds.*and on \(job, instance\) topk\(20,'
+      - matchRegex:
+          path: data["nktp-large-target-metrics.json"]
+          pattern: '"instant": true,\s+"range": false,\s+"format": "table"'
+      - notMatchRegex:
+          path: data["nktp-large-target-metrics.json"]
+          pattern: 'scrape_body_size_bytes|rate\(scrape_samples_scraped'
+
   - it: removes all otel-lgtm resources when disabled
     set:
       otel-lgtm:
