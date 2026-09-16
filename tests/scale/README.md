@@ -1,9 +1,9 @@
 # Scale Tests
 
 Plan-driven testing of NKTP correctness and capacity under telemetry load.
-The initial implementation runs no-op generators and measurements. It exercises
-parsing, scheduling, cancellation, and report consolidation without requiring a
-Kubernetes cluster, creating workloads, or querying telemetry.
+The harness runs no-op components without a cluster, or finite binary workloads
+through the Kubernetes Job generator. **Measurements currently support only no-op.**
+Successful Job execution does not verify backend delivery or NKTP performance.
 
 ## Domain model
 
@@ -19,9 +19,10 @@ Kubernetes cluster, creating workloads, or querying telemetry.
 
 The plan contains configuration, not executable objects. `Executor` validates
 every component specification and constructs fresh runnables before any stage
-starts. Only `type: noop` is supported today, with an empty or omitted `spec`.
-No-op implementations return ordinary success and empty measurement reports;
-this does not evaluate NKTP correctness or performance.
+starts. Generators support `type: noop` and `type: job`. Measurements support
+`type: noop`. No-op components accept an empty or omitted `spec` and return
+ordinary success and empty measurement reports. This does not evaluate NKTP
+correctness or performance.
 
 ```mermaid
 flowchart TD
@@ -77,13 +78,23 @@ From the repository root:
 ```sh
 task test:scale
 task test:scale -- -plan "$PWD/tests/scale/plans/noop.yaml"
+task test:scale -- -plan "$PWD/tests/scale/plans/telemetrygen.yaml"
+task test:scale KUBECONFIG=/absolute/path/to/kubeconfig -- -plan "$PWD/tests/scale/plans/telemetrygen.yaml"
 ```
+
+**The default kubeconfig is `dev/.kubeconfig`.** Override it with the Task variable
+`KUBECONFIG` before `--`, an environment variable, or `-kubeconfig PATH` after `--`.
+The forwarded form `-plan PATH KUBECONFIG=/absolute/path/to/kubeconfig` also works.
+A trailing assignment takes precedence over `-kubeconfig`, which overrides the
+Task or environment default. Prefer absolute paths for overrides. Relative paths
+resolve from `tests/scale`. Kubeconfig file lists are rejected.
+No-op plans do not require a kubeconfig or cluster.
 
 Or from `tests/`:
 
 ```sh
 go test -tags scale -count=1 -v -timeout=5m -run '^TestRun$' ./scale
-go test -race -count=1 ./...
+go test -race -tags scale -count=1 ./...
 ```
 
 `tests/scale/main_test.go` is the build-tagged entrypoint. It loads the plan and
@@ -123,10 +134,18 @@ for these returns; cancellation cannot forcibly stop an uncooperative runnable.
 Constructors must acquire no resources. Measurements must finish modifying their
 reports before returning them.
 
-Telemetrygen and PromQL support can add concrete implementations whose
-constructors decode and validate their own specs, then add entries to the
-constructor switches. A generator's `Run` must cover the
-whole workload lifetime, not just Job submission. Generation duration, observation
-windows, and readiness requirements belong to those implementations: concurrent
-launch does not imply readiness. Cluster access and provisioning are not part of
-the current no-op implementation.
+The harness can be extended with additional generators and measurements.
+
+## Available generators
+
+- **No-op (`noop`)** exercises the harness without generating load or requiring a
+  cluster. See the [no-op plan](plans/noop.yaml).
+- **Kubernetes Job (`job`)** runs a containerized load generator to completion.
+  See the [telemetrygen plan](plans/telemetrygen.yaml) for configuration.
+
+Job workloads require an existing cluster, namespace, and their workload
+dependencies. Adjust the linked plan configuration for your environment before
+running. The harness does not provision a cluster.
+
+**Jobs and pods are cleaned up before the test returns**, including after failure
+or cancellation. Workload and cleanup errors fail the test.

@@ -1,0 +1,53 @@
+# Select the kubeconfig through test:scale. Adjust namespace and endpoints as needed.
+name: telemetrygen
+execution: parallel
+timeout: 4m
+stages:
+  - name: metrics
+    generator:
+      type: job
+      spec:
+        namespace: nktp
+        image: ghcr.io/open-telemetry/opentelemetry-collector-contrib/telemetrygen:v0.159.0@sha256:bad7fde3119476a9177cc4b9f04307c9876fca5b5584e009aebd7123d7557658
+        cmd: [/telemetrygen]
+        args:
+          - metrics
+          - --otlp-endpoint=nktp-gateway-metrics-collector.nktp.svc:4317
+          - --otlp-insecure
+          - --duration=3m
+          - --rate=10
+          - --workers=1
+    measurement:
+      type: noop
+  - name: logs
+    generator:
+      type: job
+      spec:
+        namespace: nktp
+        image: ghcr.io/open-telemetry/opentelemetry-collector-contrib/telemetrygen:v0.159.0@sha256:bad7fde3119476a9177cc4b9f04307c9876fca5b5584e009aebd7123d7557658
+        cmd: [/telemetrygen]
+        args:
+          - logs
+          - --otlp-endpoint=nktp-gateway-logs-collector.nktp.svc:4317
+          - --otlp-insecure
+          - --duration=3m
+          - --rate=10
+          - --workers=1
+    measurement:
+      type: noop
+  - name: traces
+    generator:
+      type: job
+      spec:
+        namespace: nktp
+        image: ghcr.io/open-telemetry/opentelemetry-collector-contrib/telemetrygen:v0.159.0@sha256:bad7fde3119476a9177cc4b9f04307c9876fca5b5584e009aebd7123d7557658
+        cmd: [/telemetrygen]
+        args:
+          - traces
+          - --otlp-endpoint=nktp-gateway-traces-collector.nktp.svc:4317
+          - --otlp-insecure
+          - --duration=3m
+          - --rate=10
+          - --workers=1
+    measurement:
+      type: noop

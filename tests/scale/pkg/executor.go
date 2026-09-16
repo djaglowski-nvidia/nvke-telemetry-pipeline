@@ -43,10 +43,14 @@ type PlanReport struct {
 	Stages []StageReport
 }
 
-// Executor validates and runs plans. Its zero value is ready to use.
+// Executor validates and runs plans. Its zero value supports no-op plans.
 // Execute calls are independent and may run concurrently. Callers must not
 // modify a plan or its specs while it is being executed.
-type Executor struct{}
+type Executor struct {
+	// Kubeconfig is the absolute path to the file used by every Job generator.
+	// It is required only for plans containing Jobs. Credentials are read in Run.
+	Kubeconfig string
+}
 
 // Execute constructs all runnables before starting any stage, then runs them
 // under the plan timeout. Stage failures cancel their peer but not other stages.
@@ -54,7 +58,7 @@ type Executor struct{}
 // Reports, including partial findings, accompany execution errors. Invalid plans
 // return an empty PlanReport. Completion uses the default slog logger.
 // No cluster is required by the no-op implementations.
-func (Executor) Execute(ctx context.Context, plan Plan) (PlanReport, error) {
+func (e Executor) Execute(ctx context.Context, plan Plan) (PlanReport, error) {
 	if err := ctx.Err(); err != nil {
 		return PlanReport{}, err
 	}
@@ -62,7 +66,7 @@ func (Executor) Execute(ctx context.Context, plan Plan) (PlanReport, error) {
 	if err := plan.validate(); err != nil {
 		return PlanReport{}, err
 	}
-	stages, err := prepareStages(plan.Stages)
+	stages, err := prepareStages(plan.Stages, e.Kubeconfig)
 	if err != nil {
 		return PlanReport{}, err
 	}
@@ -84,10 +88,10 @@ type preparedStage struct {
 }
 
 // prepareStages validates every implementation before execution acquires resources.
-func prepareStages(stages []Stage) ([]preparedStage, error) {
+func prepareStages(stages []Stage, kubeconfig string) ([]preparedStage, error) {
 	prepared := make([]preparedStage, 0, len(stages))
 	for _, stage := range stages {
-		g, err := newGenerator(stage.Generator)
+		g, err := newGenerator(stage.Generator, kubeconfig)
 		if err != nil {
 			return nil, fmt.Errorf("stage %q generator: %w", stage.Name, err)
 		}

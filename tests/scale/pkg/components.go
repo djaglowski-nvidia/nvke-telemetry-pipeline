@@ -8,10 +8,12 @@ import (
 )
 
 // newGenerator selects a generator constructor that validates its spec.
-func newGenerator(config ComponentSpec) (generator, error) {
+func newGenerator(config ComponentSpec, kubeconfig string) (generator, error) {
 	switch config.Type {
 	case "noop":
 		return generators.NewNoop(config.Spec)
+	case "job":
+		return generators.NewJobGenerator(config.Spec, kubeconfig)
 	default:
 		return nil, fmt.Errorf("unknown type %q", config.Type)
 	}
