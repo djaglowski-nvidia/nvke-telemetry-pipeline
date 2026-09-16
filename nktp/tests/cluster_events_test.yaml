@@ -171,6 +171,7 @@ tests:
       - equal:
           path: spec.config.exporters.otlp_http.sending_queue
           value:
+            block_on_overflow: true
             sizer: bytes
             queue_size: 4194304
             num_consumers: 32

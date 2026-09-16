@@ -57,7 +57,7 @@ tests:
             exclude: ["/var/log/pods/${env:POD_NAMESPACE}_nktp-*-collector-*_*/*/*.log"]
             start_at: end
             include_file_path: true
-            retry_on_failure: {enabled: true}
+            retry_on_failure: {enabled: true, max_elapsed_time: 0}
             operators: [{type: container}]
       - equal:
           path: spec.volumes

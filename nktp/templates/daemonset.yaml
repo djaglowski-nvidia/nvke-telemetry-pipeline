@@ -43,6 +43,7 @@ exporters:
     retry_on_failure:
       max_elapsed_time: 30m
     sending_queue:
+      block_on_overflow: true
       sizer: bytes
       queue_size: 1048576
       num_consumers: 2

@@ -142,6 +142,7 @@ watchdog:
           retry_on_failure:
             max_elapsed_time: 30m
           sending_queue:
+            block_on_overflow: true
             sizer: bytes # Counts serialized bytes. Go heap use can be several times larger.
             queue_size: 8388608 # Per signal. 3 x 8MiB = 24MiB, including in-flight payloads.
             num_consumers: 32 # Export concurrency. Idle worker slots hold no batch payload.
@@ -262,6 +263,7 @@ gateway_logs:
           retry_on_failure:
             max_elapsed_time: 30m
           sending_queue:
+            block_on_overflow: true
             sizer: bytes # Counts serialized bytes. Go heap use can be several times larger.
             queue_size: 16777216 # One 16MiB logs queue, including in-flight payloads.
             num_consumers: 32 # Export concurrency. Idle worker slots hold no batch payload.
@@ -374,6 +376,7 @@ gateway_metrics:
           retry_on_failure:
             max_elapsed_time: 30m
           sending_queue:
+            block_on_overflow: true
             sizer: bytes # Counts serialized bytes. Go heap use can be several times larger.
             queue_size: 16777216 # One 16MiB metrics queue, including in-flight payloads.
             num_consumers: 32 # Export concurrency. Idle worker slots hold no batch payload.
@@ -486,6 +489,7 @@ gateway_traces:
           retry_on_failure:
             max_elapsed_time: 30m
           sending_queue:
+            block_on_overflow: true
             sizer: bytes # Counts serialized bytes. Go heap use can be several times larger.
             queue_size: 16777216 # One 16MiB traces queue, including in-flight payloads.
             num_consumers: 32 # Export concurrency. Idle worker slots hold no batch payload.
@@ -620,6 +624,7 @@ daemonset:
           include_file_path: true
           retry_on_failure:
             enabled: true
+            max_elapsed_time: 0 # Retry downstream transient failures until recovery. Permanent errors are dropped.
           operators:
             - type: container
         prometheus:
@@ -650,6 +655,7 @@ daemonset:
           retry_on_failure:
             max_elapsed_time: 30m
           sending_queue:
+            block_on_overflow: true
             sizer: bytes # Counts serialized bytes. Go heap use can be several times larger.
             queue_size: 8388608 # Gateway queues each hold 8MiB, including in-flight payloads.
             num_consumers: 32 # Export concurrency. Idle worker slots hold no batch payload.
@@ -663,6 +669,7 @@ daemonset:
           retry_on_failure:
             max_elapsed_time: 30m
           sending_queue:
+            block_on_overflow: true
             sizer: bytes
             queue_size: 8388608
             num_consumers: 32
@@ -835,6 +842,7 @@ large_target_metrics:
           retry_on_failure:
             max_elapsed_time: 30m
           sending_queue:
+            block_on_overflow: true
             sizer: bytes # Counts serialized bytes. Go heap use can be several times larger.
             queue_size: 2147483648 # 2GiB serialized. Whole scrapes enter before batch splitting.
             num_consumers: 32 # Export concurrency. Idle worker slots hold no batch payload.
@@ -948,6 +956,7 @@ cluster_events:
           retry_on_failure:
             max_elapsed_time: 30m
           sending_queue:
+            block_on_overflow: true
             sizer: bytes # Counts serialized bytes. Go heap use can be several times larger.
             queue_size: 16777216 # One 16MiB logs queue, including in-flight payloads.
             num_consumers: 32 # Export concurrency. Idle worker slots hold no batch payload.

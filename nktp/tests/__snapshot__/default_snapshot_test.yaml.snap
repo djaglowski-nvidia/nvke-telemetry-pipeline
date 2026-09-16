@@ -83,6 +83,7 @@ matches the snapshot with default values:
                 max_size: 2097152
                 min_size: 1048576
                 sizer: bytes
+              block_on_overflow: true
               num_consumers: 32
               queue_size: 16777216
               sizer: bytes
@@ -286,6 +287,7 @@ matches the snapshot with default values:
                 max_size: 2097152
                 min_size: 1048576
                 sizer: bytes
+              block_on_overflow: true
               num_consumers: 32
               queue_size: 8388608
               sizer: bytes
@@ -299,6 +301,7 @@ matches the snapshot with default values:
                 max_size: 2097152
                 min_size: 1048576
                 sizer: bytes
+              block_on_overflow: true
               num_consumers: 32
               queue_size: 8388608
               sizer: bytes
@@ -312,6 +315,7 @@ matches the snapshot with default values:
                 max_size: 262144
                 min_size: 65536
                 sizer: bytes
+              block_on_overflow: true
               num_consumers: 2
               queue_size: 1048576
               sizer: bytes
@@ -348,6 +352,7 @@ matches the snapshot with default values:
               - type: container
             retry_on_failure:
               enabled: true
+              max_elapsed_time: 0
             start_at: end
           hostmetrics:
             collection_interval: 1m
@@ -544,6 +549,7 @@ matches the snapshot with default values:
                 max_size: 2097152
                 min_size: 1048576
                 sizer: bytes
+              block_on_overflow: true
               num_consumers: 32
               queue_size: 16777216
               sizer: bytes
@@ -666,6 +672,7 @@ matches the snapshot with default values:
                 max_size: 2097152
                 min_size: 1048576
                 sizer: bytes
+              block_on_overflow: true
               num_consumers: 32
               queue_size: 16777216
               sizer: bytes
@@ -788,6 +795,7 @@ matches the snapshot with default values:
                 max_size: 2097152
                 min_size: 1048576
                 sizer: bytes
+              block_on_overflow: true
               num_consumers: 32
               queue_size: 16777216
               sizer: bytes
@@ -960,6 +968,7 @@ matches the snapshot with default values:
                 max_size: 2097152
                 min_size: 1048576
                 sizer: bytes
+              block_on_overflow: true
               num_consumers: 32
               queue_size: 2147483648
               sizer: bytes
@@ -3070,6 +3079,7 @@ matches the snapshot with default values:
                 max_size: 2097152
                 min_size: 1048576
                 sizer: bytes
+              block_on_overflow: true
               num_consumers: 32
               queue_size: 8388608
               sizer: bytes
