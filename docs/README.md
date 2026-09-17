@@ -6,3 +6,4 @@ This directory organizes NKTP architecture, design, installation, configuration,
 
 - [Repository layout](designs/repo_layout.md)
 - [Required target allocation](designs/target_allocation.md)
+- [kube-state-metrics](designs/kube_state_metrics.md)
