@@ -4,3 +4,5 @@ dev/.tilt.log
 dev/.tilt.pid
 nktp/charts/*.tgz
 tests/scale/.kubeconfig
+tests/scale/.prometheus-port-forward.pid
+tests/scale/.prometheus-port-forward.log

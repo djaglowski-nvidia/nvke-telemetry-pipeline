@@ -259,12 +259,19 @@ tests:
             name: GF_AUTH_ANONYMOUS_ORG_ROLE
             value: Admin
 
-  - it: exposes grafana and OTLP ports
+  - it: exposes Prometheus, Grafana and OTLP ports
     documentSelector:
       path: spec.selector
       value:
         app: lgtm
     asserts:
+      - contains:
+          path: spec.ports
+          content:
+            name: prometheus
+            protocol: TCP
+            port: 9090
+            targetPort: 9090
       - contains:
           path: spec.ports
           content:

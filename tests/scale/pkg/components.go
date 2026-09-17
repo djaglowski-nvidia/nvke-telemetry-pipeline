@@ -24,6 +24,8 @@ func newMeasurement(config ComponentSpec) (measurement, error) {
 	switch config.Type {
 	case "noop":
 		return measurements.NewNoop(config.Spec)
+	case "prometheus":
+		return measurements.NewPrometheus(config.Spec)
 	default:
 		return nil, fmt.Errorf("unknown type %q", config.Type)
 	}

@@ -34,6 +34,10 @@ spec:
   selector:
     app: lgtm
   ports:
+    - name: prometheus
+      protocol: TCP
+      port: 9090
+      targetPort: 9090
     - name: grafana
       protocol: TCP
       port: 3000

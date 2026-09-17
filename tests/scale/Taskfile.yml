@@ -34,13 +34,68 @@ tasks:
       - kubectl --kubeconfig .kubeconfig --context kind-nktp-scale wait --for=condition=Ready nodes --all --timeout=5m
       - helm upgrade --install nktp ../../nktp --reset-values --namespace nktp --create-namespace --kubeconfig .kubeconfig --kube-context kind-nktp-scale --wait --timeout 5m {{if .HELM_VALUES_FILE}}--values {{.HELM_VALUES_FILE | shellQuote}}{{end}}
       - task: wait-ready
+      - task: prometheus:up
       - 'echo "NKTP is ready. Kubeconfig: $(pwd)/.kubeconfig"'
 
   down:
-    desc: Delete the scale test Kind cluster
+    desc: Stop Prometheus forwarding and delete the scale test Kind cluster
     cmds:
+      - task: prometheus:down
       - kind delete cluster --name nktp-scale --kubeconfig .kubeconfig
       - rm -f .kubeconfig
+
+  prometheus:up:
+    internal: true
+    silent: true
+    cmds:
+      - task: prometheus:down
+      - |
+        sh -c 'nohup kubectl --kubeconfig "$(pwd)/.kubeconfig" --context kind-nktp-scale --namespace nktp port-forward --address 127.0.0.1 service/lgtm 9090:9090 > .prometheus-port-forward.log 2>&1 < /dev/null & echo $! > .prometheus-port-forward.pid'
+        pid=$(cat .prometheus-port-forward.pid)
+        for attempt in $(seq 1 50); do
+          if ! /bin/kill -0 "$pid" 2>/dev/null; then
+            break
+          fi
+          if grep -q 'Forwarding from 127.0.0.1:9090' .prometheus-port-forward.log; then
+            echo "Prometheus is available at http://127.0.0.1:9090"
+            exit 0
+          fi
+          sleep 0.1
+        done
+        /bin/kill "$pid" 2>/dev/null || true
+        rm -f .prometheus-port-forward.pid
+        cat .prometheus-port-forward.log >&2
+        echo "Prometheus port-forward failed to start. Ensure local port 9090 is available and retry task scale:up." >&2
+        exit 1
+
+  prometheus:down:
+    internal: true
+    silent: true
+    cmds:
+      - |
+        if test -f .prometheus-port-forward.pid; then
+          pid=$(cat .prometheus-port-forward.pid)
+          case "$pid" in
+            ''|*[!0-9]*) echo "Invalid Prometheus port-forward PID." >&2; exit 1 ;;
+          esac
+          command=$(ps -p "$pid" -o command= 2>/dev/null || true)
+          case "$command" in
+            *"kubectl --kubeconfig $(pwd)/.kubeconfig --context kind-nktp-scale --namespace nktp port-forward --address 127.0.0.1 service/lgtm 9090:9090")
+              /bin/kill "$pid" 2>/dev/null || true
+              for attempt in $(seq 1 50); do
+                if ! /bin/kill -0 "$pid" 2>/dev/null; then
+                  break
+                fi
+                sleep 0.1
+              done
+              if /bin/kill -0 "$pid" 2>/dev/null; then
+                echo "Prometheus port-forward did not stop. Retry task scale:down." >&2
+                exit 1
+              fi
+              ;;
+          esac
+        fi
+        rm -f .prometheus-port-forward.pid .prometheus-port-forward.log
 
   chart:deps:
     internal: true

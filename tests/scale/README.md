@@ -2,8 +2,10 @@
 
 Plan-driven testing of NKTP correctness and capacity under telemetry load.
 The harness runs no-op components without a cluster, or finite binary workloads
-through the Kubernetes Job generator. **Measurements currently support only no-op.**
-Successful Job execution does not verify backend delivery or NKTP performance.
+through the Kubernetes Job generator. Measurements support no-op observations and
+Prometheus queries. Query reports collect data without performance pass/fail
+verdicts. Successful Job execution alone does not verify backend delivery or NKTP
+performance.
 
 ## Local cluster
 
@@ -19,7 +21,10 @@ if needed, then installs or upgrades the NKTP Helm release in namespace `nktp`
 from the local chart. It prepares chart dependencies and waits for nodes and NKTP
 workloads, including workloads created by the Operator. Each readiness wait has a
 five-minute timeout. Workload readiness does not verify telemetry delivery.
-Chart dependencies are downloaded only when missing or invalid.
+Chart dependencies are downloaded only when missing or invalid. Once workloads
+are ready, `scale:up` starts a background port-forward from `127.0.0.1:9090` to
+Prometheus in `service/lgtm`. Keep local port 9090 free. Repeating `scale:up`
+restarts the forward. Its log is `tests/scale/.prometheus-port-forward.log`.
 
 Use `HELM_VALUES_FILE=/absolute/path/to/values.yaml` to supply Helm values.
 Relative paths are resolved from `tests/scale/`. Each run applies the current
@@ -38,9 +43,9 @@ context. For manual access:
 export KUBECONFIG="$PWD/tests/scale/.kubeconfig"
 ```
 
-`scale:down` deletes the scale cluster and its kubeconfig. It does not stop the
-dev Tilt session or delete the dev cluster. The no-op plans below do not require
-`scale:up`.
+`scale:down` stops the managed port-forward, then deletes the scale cluster and
+its kubeconfig. It does not stop the dev Tilt session or delete the dev cluster.
+The no-op plans below do not require `scale:up`.
 
 ## Domain model
 
@@ -57,8 +62,8 @@ dev Tilt session or delete the dev cluster. The no-op plans below do not require
 The plan contains configuration, not executable objects. `Executor` validates
 every component specification and constructs fresh runnables before any stage
 starts. Generators support `type: noop` and `type: job`. Measurements support
-`type: noop`. No-op components accept an empty or omitted `spec`. No-op
-measurements also accept `spec.queries`, a mapping of names to nonempty query
+`type: noop` and `type: prometheus`. No-op components accept an empty or omitted
+`spec`. No-op measurements also accept `spec.queries`, a mapping of names to nonempty query
 strings. These strings are resolved by the plan parser but are not evaluated.
 No-op components return ordinary success and empty measurement reports. This
 does not evaluate NKTP correctness or performance.
@@ -154,9 +159,10 @@ go test -race -tags scale -count=1 ./...
 `tests/scale/main_test.go` is the build-tagged entrypoint. It resolves arguments,
 loads the plan and calls `runner.Executor.Execute`. Plan paths are absolute or relative to
 `tests/scale`, the Go test's working directory. The executor uses Go's default
-`slog` logger to log each stage's completion and then the plan's completion, with
-plan name, run ID, and errors. Consolidated stage reports are logged by the test
-after execution. Any returned error fails the test and command.
+`slog` logger to log each stage's start and completion, then the plan's completion,
+with plan name, run ID, and errors. Consolidated stage reports are printed after
+execution, with summary statistics and numeric histogram counts for each query
+result series. Any returned error fails the test and command.
 
 ## Arguments and attribution
 
@@ -199,11 +205,52 @@ distinguish.
 Reference `{{args.run-id}}` in query filters too, for example
 `count({test_run_id="{{args.run-id}}"})`. The
 [telemetrygen plan](plans/telemetrygen.yaml) includes examples for metrics, logs
-and traces. Its measurements are currently no-op, so those queries are not run.
+and traces. The metrics stage executes PromQL queries against the in-cluster
+Prometheus. The logs and traces stages retain no-op query examples.
 
 Quote references that should remain strings, as in the YAML example. Escape
 supplied values for the surrounding YAML and query syntax. To include the
 literal text `{{args.name}}`, write `{{{{args.name}}`.
+
+## Prometheus measurements
+
+Prometheus measurements collect metrics through PromQL queries during a load test
+and summarize the results without performance pass/fail thresholds.
+
+```yaml
+measurement:
+  type: prometheus
+  spec:
+    endpoint: http://127.0.0.1:9090
+    duration: 3m
+    interval: 15s
+    query_timeout: 10s
+    units:
+      run_series: series
+      throughput: points/s
+      queue: bytes
+    queries:
+      run_series: 'count({test_run_id="{{args.run-id}}"})'
+      throughput: 'sum(rate(otelcol_exporter_sent_metric_points_total{job="nktp-gateway-metrics"}[2m]))'
+      queue: 'otelcol_exporter_queue_size{job="nktp-gateway-metrics",data_type="metrics"}'
+```
+
+The [telemetrygen plan](plans/telemetrygen.yaml) measures series from the current
+run, plus pipeline throughput, queues, and memory across all traffic.
+
+An `endpoint`, a positive `duration`, and at least one named query are required.
+`interval` defaults to `15s` and `query_timeout` to `10s`. Optional `units` labels
+results by query name, with automatic scaling for `bytes` and `bytes/s`.
+
+For the scale Kind cluster, `task scale:up` makes Prometheus available at the
+example endpoint. For another environment, use an endpoint reachable from the
+test host.
+
+Collection starts with the stage, querying at `interval`, and ends normally after
+`duration`. Query failures before that deadline fail the run and preserve results
+collected so far. The stage waits for both collection and load generation to
+finish. The test report shows statistics and histograms for each query and label
+set, with missing data and errors shown separately.
 
 ## Execution and extension
 

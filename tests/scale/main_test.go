@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	runner "github.com/NVIDIA-dev/nktp/tests/scale/pkg"
+	"github.com/NVIDIA-dev/nktp/tests/scale/pkg/format"
 )
 
 // planPath selects a YAML plan relative to tests/scale or by absolute path.
@@ -50,10 +51,10 @@ func TestRun(t *testing.T) {
 		t.Fatalf("parse plan %q: %v", *planPath, err)
 	}
 	report, err := (runner.Executor{Kubeconfig: kubeconfig}).Execute(t.Context(), plan, args["run-id"])
-	t.Logf("plan=%s run=%s stages=%d", report.Plan, report.RunID, len(report.Stages))
+	t.Logf("\nplan=%s run=%s stages=%d", report.Plan, report.RunID, len(report.Stages))
 	for _, stage := range report.Stages {
-		t.Logf("stage=%s measurement=%s report=%v generator_error=%v measurement_error=%v",
-			stage.Name, stage.Measurement, stage.Report, stage.GeneratorError, stage.MeasurementError)
+		t.Logf("\nstage=%s measurement=%s\ngenerator_error=%v measurement_error=%v\n\n%s",
+			stage.Name, stage.Measurement, stage.GeneratorError, stage.MeasurementError, format.Format(stage.Report))
 	}
 	if err != nil {
 		t.Errorf("execute plan %q: %v", plan.Name, err)

@@ -3,66 +3,59 @@ package runner
 import (
 	"os"
 	"path/filepath"
-	"slices"
-	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // TestExamplePlans checks examples without contacting a cluster or reading credentials.
 func TestExamplePlans(t *testing.T) {
 	paths, err := filepath.Glob("../plans/*.yaml")
-	if err != nil || len(paths) == 0 {
-		t.Fatalf("find example plans: paths=%v error=%v", paths, err)
-	}
+	require.NoError(t, err, "find example plans")
+	require.NotEmpty(t, paths, "find example plans")
 	for _, path := range paths {
 		t.Run(filepath.Base(path), func(t *testing.T) {
 			data, err := os.ReadFile(path)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			plan, err := Parse(data, map[string]string{"run-id": "example-run"})
-			if err != nil {
-				t.Fatalf("Parse() error = %v", err)
-			}
+			require.NoError(t, err, "Parse()")
 			if filepath.Base(path) == "telemetrygen.yaml" {
 				for _, stage := range plan.Stages {
 					var spec struct {
 						Args []string `yaml:"args"`
 					}
-					if err := stage.Generator.Spec.Decode(&spec); err != nil {
-						t.Fatalf("Decode() error = %v", err)
-					}
+					require.NoError(t, stage.Generator.Spec.Decode(&spec), "Decode()")
 					want := `--telemetry-attributes=test_run_id="example-run"`
-					if !slices.Contains(spec.Args, want) {
-						t.Errorf("stage %q args = %v, want attribute %q", stage.Name, spec.Args, want)
-					}
+					assert.Contains(t, spec.Args, want, "stage %q args = %v, want attribute %q", stage.Name, spec.Args, want)
 					var measurementSpec struct {
-						Queries map[string]string `yaml:"queries"`
+						Queries  map[string]string `yaml:"queries"`
+						Endpoint string            `yaml:"endpoint"`
 					}
-					if err := stage.Measurement.Spec.Decode(&measurementSpec); err != nil {
-						t.Fatalf("Decode measurement spec: %v", err)
-					}
-					if len(measurementSpec.Queries) == 0 {
-						t.Errorf("stage %q has no example queries", stage.Name)
-					}
+					require.NoError(t, stage.Measurement.Spec.Decode(&measurementSpec), "Decode measurement spec")
+					assert.NotEmpty(t, measurementSpec.Queries, "stage %q has no example queries", stage.Name)
 					for name, query := range measurementSpec.Queries {
-						if !strings.Contains(query, `"example-run"`) || strings.Contains(query, "{{args.") {
-							t.Errorf("stage %q query %q = %q, want resolved run ID", stage.Name, name, query)
+						assert.NotContains(t, query, "{{args.", "stage %q query %q contains unresolved arguments: %q", stage.Name, name, query)
+						if stage.Name == "metrics" && name != "active_series" {
+							continue
 						}
+						assert.Contains(t, query, `"example-run"`, "stage %q query %q = %q, want resolved run ID", stage.Name, name, query)
+					}
+					if stage.Name == "metrics" {
+						require.Equal(t, "prometheus", stage.Measurement.Type, "metrics measurement type = %q, want prometheus", stage.Measurement.Type)
+						assert.Equal(t, "http://127.0.0.1:9090", measurementSpec.Endpoint, "metrics endpoint = %q, want the scale cluster port-forward URL", measurementSpec.Endpoint)
+						assert.Contains(t, measurementSpec.Queries, "active_series", "metrics measurement is missing the attributed series query")
+						continue
 					}
 					measurement, err := newMeasurement(stage.Measurement)
-					if err != nil {
-						t.Fatalf("newMeasurement() error = %v", err)
-					}
+					require.NoError(t, err, "newMeasurement()")
 					report, err := measurement.Run(t.Context())
-					if err != nil || len(report) != 0 {
-						t.Errorf("stage %q measurement Run() = %v, %v, want empty success", stage.Name, report, err)
-					}
+					assert.NoError(t, err, "stage %q measurement Run()", stage.Name)
+					assert.Empty(t, report, "stage %q measurement Run() = %v, want empty success", stage.Name, report)
 				}
 			}
-			if _, err := prepareStages(plan.Stages, "/example/kubeconfig"); err != nil {
-				t.Errorf("prepareStages() error = %v", err)
-			}
+			_, err = prepareStages(plan.Stages, "/example/kubeconfig")
+			assert.NoError(t, err, "prepareStages()")
 		})
 	}
 }
