@@ -17,6 +17,8 @@ import (
 	"testing/synctest"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.yaml.in/yaml/v3"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -26,6 +28,7 @@ import (
 	batchclient "k8s.io/client-go/kubernetes/typed/batch/v1"
 )
 
+// TestNewJobGenerator checks strict workload configuration without accessing credentials.
 func TestNewJobGenerator(t *testing.T) {
 	const valid = "context: scale\nnamespace: load\nimage: example:test\n"
 	for _, test := range []struct {
@@ -36,6 +39,26 @@ func TestNewJobGenerator(t *testing.T) {
 		{name: "inert constructor", spec: valid},
 		{name: "command arrays", spec: valid + "cmd: [/binary]\nargs: [metrics, '--rate', '10']"},
 		{name: "empty arrays", spec: valid + "cmd: []\nargs: []"},
+		{name: "parallelism", spec: valid + "parallelism: 3"},
+		{name: "zero parallelism", spec: valid + "parallelism: 0", wantError: true},
+		{name: "negative parallelism", spec: valid + "parallelism: -1", wantError: true},
+		{name: "string parallelism", spec: valid + "parallelism: '3'", wantError: true},
+		{name: "float parallelism", spec: valid + "parallelism: 3.0", wantError: true},
+		{name: "null parallelism", spec: valid + "parallelism: null", wantError: true},
+		{name: "overflow parallelism", spec: valid + "parallelism: 2147483648", wantError: true},
+		{name: "alias parallelism", spec: valid + "pod_labels: {count: &count '3'}\nparallelism: *count", wantError: true},
+		{name: "labels", spec: valid + "pod_labels: {scale.nktp.io/workload: avalanche, empty: ''}"},
+		{name: "empty labels", spec: valid + "pod_labels: {}"},
+		{name: "null labels", spec: valid + "pod_labels: null", wantError: true},
+		{name: "numeric label value", spec: valid + "pod_labels: {count: 3}", wantError: true},
+		{name: "numeric label key", spec: valid + "pod_labels: {3: value}", wantError: true},
+		{name: "alias labels", spec: valid + "cmd: [&label avalanche]\npod_labels: {app: *label}", wantError: true},
+		{name: "duplicate label", spec: valid + "pod_labels: {app: a, app: b}", wantError: true},
+		{name: "invalid label key", spec: valid + "pod_labels: {'bad key': value}", wantError: true},
+		{name: "invalid label value", spec: valid + "pod_labels: {app: 'bad value'}", wantError: true},
+		{name: "controller label", spec: valid + "pod_labels: {batch.kubernetes.io/job-name: foreign}", wantError: true},
+		{name: "legacy controller label", spec: valid + "pod_labels: {controller-uid: foreign}", wantError: true},
+		{name: "ownership label", spec: valid + "pod_labels: {scale.nktp.io/generator: foreign}", wantError: true},
 		{name: "unknown field", spec: valid + "replicas: 2", wantError: true},
 		{name: "duplicate field", spec: valid + "image: other:test", wantError: true},
 		{name: "missing image", spec: strings.ReplaceAll(valid, "image: example:test\n", ""), wantError: true},
@@ -51,29 +74,35 @@ func TestNewJobGenerator(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			_, err := NewJobGenerator(jobSpec(t, test.spec), "/does/not/exist")
-			if (err != nil) != test.wantError {
-				t.Errorf("NewJobGenerator() error = %v, want error %v", err, test.wantError)
+			if test.wantError {
+				assert.Error(t, err, "NewJobGenerator()")
+			} else {
+				assert.NoError(t, err, "NewJobGenerator()")
 			}
 		})
 	}
 }
 
+// jobSpec decodes a test fixture into the node consumed by the constructor.
 func jobSpec(t *testing.T, data string) yaml.Node {
 	t.Helper()
 	var document yaml.Node
-	if err := yaml.Unmarshal([]byte(data), &document); err != nil {
-		t.Fatalf("decode test spec: %v", err)
-	}
+	require.NoError(t, yaml.Unmarshal([]byte(data), &document), "decode test spec")
 	return *document.Content[0]
 }
 
+// TestJobGeneratorRun checks completion, failures and cleanup through the Kubernetes API.
 func TestJobGeneratorRun(t *testing.T) {
 	for _, test := range []struct {
 		name        string
 		wantError   string
 		wantDeleted bool
+		parallelism int32
 	}{
 		{name: "complete", wantDeleted: true},
+		{name: "parallel complete", wantDeleted: true, parallelism: 3},
+		{name: "parallel failed", wantError: "export failed", wantDeleted: true, parallelism: 3},
+		{name: "parallel canceled", wantError: "context canceled", wantDeleted: true, parallelism: 3},
 		{name: "current context", wantDeleted: true},
 		{name: "missing current context", wantError: "configure Kubernetes client"},
 		{name: "failed", wantError: "export failed", wantDeleted: true},
@@ -87,9 +116,14 @@ func TestJobGeneratorRun(t *testing.T) {
 		{name: "cleanup failed", wantError: "delete Job"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
+			timeout := 2 * time.Second
+			if test.parallelism > 1 {
+				timeout = 10 * time.Second
+			}
+			ctx, cancel := context.WithTimeout(t.Context(), timeout)
 			defer cancel()
-			api := &jobTestAPI{t: t, mode: test.name, cancel: cancel}
+			mode := strings.TrimPrefix(test.name, "parallel ")
+			api := &jobTestAPI{t: t, mode: mode, cancel: cancel, parallelism: max(1, test.parallelism)}
 			server := httptest.NewServer(http.HandlerFunc(api.serveHTTP))
 			t.Cleanup(server.Close)
 			path := filepath.Join(t.TempDir(), "kubeconfig")
@@ -98,40 +132,43 @@ func TestJobGeneratorRun(t *testing.T) {
 			if test.name == "current context" {
 				config = strings.ReplaceAll(config, "current-context: wrong", "current-context: scale")
 			}
-			if err := os.WriteFile(path, []byte(config), 0600); err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, os.WriteFile(path, []byte(config), 0600), "write kubeconfig")
 			spec := "context: scale\nnamespace: load\nimage: example:test\ncmd: [/binary]\nargs: [metrics, '--rate', '10']"
 			if test.name == "current context" || test.name == "missing current context" {
 				spec = strings.ReplaceAll(spec, "context: scale\n", "")
 			}
+			if test.parallelism > 1 {
+				spec += fmt.Sprintf("\nparallelism: %d\npod_labels: {scale.nktp.io/workload: avalanche}", test.parallelism)
+			}
 			g, err := NewJobGenerator(jobSpec(t, spec), path)
-			if err != nil {
-				t.Fatalf("NewJobGenerator() error = %v", err)
-			}
+			require.NoError(t, err, "NewJobGenerator()")
 			err = g.Run(ctx)
-			if test.wantError == "" && err != nil || test.wantError != "" && (err == nil || !strings.Contains(err.Error(), test.wantError)) {
-				t.Errorf("Run() error = %v, want containing %q", err, test.wantError)
+			if test.wantError == "" {
+				assert.NoError(t, err, "Run()")
+			} else {
+				assert.ErrorContains(t, err, test.wantError, "Run()")
 			}
-			if test.name == "canceled" && !errors.Is(err, context.Canceled) {
-				t.Errorf("Run() error = %v, want context.Canceled", err)
+			if mode == "canceled" {
+				require.ErrorIs(t, err, context.Canceled, "Run()")
 			}
-			if test.name == "deadline" && !errors.Is(err, context.DeadlineExceeded) {
-				t.Errorf("Run() error = %v, want context.DeadlineExceeded", err)
+			if test.name == "deadline" {
+				require.ErrorIs(t, err, context.DeadlineExceeded, "Run()")
 			}
 			api.mu.Lock()
 			defer api.mu.Unlock()
-			if api.deleted != test.wantDeleted {
-				t.Errorf("Job deleted = %v, want %v", api.deleted, test.wantDeleted)
+			assert.Equal(t, test.wantDeleted, api.deleted, "Job deleted")
+			if test.name == "failed" {
+				if err != nil {
+					assert.LessOrEqual(t, len(err.Error()), 9000, "bounded failure logs")
+				}
+				assert.True(t, api.logsRead, "collect failure logs from the Running pod")
 			}
-			if test.name == "failed" && err != nil && len(err.Error()) > 9000 {
-				t.Errorf("Run() error contains %d bytes, want bounded logs", len(err.Error()))
+			if api.deleted {
+				assert.Nil(t, api.job, "owned Job removed before Run() returns")
+				assert.Zero(t, api.remainingPods, "owned pods removed before Run() returns")
 			}
-			if test.name == "failed" && !api.logsRead {
-				t.Error("Run() did not collect failure logs from the Running pod")
-			}
-			if api.deleted && api.job != nil {
-				t.Error("Run() returned with the owned Job present")
+			if mode == "complete" && test.parallelism > 1 {
+				assert.GreaterOrEqual(t, api.gets, 3, "observe all completions before Run() returns")
 			}
 		})
 	}
@@ -148,8 +185,13 @@ type jobTestAPI struct {
 	gets     int
 	deleted  bool
 	logsRead bool
+	// parallelism is the expected pod count in submitted Jobs.
+	parallelism int32
+	// remainingPods models pods that outlive their Job during foreground deletion.
+	remainingPods int32
 }
 
+// serveHTTP models the Job and pod endpoints used by Run and cleanup.
 func (a *jobTestAPI) serveHTTP(w http.ResponseWriter, r *http.Request) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -176,15 +218,17 @@ func (a *jobTestAPI) serveHTTP(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "invalid body", http.StatusBadRequest)
 			return
 		}
-		if job.Namespace != "load" || job.Labels[jobOwnerLabel] != job.Name {
-			a.t.Errorf("Job metadata = %+v, want explicit namespace and ownership", job.ObjectMeta)
+		assert.Equal(a.t, "load", job.Namespace, "Job namespace")
+		assert.Equal(a.t, job.Name, job.Labels[jobOwnerLabel], "Job ownership label")
+		assert.Equal(a.t, a.parallelism, *job.Spec.Parallelism, "Job parallelism")
+		assert.Equal(a.t, a.parallelism, *job.Spec.Completions, "Job completions")
+		assert.Zero(a.t, *job.Spec.BackoffLimit, "Job retries")
+		assert.Equal(a.t, corev1.RestartPolicyNever, job.Spec.Template.Spec.RestartPolicy, "pod restart policy")
+		if a.parallelism > 1 {
+			assert.Equal(a.t, "avalanche", job.Spec.Template.Labels["scale.nktp.io/workload"], "workload selection label")
 		}
-		if *job.Spec.Parallelism != 1 || *job.Spec.Completions != 1 || *job.Spec.BackoffLimit != 0 || job.Spec.Template.Spec.RestartPolicy != corev1.RestartPolicyNever {
-			a.t.Errorf("Job spec = %+v, want one finite pod without retries", job.Spec)
-		}
-		if *job.Spec.ActiveDeadlineSeconds <= 0 || *job.Spec.TTLSecondsAfterFinished <= 0 {
-			a.t.Error("Job is missing controller deadline/cleanup fallback")
-		}
+		assert.Positive(a.t, *job.Spec.ActiveDeadlineSeconds, "Job controller deadline")
+		assert.Positive(a.t, *job.Spec.TTLSecondsAfterFinished, "Job cleanup fallback")
 		container := job.Spec.Template.Spec.Containers[0]
 		if container.Image != "example:test" || !reflect.DeepEqual(container.Command, []string{"/binary"}) || !reflect.DeepEqual(container.Args, []string{"metrics", "--rate", "10"}) {
 			a.t.Errorf("container = %+v, want configured executable and args", container)
@@ -224,6 +268,13 @@ func (a *jobTestAPI) serveHTTP(w http.ResponseWriter, r *http.Request) {
 				http.Error(w, "unavailable", http.StatusServiceUnavailable)
 				return
 			}
+			if a.mode == "complete" && a.parallelism > 1 && a.gets == 1 {
+				partial := a.job.DeepCopy()
+				partial.Status.Conditions = nil
+				partial.Status.Succeeded = 1
+				write(partial)
+				return
+			}
 			if a.mode == "ownership changed" && a.gets > 1 {
 				a.job.Labels[jobOwnerLabel] = "someone-else"
 			}
@@ -248,6 +299,7 @@ func (a *jobTestAPI) serveHTTP(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			a.job = nil
+			a.remainingPods = a.parallelism - 1
 			a.deleted = true
 			write(metav1.Status{Status: "Success"})
 		default:
@@ -263,6 +315,16 @@ func (a *jobTestAPI) serveHTTP(w http.ResponseWriter, r *http.Request) {
 		if a.job != nil && a.job.UID == "owned" {
 			controller := true
 			list.Items = []corev1.Pod{{ObjectMeta: metav1.ObjectMeta{Name: "generator-pod", OwnerReferences: []metav1.OwnerReference{{UID: "owned", Controller: &controller}}}, Status: corev1.PodStatus{Phase: corev1.PodRunning}}}
+		}
+		if a.deleted && a.remainingPods > 0 {
+			controller := true
+			for i := range a.remainingPods {
+				list.Items = append(list.Items, corev1.Pod{ObjectMeta: metav1.ObjectMeta{
+					Name:            fmt.Sprintf("remaining-%d", i),
+					OwnerReferences: []metav1.OwnerReference{{UID: "owned", Controller: &controller}},
+				}})
+			}
+			a.remainingPods--
 		}
 		write(list)
 		return

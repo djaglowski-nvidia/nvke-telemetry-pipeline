@@ -290,7 +290,8 @@ The harness can be extended with additional generators and measurements.
 - **No-op (`noop`)** exercises the harness without generating load or requiring a
   cluster. See the [no-op plan](plans/noop.yaml).
 - **Kubernetes Job (`job`)** runs a containerized load generator to completion.
-  See the [telemetrygen plan](plans/telemetrygen.yaml) for configuration.
+  See the [telemetrygen plan](plans/telemetrygen.yaml) or
+  [Avalanche plan](plans/avalanche.yaml) for configuration.
 
 The telemetrygen plan uses namespace `nktp` and the NKTP services installed by
 `task scale:up`. When using another cluster, adjust the plan namespace and
@@ -298,3 +299,38 @@ endpoints as needed. The test harness itself does not provision a cluster.
 
 **Jobs and pods are cleaned up before the test returns**, including after failure
 or cancellation. Workload and cleanup errors fail the test.
+
+## Avalanche
+
+[Avalanche](https://github.com/prometheus-community/avalanche) generates
+Prometheus metrics for NKTP to scrape. The [example plan](plans/avalanche.yaml)
+runs three independent pods for three minutes. Each pod serves 10,000 gauge
+series. The [scrape profile](avalanche-values.yaml) discovers each pod through
+NKTP's existing collectors.
+
+From the repository root:
+
+```sh
+task scale:up HELM_VALUES_FILE=avalanche-values.yaml
+task test:scale -- -plan "$PWD/tests/scale/plans/avalanche.yaml"
+```
+
+Pass the values file on subsequent `scale:up` runs to keep the scrape profile.
+The plan and profile use namespace `nktp`. Adjust both when using another namespace.
+
+Job `parallelism` defaults to `1` and must be a positive integer. It requests
+concurrent pods and requires that many successful completions. Pods start
+independently as resources become available. `pod_labels` supplies labels for
+scrape discovery. Job controller and harness ownership labels are reserved.
+
+Adjust the plan's parallelism or Avalanche arguments to change the load.
+The measurement is currently no-op, so successful completion confirms workload
+execution and cleanup without verifying backend delivery.
+
+**Limitation:** Avalanche runs as a Kubernetes Job and does not preserve
+time-series identity across pod replacement. If a pod is replaced during a test,
+its new labels create distinct series that may overlap with the previous pod's
+series in backend queries. This can inflate the observed series count or mask
+missing data, so the count alone does not prove that the expected number of
+series is being received simultaneously. StatefulSet support with stable replica
+identities and label mapping is planned.
