@@ -2,7 +2,6 @@ package runner
 
 import (
 	"context"
-	"crypto/rand"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -21,7 +20,7 @@ type generator interface {
 // measurement observes and evaluates a stage concurrently with its generator.
 // Run is called once per instance, must honor cancellation, and must finish its
 // goroutines and bounded cleanup before returning. It may return a partial report
-// with an error. A successful report may be empty; failed checks return errors.
+// with an error. A successful report may be empty. Failed checks return errors.
 type measurement interface {
 	Run(context.Context) (measurements.Report, error)
 }
@@ -44,8 +43,9 @@ type PlanReport struct {
 }
 
 // Executor validates and runs plans. Its zero value supports no-op plans.
-// Execute calls are independent and may run concurrently. Callers must not
-// modify a plan or its specs while it is being executed.
+// Execute calls are independent and may run concurrently. Callers supply the
+// run ID resolved during argument parsing. Callers must not modify a plan or
+// its specs while it is being executed.
 type Executor struct {
 	// Kubeconfig is the absolute path to the file used by every Job generator.
 	// It is required only for plans containing Jobs. Credentials are read in Run.
@@ -57,10 +57,18 @@ type Executor struct {
 // Cancellation stops unstarted stages and waits for started runnables to return.
 // Reports, including partial findings, accompany execution errors. Invalid plans
 // return an empty PlanReport. Completion uses the default slog logger.
+// runID must match the ID retained by Parse when args contained run-id.
+// A mismatch returns an empty report before any component is constructed.
 // No cluster is required by the no-op implementations.
-func (e Executor) Execute(ctx context.Context, plan Plan) (PlanReport, error) {
+func (e Executor) Execute(ctx context.Context, plan Plan, runID string) (PlanReport, error) {
 	if err := ctx.Err(); err != nil {
 		return PlanReport{}, err
+	}
+	if err := validateRunID(runID); err != nil {
+		return PlanReport{}, err
+	}
+	if plan.runID != "" && plan.runID != runID {
+		return PlanReport{}, fmt.Errorf("run-id %q does not match parsed plan run-id %q", runID, plan.runID)
 	}
 	plan.setDefaults()
 	if err := plan.validate(); err != nil {
@@ -70,7 +78,6 @@ func (e Executor) Execute(ctx context.Context, plan Plan) (PlanReport, error) {
 	if err != nil {
 		return PlanReport{}, err
 	}
-	runID := rand.Text()
 	logger := slog.With("plan", plan.Name, "run_id", runID)
 	runCtx, cancel := context.WithTimeout(ctx, plan.Timeout)
 	defer cancel()
@@ -108,7 +115,7 @@ func prepareStages(stages []Stage, kubeconfig string) ([]preparedStage, error) {
 }
 
 // executeStages schedules independent stages and joins every started goroutine.
-// Each stage owns one result slot; aggregation starts only after all writers exit.
+// Each stage owns one result slot. Aggregation starts only after all writers exit.
 func executeStages(ctx context.Context, logger *slog.Logger, execution Execution, stages []preparedStage) ([]StageReport, error) {
 	reports := make([]StageReport, len(stages))
 	var wg sync.WaitGroup
@@ -139,6 +146,9 @@ func executeStage(ctx context.Context, logger *slog.Logger, stage preparedStage)
 	report := StageReport{Name: stage.name, Measurement: stage.measurementType}
 	stageCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
+	if stageCtx.Err() == nil {
+		logger.InfoContext(stageCtx, "stage started", "stage", stage.name)
+	}
 	var wg sync.WaitGroup
 	wg.Go(func() {
 		err := stageCtx.Err()

@@ -17,8 +17,14 @@ stages:
           - --duration=3m
           - --rate=10
           - --workers=1
+          - '--telemetry-attributes=test_run_id="{{args.run-id}}"'
     measurement:
       type: noop
+      # Query strings are resolved for this run but are not executed.
+      spec:
+        queries:
+          # PromQL counts series carrying this run's telemetry attribute.
+          active_series: 'count({test_run_id="{{args.run-id}}"})'
   - name: logs
     generator:
       type: job
@@ -33,8 +39,14 @@ stages:
           - --duration=3m
           - --rate=10
           - --workers=1
+          - '--telemetry-attributes=test_run_id="{{args.run-id}}"'
     measurement:
       type: noop
+      spec:
+        queries:
+          # LogQL assumes OTLP log attributes are stored as structured metadata.
+          # service_name selects indexed streams before filtering the run.
+          log_entries: '{service_name=~".+"} | test_run_id="{{args.run-id}}"'
   - name: traces
     generator:
       type: job
@@ -49,5 +61,10 @@ stages:
           - --duration=3m
           - --rate=10
           - --workers=1
+          - '--telemetry-attributes=test_run_id="{{args.run-id}}"'
     measurement:
       type: noop
+      spec:
+        queries:
+          # TraceQL selects spans carrying this run's telemetry attribute.
+          traces: '{ span.test_run_id = "{{args.run-id}}" }'

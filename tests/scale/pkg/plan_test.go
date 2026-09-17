@@ -24,7 +24,7 @@ stages:
 
 // TestParseDefaults checks the default scheduling mode and preserved definitions.
 func TestParseDefaults(t *testing.T) {
-	plan, err := Parse([]byte(planYAML))
+	plan, err := Parse([]byte(planYAML), nil)
 	if err != nil {
 		t.Fatalf("Parse() error = %v", err)
 	}
@@ -61,7 +61,7 @@ func TestParseRejectsInvalidDocuments(t *testing.T) {
 		{name: "missing measurement", data: strings.Replace(planYAML, "measurement: {type: noop, spec: {}}", "measurement: {}", 1), want: "measurement.type"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			if _, err := Parse([]byte(tc.data)); err == nil || !strings.Contains(err.Error(), tc.want) {
+			if _, err := Parse([]byte(tc.data), nil); err == nil || !strings.Contains(err.Error(), tc.want) {
 				t.Errorf("Parse() error = %v, want an error containing %q", err, tc.want)
 			}
 		})
@@ -80,14 +80,14 @@ func TestExecuteValidatesComponents(t *testing.T) {
 		{name: "extra option", data: strings.Replace(planYAML, "spec: {}", "spec: {rate: 2}", 1), want: "noop spec must be an empty mapping"},
 		{name: "scalar spec", data: strings.Replace(planYAML, "spec: {}", "spec: 3", 1), want: "noop spec must be an empty mapping"},
 		{name: "null spec", data: strings.Replace(planYAML, "spec: {}", "spec: null", 1), want: "noop spec must be an empty mapping"},
-		{name: "measurement extra option", data: strings.Replace(planYAML, "measurement: {type: noop, spec: {}}", "measurement: {type: noop, spec: {rate: 2}}", 1), want: "measurement: noop spec must be an empty mapping"},
+		{name: "measurement extra option", data: strings.Replace(planYAML, "measurement: {type: noop, spec: {}}", "measurement: {type: noop, spec: {rate: 2}}", 1), want: "measurement: noop spec only supports a queries mapping"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			plan, err := Parse([]byte(tc.data))
+			plan, err := Parse([]byte(tc.data), nil)
 			if err != nil {
 				t.Fatalf("Parse() error = %v", err)
 			}
-			report, err := (Executor{}).Execute(t.Context(), plan)
+			report, err := (Executor{}).Execute(t.Context(), plan, "test-run")
 			if err == nil || !strings.Contains(err.Error(), tc.want) {
 				t.Errorf("Execute() error = %v, want an error containing %q", err, tc.want)
 			}
@@ -102,18 +102,22 @@ func TestExecuteValidatesComponents(t *testing.T) {
 func TestExecuteNoopPlan(t *testing.T) {
 	for _, mode := range []Execution{"", Parallel, Sequential} {
 		t.Run("mode="+string(mode), func(t *testing.T) {
-			plan, err := Parse([]byte(planYAML))
+			plan, err := Parse([]byte(planYAML), nil)
 			if err != nil {
 				t.Fatalf("Parse() error = %v", err)
 			}
 			plan.Execution = mode
 			var previousID string
 			for range 2 {
-				report, err := (Executor{}).Execute(t.Context(), plan)
+				args, err := ParseArguments(nil)
+				if err != nil {
+					t.Fatalf("ParseArguments() error = %v", err)
+				}
+				report, err := (Executor{}).Execute(t.Context(), plan, args["run-id"])
 				if err != nil {
 					t.Fatalf("Execute() error = %v", err)
 				}
-				if report.RunID == "" || report.RunID == previousID || report.Plan != "smoke" {
+				if report.RunID != args["run-id"] || report.RunID == previousID || report.Plan != "smoke" {
 					t.Errorf("Execute() identity = (%q, %q), previous ID = %q", report.Plan, report.RunID, previousID)
 				}
 				previousID = report.RunID
@@ -134,12 +138,78 @@ func TestExecuteNoopPlan(t *testing.T) {
 
 // TestExecuteRejectsInvalidInput checks the public API without relying on parsing.
 func TestExecuteRejectsInvalidInput(t *testing.T) {
-	if _, err := (Executor{}).Execute(t.Context(), Plan{}); err == nil {
+	if _, err := (Executor{}).Execute(t.Context(), Plan{}, "test-run"); err == nil {
 		t.Error("Execute(Plan{}) error = nil, want validation error")
 	}
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
-	if _, err := (Executor{}).Execute(ctx, Plan{}); err != context.Canceled {
+	if _, err := (Executor{}).Execute(ctx, Plan{}, "test-run"); err != context.Canceled {
 		t.Errorf("Execute(canceled) error = %v, want context.Canceled", err)
+	}
+}
+
+// TestExecuteUsesSuppliedRunID checks that reports retain the ID supplied during parsing.
+func TestExecuteUsesSuppliedRunID(t *testing.T) {
+	args, err := ParseArguments([]string{"run-id=ci-123"})
+	if err != nil {
+		t.Fatalf("ParseArguments() error = %v", err)
+	}
+	plan, err := Parse([]byte(planYAML), args)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	for range 2 {
+		report, err := (Executor{}).Execute(t.Context(), plan, args["run-id"])
+		if err != nil {
+			t.Fatalf("Execute() error = %v", err)
+		}
+		if report.RunID != "ci-123" {
+			t.Errorf("Execute().RunID = %q, want ci-123", report.RunID)
+		}
+	}
+}
+
+// TestExecuteRejectsInvalidRunID checks execution rejects missing or malformed IDs.
+func TestExecuteRejectsInvalidRunID(t *testing.T) {
+	plan, err := Parse([]byte(planYAML), nil)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	for _, id := range []string{"", "bad id"} {
+		if _, err := (Executor{}).Execute(t.Context(), plan, id); err == nil || !strings.Contains(err.Error(), "run-id") {
+			t.Errorf("Execute(runID=%q) error = %v, want run-id validation error", id, err)
+		}
+	}
+}
+
+// TestParseRejectsInvalidRunID checks direct callers cannot bind an invalid ID.
+func TestParseRejectsInvalidRunID(t *testing.T) {
+	for _, id := range []string{"", "bad id"} {
+		t.Run("run-id="+id, func(t *testing.T) {
+			if _, err := Parse([]byte(planYAML), map[string]string{"run-id": id}); err == nil || !strings.Contains(err.Error(), "run-id") {
+				t.Errorf("Parse(run-id=%q) error = %v, want run-id validation error", id, err)
+			}
+		})
+	}
+}
+
+// TestExecuteRejectsMismatchedRunID checks parsing binds a snapshot of the run ID.
+func TestExecuteRejectsMismatchedRunID(t *testing.T) {
+	args := map[string]string{"run-id": "run-a"}
+	plan, err := Parse([]byte(planYAML), args)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	args["run-id"] = "run-b"
+	report, err := (Executor{}).Execute(t.Context(), plan, args["run-id"])
+	if err == nil || !strings.Contains(err.Error(), "does not match") {
+		t.Errorf("Execute() error = %v, want a run ID mismatch", err)
+	}
+	if !reflect.DeepEqual(report, PlanReport{}) {
+		t.Errorf("Execute() report = %+v, want no execution on mismatch", report)
+	}
+	report, err = (Executor{}).Execute(t.Context(), plan, "run-a")
+	if err != nil || report.RunID != "run-a" {
+		t.Errorf("Execute() = %+v, %v, want success with the original run ID", report, err)
 	}
 }

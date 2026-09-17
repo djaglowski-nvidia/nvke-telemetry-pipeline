@@ -2,7 +2,6 @@
 package runner
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -29,6 +28,9 @@ type Plan struct {
 	Execution Execution     `yaml:"execution"`
 	Timeout   time.Duration `yaml:"timeout"`
 	Stages    []Stage       `yaml:"stages"`
+
+	// runID retains the validated argument supplied to Parse and is empty when omitted.
+	runID string
 }
 
 // Stage pairs one generator with one measurement, which run concurrently.
@@ -46,12 +48,25 @@ type ComponentSpec struct {
 	Spec yaml.Node `yaml:"spec"`
 }
 
-// Parse decodes exactly one YAML document, rejects unknown envelope fields,
-// defaults execution to Parallel, and validates the plan structure. It does not
-// construct runnables; Executor.Execute validates implementation-specific specs.
-func Parse(data []byte) (Plan, error) {
-	var plan Plan
-	decoder := yaml.NewDecoder(bytes.NewReader(data))
+// Parse substitutes {{args.name}} in raw text, then decodes exactly one YAML
+// document with strict envelope fields. References in keys and comments are also
+// replaced. Argument values must fit the surrounding YAML syntax and quoting.
+// Parse validates and retains run-id when supplied so Executor.Execute can
+// reject mismatched attribution. It does not generate argument defaults or change
+// args or data. It defaults execution to Parallel and validates the plan structure.
+// Executor.Execute validates component specs before execution.
+func Parse(data []byte, args map[string]string) (Plan, error) {
+	if runID, supplied := args["run-id"]; supplied {
+		if err := validateRunID(runID); err != nil {
+			return Plan{}, err
+		}
+	}
+	resolved, err := bindArguments(string(data), args)
+	if err != nil {
+		return Plan{}, err
+	}
+	plan := Plan{runID: args["run-id"]}
+	decoder := yaml.NewDecoder(strings.NewReader(resolved))
 	decoder.KnownFields(true)
 	if err := decoder.Decode(&plan); err != nil {
 		return Plan{}, fmt.Errorf("decode plan: %w", err)

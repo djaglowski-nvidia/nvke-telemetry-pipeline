@@ -19,9 +19,24 @@ var planPath = flag.String("plan", "plans/noop.yaml", "scale test plan file")
 // kubeconfigPath selects one file for every Job generator in the plan.
 var kubeconfigPath = flag.String("kubeconfig", os.Getenv("KUBECONFIG"), "kubeconfig file (default: tests/scale/.kubeconfig)")
 
+// argumentValues holds the raw repeated flags so each TestRun gets a fresh default.
+var argumentValues []string
+
+// init registers repeatable argument flags for resolution in each TestRun.
+func init() {
+	flag.Func("arg", "plan argument NAME=VALUE (repeatable, run-id defaults to a random ID)", func(value string) error {
+		argumentValues = append(argumentValues, value)
+		return nil
+	})
+}
+
 // TestRun loads a plan and logs consolidated reports after every stage completes.
 // The initial no-op implementations require neither Kubernetes nor a load backend.
 func TestRun(t *testing.T) {
+	args, err := runner.ParseArguments(argumentValues)
+	if err != nil {
+		t.Fatalf("Parse arguments: %v", err)
+	}
 	kubeconfig, err := resolveKubeconfig(*kubeconfigPath, flag.Args())
 	if err != nil {
 		t.Fatal(err)
@@ -30,11 +45,11 @@ func TestRun(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read plan %q: %v", *planPath, err)
 	}
-	plan, err := runner.Parse(data)
+	plan, err := runner.Parse(data, args)
 	if err != nil {
 		t.Fatalf("parse plan %q: %v", *planPath, err)
 	}
-	report, err := (runner.Executor{Kubeconfig: kubeconfig}).Execute(t.Context(), plan)
+	report, err := (runner.Executor{Kubeconfig: kubeconfig}).Execute(t.Context(), plan, args["run-id"])
 	t.Logf("plan=%s run=%s stages=%d", report.Plan, report.RunID, len(report.Stages))
 	for _, stage := range report.Stages {
 		t.Logf("stage=%s measurement=%s report=%v generator_error=%v measurement_error=%v",
