@@ -175,8 +175,8 @@ This keeps monitoring congestion from blocking collection.
 
 ### OpenTelemetry and CRDs
 
-NKTP depends on the published [opentelemetry-kube-stack 0.20.8](https://github.com/open-telemetry/opentelemetry-helm-charts/tree/opentelemetry-kube-stack-0.20.8/charts/opentelemetry-kube-stack)
-chart. It supplies OpenTelemetry Operator chart 0.119.0, operator image 0.154.0,
+NKTP depends on the published [opentelemetry-kube-stack 0.22.0](https://github.com/open-telemetry/opentelemetry-helm-charts/tree/opentelemetry-kube-stack-0.22.0/charts/opentelemetry-kube-stack)
+chart. It supplies OpenTelemetry Operator chart 0.123.0, operator image 0.159.0,
 and native CRDs. NKTP disables its default Collector and general Collector RBAC.
 Settings pass through under `opentelemetry-kube-stack` using upstream values.
 

@@ -115,10 +115,10 @@ tests:
           value: otel/opentelemetry-collector-k8s:0.159.0
       - equal:
           path: metadata.labels["helm.sh/chart"]
-          value: opentelemetry-kube-stack-0.20.8
+          value: opentelemetry-kube-stack-0.22.0
       - contains:
           path: spec.template.spec.containers[0].args
-          content: helm.sh/chart=opentelemetry-kube-stack-0.20.8
+          content: helm.sh/chart=opentelemetry-kube-stack-0.22.0
         template: charts/opentelemetry-kube-stack/templates/hooks.yaml
         documentSelector:
           path: kind
@@ -595,7 +595,7 @@ tests:
           name: nktp-watchdog
       - equal:
           path: metadata.labels["helm.sh/chart"]
-          value: opentelemetry-kube-stack-0.20.8
+          value: opentelemetry-kube-stack-0.22.0
 
   - it: rejects string configuration
     template: templates/watchdog.yaml

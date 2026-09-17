@@ -67,7 +67,7 @@ matches the snapshot with default values:
     kind: OpenTelemetryCollector
     metadata:
       labels:
-        helm.sh/chart: opentelemetry-kube-stack-0.20.8
+        helm.sh/chart: opentelemetry-kube-stack-0.22.0
       name: nktp-cluster-events
       namespace: NAMESPACE
     spec:
@@ -271,7 +271,7 @@ matches the snapshot with default values:
     kind: OpenTelemetryCollector
     metadata:
       labels:
-        helm.sh/chart: opentelemetry-kube-stack-0.20.8
+        helm.sh/chart: opentelemetry-kube-stack-0.22.0
       name: nktp-daemonset
       namespace: NAMESPACE
     spec:
@@ -528,7 +528,7 @@ matches the snapshot with default values:
     kind: OpenTelemetryCollector
     metadata:
       labels:
-        helm.sh/chart: opentelemetry-kube-stack-0.20.8
+        helm.sh/chart: opentelemetry-kube-stack-0.22.0
       name: nktp-gateway-logs
       namespace: NAMESPACE
     spec:
@@ -651,7 +651,7 @@ matches the snapshot with default values:
     kind: OpenTelemetryCollector
     metadata:
       labels:
-        helm.sh/chart: opentelemetry-kube-stack-0.20.8
+        helm.sh/chart: opentelemetry-kube-stack-0.22.0
       name: nktp-gateway-metrics
       namespace: NAMESPACE
     spec:
@@ -774,7 +774,7 @@ matches the snapshot with default values:
     kind: OpenTelemetryCollector
     metadata:
       labels:
-        helm.sh/chart: opentelemetry-kube-stack-0.20.8
+        helm.sh/chart: opentelemetry-kube-stack-0.22.0
       name: nktp-gateway-traces
       namespace: NAMESPACE
     spec:
@@ -947,7 +947,7 @@ matches the snapshot with default values:
     kind: OpenTelemetryCollector
     metadata:
       labels:
-        helm.sh/chart: opentelemetry-kube-stack-0.20.8
+        helm.sh/chart: opentelemetry-kube-stack-0.22.0
       name: nktp-large-target-metrics
       namespace: NAMESPACE
     spec:
@@ -3062,7 +3062,7 @@ matches the snapshot with default values:
     kind: OpenTelemetryCollector
     metadata:
       labels:
-        helm.sh/chart: opentelemetry-kube-stack-0.20.8
+        helm.sh/chart: opentelemetry-kube-stack-0.22.0
       name: nktp-watchdog
       namespace: NAMESPACE
     spec:
