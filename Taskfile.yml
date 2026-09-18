@@ -12,6 +12,7 @@ tasks:
     cmds:
       - helm repo add open-telemetry https://open-telemetry.github.io/opentelemetry-helm-charts --force-update
       - helm repo add prometheus-community https://prometheus-community.github.io/helm-charts --force-update
+      - helm repo add metrics-server https://kubernetes-sigs.github.io/metrics-server/ --force-update
       - helm dependency build nktp --skip-refresh
       - helm unittest {{.CLI_ARGS}} nktp
 

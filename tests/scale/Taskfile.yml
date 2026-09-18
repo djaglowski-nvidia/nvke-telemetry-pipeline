@@ -143,6 +143,7 @@ tasks:
         esac
         helm repo add open-telemetry https://open-telemetry.github.io/opentelemetry-helm-charts --force-update || exit $?
         helm repo add prometheus-community https://prometheus-community.github.io/helm-charts --force-update || exit $?
+        helm repo add metrics-server https://kubernetes-sigs.github.io/metrics-server/ --force-update || exit $?
         helm dependency build ../../nktp --skip-refresh || exit $?
         dependencies_ready || { echo "Chart dependencies are not ready after building." >&2; exit 1; }
 
