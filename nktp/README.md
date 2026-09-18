@@ -116,6 +116,14 @@ Deployment and briefly stops collection during replacement.
 
 ### Node collector
 
+The node Collector accepts OTLP logs, metrics, and traces at
+`nktp-daemonset-collector:4317` over gRPC and `http://nktp-daemonset-collector:4318`
+over HTTP. The Service routes traffic only to the Collector on the sender's node.
+If no local Collector is ready, traffic fails rather than reaching another node.
+The Collector sets `k8s.node.name` and forwards each signal to its corresponding
+gateway. Qualify the Service name with the NKTP namespace when
+sending from another namespace.
+
 The DaemonSet reads pod logs from `/var/log/pods` and sends them to the logs
 gateway. A dedicated Target Allocator assigns monitored metric endpoints only
 to collectors on the same node. Metrics go to

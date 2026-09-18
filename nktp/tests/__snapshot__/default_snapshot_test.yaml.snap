@@ -305,6 +305,20 @@ matches the snapshot with default values:
               num_consumers: 32
               queue_size: 8388608
               sizer: bytes
+          otlp_http/traces:
+            endpoint: http://nktp-gateway-traces-collector:4318
+            retry_on_failure:
+              max_elapsed_time: 30m
+            sending_queue:
+              batch:
+                flush_timeout: 1s
+                max_size: 2097152
+                min_size: 1048576
+                sizer: bytes
+              block_on_overflow: true
+              num_consumers: 32
+              queue_size: 8388608
+              sizer: bytes
           otlp_http/watchdog:
             endpoint: http://nktp-watchdog-collector:4318
             retry_on_failure:
@@ -362,6 +376,12 @@ matches the snapshot with default values:
                 resource_attributes:
                   process.command_line:
                     enabled: false
+          otlp:
+            protocols:
+              grpc:
+                endpoint: 0.0.0.0:4317
+              http:
+                endpoint: 0.0.0.0:4318
           prometheus:
             config:
               scrape_configs: []
@@ -399,6 +419,7 @@ matches the snapshot with default values:
                 - resource/node
               receivers:
                 - filelog
+                - otlp
             metrics:
               exporters:
                 - otlp_http/metrics
@@ -408,6 +429,7 @@ matches the snapshot with default values:
               receivers:
                 - prometheus
                 - hostmetrics
+                - otlp
             metrics/targetallocator:
               exporters:
                 - otlp_http/watchdog
@@ -416,6 +438,14 @@ matches the snapshot with default values:
                 - resource/targetallocator
               receivers:
                 - prometheus/targetallocator
+            traces:
+              exporters:
+                - otlp_http/traces
+              processors:
+                - memory_limiter
+                - resource/node
+              receivers:
+                - otlp
           telemetry:
             logs:
               processors:

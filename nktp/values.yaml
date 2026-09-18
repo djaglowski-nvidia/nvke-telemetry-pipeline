@@ -530,7 +530,7 @@ gateway_traces:
             processors: [memory_limiter]
             exporters: [otlp_http]
 
-# Node-level collector. Reads local pod logs and scrapes targets on the same node.
+# Node-level collector. Collects local telemetry and forwards received OTLP signals.
 daemonset:
   kubernetes:
     mode: daemonset
@@ -619,6 +619,12 @@ daemonset:
         health_check:
           endpoint: 0.0.0.0:13133
       receivers:
+        otlp:
+          protocols:
+            grpc:
+              endpoint: 0.0.0.0:4317
+            http:
+              endpoint: 0.0.0.0:4318
         filelog:
           include: [/var/log/pods/*/*/*.log]
           # NKTP Collectors already send their own logs through watchdog.
@@ -681,6 +687,20 @@ daemonset:
               min_size: 1048576
               max_size: 2097152
               flush_timeout: 1s
+        otlp_http/traces:
+          endpoint: http://nktp-gateway-traces-collector:4318
+          retry_on_failure:
+            max_elapsed_time: 30m
+          sending_queue:
+            block_on_overflow: true
+            sizer: bytes
+            queue_size: 8388608
+            num_consumers: 32
+            batch:
+              sizer: bytes
+              min_size: 1048576
+              max_size: 2097152
+              flush_timeout: 1s
       service:
         extensions: [health_check]
         telemetry:
@@ -710,13 +730,17 @@ daemonset:
                       endpoint: http://nktp-watchdog-collector:4318
         pipelines:
           logs:
-            receivers: [filelog]
+            receivers: [filelog, otlp]
             processors: [memory_limiter, resource/node]
             exporters: [otlp_http/logs]
           metrics:
-            receivers: [prometheus, hostmetrics]
+            receivers: [prometheus, hostmetrics, otlp]
             processors: [memory_limiter, resource/node]
             exporters: [otlp_http/metrics]
+          traces:
+            receivers: [otlp]
+            processors: [memory_limiter, resource/node]
+            exporters: [otlp_http/traces]
 
 # Scrapes monitoring CRs labeled nktp.nvidia.io/large-target: "true".
 large_target_metrics:

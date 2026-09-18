@@ -37,8 +37,9 @@ tests:
       - equal:
           path: spec.config.service.pipelines
           value:
-            logs: {receivers: [filelog], processors: [memory_limiter, resource/node], exporters: [otlp_http/logs]}
-            metrics: {receivers: [prometheus, hostmetrics], processors: [memory_limiter, resource/node], exporters: [otlp_http/metrics]}
+            logs: {receivers: [filelog, otlp], processors: [memory_limiter, resource/node], exporters: [otlp_http/logs]}
+            metrics: {receivers: [prometheus, hostmetrics, otlp], processors: [memory_limiter, resource/node], exporters: [otlp_http/metrics]}
+            traces: {receivers: [otlp], processors: [memory_limiter, resource/node], exporters: [otlp_http/traces]}
             metrics/targetallocator: {receivers: [prometheus/targetallocator], processors: [memory_limiter/targetallocator, resource/targetallocator], exporters: [otlp_http/watchdog]}
       - equal:
           path: spec.config.exporters["otlp_http/logs"].endpoint
@@ -343,6 +344,7 @@ tests:
         exporters:
           otlp_http/logs: null
           otlp_http/metrics: null
+          otlp_http/traces: null
           debug: {}
         service:
           extensions: null
@@ -350,6 +352,7 @@ tests:
           pipelines:
             logs: null
             metrics: null
+            traces: null
             traces/custom: {receivers: [otlp], exporters: [debug]}
     asserts:
       - equal:
@@ -446,8 +449,63 @@ tests:
       - equal:
           path: spec.config.service.pipelines.metrics
           value:
-            receivers: [prometheus, hostmetrics]
+            receivers: [prometheus, hostmetrics, otlp]
             processors: [memory_limiter, resource/node]
             exporters: [otlp_http/metrics]
       - notExists:
           path: spec.hostPID
+
+  - it: accepts both OTLP transports and routes all signals with node identity
+    asserts:
+      - equal:
+          path: spec.config.receivers.otlp.protocols
+          value:
+            grpc: {endpoint: "0.0.0.0:4317"}
+            http: {endpoint: "0.0.0.0:4318"}
+      - equal:
+          path: spec.config.service.pipelines.logs
+          value: {receivers: [filelog, otlp], processors: [memory_limiter, resource/node], exporters: [otlp_http/logs]}
+      - equal:
+          path: spec.config.service.pipelines.metrics
+          value: {receivers: [prometheus, hostmetrics, otlp], processors: [memory_limiter, resource/node], exporters: [otlp_http/metrics]}
+      - equal:
+          path: spec.config.service.pipelines.traces
+          value: {receivers: [otlp], processors: [memory_limiter, resource/node], exporters: [otlp_http/traces]}
+      - equal:
+          path: spec.config.exporters["otlp_http/traces"].endpoint
+          value: http://nktp-gateway-traces-collector:4318
+      - equal:
+          path: spec.config.exporters["otlp_http/traces"].sending_queue
+          value:
+            block_on_overflow: true
+            sizer: bytes
+            queue_size: 8388608
+            num_consumers: 32
+            batch:
+              sizer: bytes
+              min_size: 1048576
+              max_size: 2097152
+              flush_timeout: 1s
+      - equal:
+          path: spec.config.exporters["otlp_http/traces"].retry_on_failure.max_elapsed_time
+          value: 30m
+
+  - it: permits disabling one OTLP transport and changing the traces backend
+    set:
+      daemonset.otelcol.config.receivers.otlp.protocols.grpc: null
+      daemonset.otelcol.config.receivers.otlp.protocols.http.endpoint: "0.0.0.0:14318"
+      daemonset.otelcol.config.exporters.otlp_http/traces.endpoint: http://traces.example:4318
+    asserts:
+      - equal:
+          path: spec.config.receivers.otlp.protocols
+          value:
+            http: {endpoint: "0.0.0.0:14318"}
+      - equal:
+          path: spec.config.exporters["otlp_http/traces"].endpoint
+          value: http://traces.example:4318
+      - equal:
+          path: spec.config.exporters["otlp_http/logs"].endpoint
+          value: http://nktp-gateway-logs-collector:4318
+      - equal:
+          path: spec.config.exporters["otlp_http/metrics"].endpoint
+          value: http://nktp-gateway-metrics-collector:4318
