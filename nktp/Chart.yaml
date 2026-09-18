@@ -13,3 +13,7 @@ dependencies:
     repository: https://prometheus-community.github.io/helm-charts
     version: 4.56.1
     condition: node-exporter.enabled
+  - name: metrics-server
+    repository: https://kubernetes-sigs.github.io/metrics-server/
+    version: 3.13.1
+    condition: metrics-server.enabled

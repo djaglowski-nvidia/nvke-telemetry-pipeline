@@ -5,5 +5,8 @@ dependencies:
 - name: prometheus-node-exporter
   repository: https://prometheus-community.github.io/helm-charts
   version: 4.56.1
-digest: sha256:ba8f376b9b64a125a0257caaa91763e4d3078f7a9d06bc2e967f204166c9bc81
-generated: "2026-09-17T13:42:42.757216923-07:00"
+- name: metrics-server
+  repository: https://kubernetes-sigs.github.io/metrics-server/
+  version: 3.13.1
+digest: sha256:7e4292c8c8bb36f85e0f4dff3aeedfb2502b9200f6fab321d0a8689cf0faa400
+generated: "2026-09-18T16:15:33.784369+05:30"

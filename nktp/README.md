@@ -225,6 +225,33 @@ node-exporter:
   enabled: false
 ```
 
+### Metrics server
+
+[metrics-server](https://github.com/kubernetes-sigs/metrics-server) serves the Kubernetes
+resource metrics API (`metrics.k8s.io`), which `kubectl top` and Horizontal Pod Autoscalers
+read. It is what drives horizontal autoscaling of the three signal gateways, the
+large-target metrics pool, and the watchdog: every workload with an `autoscaler` block
+scales on CPU and memory utilization, which the HPA controller can only read from this API.
+
+NKTP does **not** install it by default, because many clusters already get it from a
+managed control plane or a cluster add-on, and a second copy conflicts over the
+cluster-singleton `v1beta1.metrics.k8s.io` APIService. With no provider at all, those HPAs
+cannot compute a recommendation and stop scaling, holding each workload at whatever
+replica count it currently has. Enable it when nothing else supplies the API:
+
+```yaml
+metrics-server:
+  enabled: true
+```
+
+The bundled chart is pinned to metrics-server chart 3.13.1, which installs metrics-server
+0.8.1.
+
+Settings pass through under `metrics-server` using the upstream chart's own values, none
+of which NKTP overrides. See the [chart's values reference](https://github.com/kubernetes-sigs/metrics-server/blob/metrics-server-helm-chart-3.13.1/charts/metrics-server/README.md)
+for what is configurable, including the TLS defaults for the APIService and for kubelet
+certificate verification.
+
 ### otel-lgtm
 
 [grafana/otel-lgtm](https://github.com/grafana/docker-otel-lgtm) is an all-in-one observability backend (Grafana, Loki, Tempo, Prometheus) with OTLP ingest.

@@ -1,0 +1,123 @@
+suite: metrics-server
+release:
+  name: test
+templates:
+  - charts/metrics-server/templates/*.yaml
+  # Keeps the suite rendering when metrics-server is off, which is the default.
+  - templates/otel-lgtm.yaml
+tests:
+  - it: omits the resource metrics API by default
+    asserts:
+      - containsDocument:
+          apiVersion: apps/v1
+          kind: Deployment
+          name: test-metrics-server
+        not: true
+      - containsDocument:
+          apiVersion: v1
+          kind: Service
+          name: test-metrics-server
+        not: true
+      - containsDocument:
+          apiVersion: v1
+          kind: ServiceAccount
+          name: test-metrics-server
+        not: true
+      - containsDocument:
+          apiVersion: apiregistration.k8s.io/v1
+          kind: APIService
+          name: v1beta1.metrics.k8s.io
+        not: true
+
+  - it: runs the pinned metrics-server when enabled
+    set:
+      metrics-server:
+        enabled: true
+    template: charts/metrics-server/templates/deployment.yaml
+    asserts:
+      - containsDocument:
+          apiVersion: apps/v1
+          kind: Deployment
+          name: test-metrics-server
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: registry.k8s.io/metrics-server/metrics-server:v0.8.1
+      - equal:
+          path: spec.template.spec.containers[0].ports[0].containerPort
+          value: 10250
+
+  - it: registers the aggregated resource metrics API when enabled
+    set:
+      metrics-server:
+        enabled: true
+    template: charts/metrics-server/templates/apiservice.yaml
+    asserts:
+      - containsDocument:
+          apiVersion: apiregistration.k8s.io/v1
+          kind: APIService
+          name: v1beta1.metrics.k8s.io
+      - equal:
+          path: spec.service.name
+          value: test-metrics-server
+      - equal:
+          path: spec.group
+          value: metrics.k8s.io
+
+  - it: exposes metrics-server through a Service and its own ServiceAccount
+    set:
+      metrics-server:
+        enabled: true
+    asserts:
+      - containsDocument:
+          apiVersion: v1
+          kind: Service
+          name: test-metrics-server
+        template: charts/metrics-server/templates/service.yaml
+      - equal:
+          path: spec.ports[0].port
+          value: 443
+        template: charts/metrics-server/templates/service.yaml
+      - containsDocument:
+          apiVersion: v1
+          kind: ServiceAccount
+          name: test-metrics-server
+        template: charts/metrics-server/templates/serviceaccount.yaml
+
+  - it: binds the RBAC the aggregation layer requires
+    set:
+      metrics-server:
+        enabled: true
+    asserts:
+      - containsDocument:
+          apiVersion: rbac.authorization.k8s.io/v1
+          kind: ClusterRoleBinding
+          name: test-metrics-server:system:auth-delegator
+        template: charts/metrics-server/templates/clusterrolebinding-auth-delegator.yaml
+      - containsDocument:
+          apiVersion: rbac.authorization.k8s.io/v1
+          kind: RoleBinding
+          name: test-metrics-server-auth-reader
+        template: charts/metrics-server/templates/rolebinding.yaml
+
+  - it: passes through image and argument overrides
+    set:
+      metrics-server:
+        enabled: true
+        # The chart takes a full image path here; it has no separate registry key.
+        image:
+          repository: example.com/metrics-server
+          tag: v9.9.9
+        args:
+          - --kubelet-insecure-tls
+    template: charts/metrics-server/templates/deployment.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: example.com/metrics-server:v9.9.9
+      # Overrides append to the chart's defaultArgs rather than replacing them.
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --kubelet-insecure-tls
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --kubelet-use-node-status-port
