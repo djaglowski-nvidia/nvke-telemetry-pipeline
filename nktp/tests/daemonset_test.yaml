@@ -26,6 +26,10 @@ tests:
       - equal:
           path: spec.mode
           value: daemonset
+      - equal:
+          path: spec.tolerations
+          value:
+            - operator: Exists
       - notExists:
           path: spec.replicas
       - notExists:

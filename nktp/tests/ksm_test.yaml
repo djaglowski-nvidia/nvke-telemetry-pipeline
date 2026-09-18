@@ -1,0 +1,376 @@
+suite: kube-state-metrics workloads
+release:
+  name: nktp
+  namespace: nktp
+templates:
+  - templates/ksm.yaml
+tests:
+  - it: runs scheduled Pods locally and six independent central groups
+    asserts:
+      - hasDocuments:
+          count: 7
+      - equal:
+          path: kind
+          value: DaemonSet
+        documentSelector:
+          path: metadata.name
+          value: nktp-ksm-pods
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --node=$(NODE_NAME)
+        documentSelector:
+          path: metadata.name
+          value: nktp-ksm-pods
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: NODE_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: spec.nodeName
+        documentSelector:
+          path: metadata.name
+          value: nktp-ksm-pods
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --track-unscheduled-pods
+        documentSelector:
+          path: metadata.name
+          value: nktp-ksm-unscheduled-pods-0
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --resources=pods
+        documentSelector:
+          path: metadata.name
+          value: nktp-ksm-unscheduled-pods-0
+      - equal:
+          path: spec.template.spec.containers[0].resources.limits.memory
+          value: 512Mi
+        documentSelector:
+          path: metadata.name
+          value: nktp-ksm-workloads-0
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.allowPrivilegeEscalation
+          value: false
+        documentSelector:
+          path: metadata.name
+          value: nktp-ksm-workloads-0
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.runAsUser
+          value: 65534
+        documentSelector:
+          path: metadata.name
+          value: nktp-ksm-workloads-0
+
+  - it: gives every shard a unique identity and one replica
+    set:
+      kube-state-metrics.deployments.workloads.shards: 2
+    asserts:
+      - hasDocuments:
+          count: 8
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --shard=0
+        documentSelector:
+          path: metadata.name
+          value: nktp-ksm-workloads-0
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --shard=1
+        documentSelector:
+          path: metadata.name
+          value: nktp-ksm-workloads-1
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --total-shards=2
+        documentSelector:
+          path: metadata.name
+          value: nktp-ksm-workloads-1
+      - equal:
+          path: spec.replicas
+          value: 1
+        documentSelector:
+          path: metadata.name
+          value: nktp-ksm-workloads-1
+      - equal:
+          path: spec.selector.matchLabels["nktp.nvidia.io/ksm-shard"]
+          value: "1"
+        documentSelector:
+          path: metadata.name
+          value: nktp-ksm-workloads-1
+
+  - it: supports new groups and workload overrides without losing shared defaults
+    set:
+      kube-state-metrics.namespaces: [team-a, team-b]
+      kube-state-metrics.deployments.configuration.enabled: false
+      kube-state-metrics.deployments.settings:
+        enabled: true
+        resource_types: [configmaps, secrets]
+        shards: 1
+        kubernetes:
+          resources:
+            requests:
+              memory: 1Gi
+            limits:
+              memory: 2Gi
+          serviceAccount: existing-reader
+          affinity:
+            nodeAffinity:
+              preferredDuringSchedulingIgnoredDuringExecution: []
+          tolerations:
+            - key: dedicated
+              operator: Exists
+          env:
+            - name: GOGC
+              value: "50"
+    documentSelector:
+      path: metadata.name
+      value: nktp-ksm-settings-0
+    asserts:
+      - equal:
+          path: spec.template.spec.serviceAccountName
+          value: existing-reader
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --namespaces=team-a,team-b
+      - equal:
+          path: spec.template.spec.containers[0].resources
+          value:
+            requests: {cpu: 100m, memory: 1Gi}
+            limits: {cpu: "1", memory: 2Gi}
+      - equal:
+          path: spec.template.spec.tolerations
+          value: [{key: dedicated, operator: Exists}]
+      - equal:
+          path: spec.template.spec.affinity
+          value:
+            nodeAffinity:
+              preferredDuringSchedulingIgnoredDuringExecution: []
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: {name: GOGC, value: "50"}
+      - equal:
+          path: spec.template.spec.securityContext.runAsNonRoot
+          value: true
+      - notExists:
+          path: spec.template.spec.resources
+
+  - it: removes all workloads when disabled
+    set:
+      kube-state-metrics.enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: collects all Pods centrally with independent hash shards
+    set:
+      kube-state-metrics.daemonset.enabled: false
+      kube-state-metrics.deployments.unscheduled-pods.enabled: false
+      kube-state-metrics.deployments.pods:
+        enabled: true
+        resource_types: [pods]
+        shards: 2
+    documentSelector:
+      path: metadata.name
+      value: nktp-ksm-pods-1
+    asserts:
+      - equal:
+          path: kind
+          value: Deployment
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --resources=pods
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --shard=1
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --total-shards=2
+      - notContains:
+          path: spec.template.spec.containers[0].args
+          content: --track-unscheduled-pods
+      - notContains:
+          path: spec.template.spec.containers[0].args
+          content: --node=$(NODE_NAME)
+
+  - it: generates selection and Go memory flags from chart settings
+    set:
+      kube-state-metrics.deployments.unscheduled-pods.resource_types: [pods, configmaps]
+      kube-state-metrics.deployments.unscheduled-pods.track_unscheduled_pods: false
+    documentSelector:
+      path: metadata.name
+      value: nktp-ksm-unscheduled-pods-0
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].args
+          value:
+            - --resources=pods,configmaps
+            - --auto-gomemlimit
+            - --auto-gomemlimit-ratio=0.8
+            - --shard=0
+            - --total-shards=1
+
+  - it: rejects unknown resources that cannot be mapped to RBAC
+    set:
+      kube-state-metrics.deployments.workloads.resource_types: [unknown]
+    asserts:
+      - failedTemplate:
+          errorMessage: Unsupported KSM resource type unknown for RBAC generation
+
+  - it: requires explicit resource selection for RBAC
+    set:
+      kube-state-metrics.deployments.workloads.resource_types: []
+    asserts:
+      - failedTemplate:
+          errorMessage: KSM workload workloads resource_types must not be empty
+
+  - it: rejects zero shards instead of silently dropping coverage
+    set:
+      kube-state-metrics.deployments.workloads.shards: 0
+    asserts:
+      - failedTemplate:
+          errorMessage: KSM workload workloads shards must be an integer between 1 and 10000
+
+  - it: rejects unscheduled Pod filtering when other resources are also selected
+    set:
+      kube-state-metrics.deployments.unscheduled-pods.resource_types: [pods, configmaps, secrets]
+    asserts:
+      - failedTemplate:
+          errorMessage: KSM workload unscheduled-pods track_unscheduled_pods requires resource_types to be exactly [pods]
+
+  - it: rejects unscheduled Pod filtering without Pods
+    set:
+      kube-state-metrics.deployments.unscheduled-pods.resource_types: [configmaps]
+    asserts:
+      - failedTemplate:
+          errorMessage: KSM workload unscheduled-pods track_unscheduled_pods requires resource_types to be exactly [pods]
+
+  - it: fixes DaemonSet collection to scheduled Pods regardless of unsupported selection values
+    set:
+      kube-state-metrics.daemonset.resource_types: [configmaps, secrets]
+      kube-state-metrics.daemonset.track_unscheduled_pods: true
+    documentSelector:
+      path: metadata.name
+      value: nktp-ksm-pods
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].args
+          value: ['--resources=pods', '--node=$(NODE_NAME)', '--auto-gomemlimit', '--auto-gomemlimit-ratio=0.8']
+
+  - it: generates normalized workload namespace arguments instead of the shared selection
+    set:
+      kube-state-metrics.namespaces: [shared-team]
+      kube-state-metrics.daemonset.namespaces: ["", " team-a ", "team-a", "team-b"]
+    documentSelector:
+      path: metadata.name
+      value: nktp-ksm-pods
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --namespaces=team-a,team-b
+      - notContains:
+          path: spec.template.spec.containers[0].args
+          content: --namespaces=shared-team
+
+  - it: generates all-namespace collection when the workload overrides the shared list with an empty list
+    set:
+      kube-state-metrics.namespaces: [shared-team]
+      kube-state-metrics.daemonset.namespaces: []
+    documentSelector:
+      path: metadata.name
+      value: nktp-ksm-pods
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].args
+          value: ['--resources=pods', '--node=$(NODE_NAME)', '--auto-gomemlimit', '--auto-gomemlimit-ratio=0.8']
+
+  - it: collects ConfigMaps without Secrets by default
+    documentSelector:
+      path: metadata.name
+      value: nktp-ksm-configuration-0
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --resources=configmaps
+
+  - it: collects Secret metrics when explicitly selected
+    set:
+      kube-state-metrics.deployments.configuration.resource_types: [configmaps, secrets]
+    documentSelector:
+      path: metadata.name
+      value: nktp-ksm-configuration-0
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --resources=configmaps,secrets
+
+  - it: omits optional blocks when shared Kubernetes overrides remove them
+    set:
+      kube-state-metrics.kubernetes.podSecurityContext: null
+      kube-state-metrics.kubernetes.resources: null
+      kube-state-metrics.kubernetes.securityContext: null
+    documentSelector:
+      path: metadata.name
+      value: nktp-ksm-pods
+    asserts:
+      - notExists:
+          path: spec.template.spec.securityContext
+      - notExists:
+          path: spec.template.spec.containers[0].resources
+      - notExists:
+          path: spec.template.spec.containers[0].securityContext
+
+  - it: omits optional blocks when workload Kubernetes overrides remove them
+    set:
+      kube-state-metrics.deployments.workloads.kubernetes.podSecurityContext: null
+      kube-state-metrics.deployments.workloads.kubernetes.resources: null
+      kube-state-metrics.deployments.workloads.kubernetes.securityContext: null
+    documentSelector:
+      path: metadata.name
+      value: nktp-ksm-workloads-0
+    asserts:
+      - notExists:
+          path: spec.template.spec.securityContext
+      - notExists:
+          path: spec.template.spec.containers[0].resources
+      - notExists:
+          path: spec.template.spec.containers[0].securityContext
+
+  - it: generates daemonset arguments and ports without consuming an args value
+    set:
+      kube-state-metrics.daemonset.namespaces: [team-a]
+      kube-state-metrics.daemonset.args: ['--config=/etc/ksm/options.yaml', '--resources=secrets', '--namespaces=other-team', '--port=9080', '--telemetry-port=9081', '--track-unscheduled-pods', '--shard=7']
+    documentSelector:
+      path: metadata.name
+      value: nktp-ksm-pods
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].args
+          value: ["--resources=pods", "--node=$(NODE_NAME)", "--namespaces=team-a", "--auto-gomemlimit", "--auto-gomemlimit-ratio=0.8"]
+      - equal:
+          path: spec.template.spec.containers[0].ports
+          value:
+            - name: http-metrics
+              containerPort: 8080
+            - name: telemetry
+              containerPort: 8081
+
+  - it: generates deployments.workloads arguments and ports without consuming an args value
+    set:
+      kube-state-metrics.deployments.workloads.resource_types: [pods]
+      kube-state-metrics.deployments.workloads.namespaces: [team-a]
+      kube-state-metrics.deployments.workloads.args: ['--config=/etc/ksm/options.yaml', '--resources=secrets', '--namespaces=other-team', '--port=9080', '--telemetry-port=9081', '--track-unscheduled-pods', '--shard=7']
+    documentSelector:
+      path: metadata.name
+      value: nktp-ksm-workloads-0
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].args
+          value: ["--resources=pods", "--namespaces=team-a", "--auto-gomemlimit", "--auto-gomemlimit-ratio=0.8", "--shard=0", "--total-shards=1"]
+      - equal:
+          path: spec.template.spec.containers[0].ports
+          value:
+            - name: http-metrics
+              containerPort: 8080
+            - name: telemetry
+              containerPort: 8081

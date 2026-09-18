@@ -1,0 +1,339 @@
+suite: kube-state-metrics RBAC
+release:
+  name: nktp
+  namespace: nktp
+templates:
+  - templates/ksm-rbac.yaml
+tests:
+  - it: derives RBAC from resource types and workload namespace overrides
+    set:
+      kube-state-metrics.daemonset.enabled: false
+      kube-state-metrics.deployments.unscheduled-pods.enabled: false
+      kube-state-metrics.deployments.workloads.enabled: false
+      kube-state-metrics.deployments.networking.enabled: false
+      kube-state-metrics.deployments.storage.enabled: false
+      kube-state-metrics.deployments.cluster.enabled: false
+      kube-state-metrics.namespaces: [shared-team]
+      kube-state-metrics.deployments.configuration.resource_types: [configmaps, secrets]
+      kube-state-metrics.deployments.configuration.namespaces: [selected-team]
+    asserts:
+      - hasDocuments:
+          count: 3
+      - equal:
+          path: rules
+          value:
+            - apiGroups: [""]
+              resources: [configmaps, secrets]
+              verbs: [list, watch]
+        documentSelector:
+          path: kind
+          value: ClusterRole
+      - equal:
+          path: metadata.namespace
+          value: selected-team
+        documentSelector:
+          path: kind
+          value: RoleBinding
+
+  - it: allows an empty workload namespace list to override shared namespace selection
+    set:
+      kube-state-metrics.deployments: null
+      kube-state-metrics.namespaces: [shared-team]
+      kube-state-metrics.daemonset.namespaces: []
+    asserts:
+      - hasDocuments:
+          count: 3
+      - equal:
+          path: kind
+          value: ClusterRoleBinding
+        documentIndex: 2
+
+  - it: limits Pod collection to read access to Pods
+    set:
+      kube-state-metrics.deployments: null
+    asserts:
+      - hasDocuments:
+          count: 3
+      - equal:
+          path: rules
+          value:
+            - apiGroups: [""]
+              resources: [pods]
+              verbs: [list, watch]
+        documentSelector:
+          path: kind
+          value: ClusterRole
+      - equal:
+          path: subjects
+          value:
+            - kind: ServiceAccount
+              name: nktp-ksm-pods
+              namespace: nktp
+        documentSelector:
+          path: kind
+          value: ClusterRoleBinding
+
+  - it: binds namespaced reads only in the selected namespaces
+    set:
+      kube-state-metrics.deployments: null
+      kube-state-metrics.namespaces: [team-a, team-b]
+    asserts:
+      - hasDocuments:
+          count: 4
+      - equal:
+          path: kind
+          value: RoleBinding
+        documentSelector:
+          path: metadata.namespace
+          value: team-a
+      - equal:
+          path: kind
+          value: RoleBinding
+        documentSelector:
+          path: metadata.namespace
+          value: team-b
+      - equal:
+          path: subjects
+          value:
+            - kind: ServiceAccount
+              name: nktp-ksm-pods
+              namespace: nktp
+        documentSelector:
+          path: metadata.namespace
+          value: team-a
+
+  - it: uses an existing service account without creating it
+    set:
+      kube-state-metrics.deployments: null
+      kube-state-metrics.daemonset.kubernetes.serviceAccount: existing-ksm
+    asserts:
+      - hasDocuments:
+          count: 2
+      - equal:
+          path: subjects
+          value:
+            - kind: ServiceAccount
+              name: existing-ksm
+              namespace: nktp
+        documentSelector:
+          path: kind
+          value: ClusterRoleBinding
+
+  - it: removes RBAC with the component
+    set:
+      kube-state-metrics.enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: separates cluster-scoped reads from namespace-restricted reads
+    set:
+      kube-state-metrics.namespaces: [team-a]
+      kube-state-metrics.daemonset.enabled: false
+      kube-state-metrics.deployments.configuration.enabled: false
+      kube-state-metrics.deployments.networking.enabled: false
+      kube-state-metrics.deployments.storage.enabled: false
+      kube-state-metrics.deployments.unscheduled-pods.enabled: false
+      kube-state-metrics.deployments.workloads.enabled: false
+      kube-state-metrics.deployments.cluster.resource_types: [nodes, leases]
+    asserts:
+      - hasDocuments:
+          count: 5
+      - equal:
+          path: rules
+          value:
+            - apiGroups: [""]
+              resources: [nodes]
+              verbs: [list, watch]
+        documentIndex: 1
+      - equal:
+          path: rules
+          value:
+            - apiGroups: [coordination.k8s.io]
+              resources: [leases]
+              verbs: [list, watch]
+        documentIndex: 3
+      - equal:
+          path: subjects
+          value:
+            - kind: ServiceAccount
+              name: nktp-ksm-cluster
+              namespace: nktp
+        documentSelector:
+          path: kind
+          value: ClusterRoleBinding
+      - equal:
+          path: metadata.namespace
+          value: team-a
+        documentSelector:
+          path: kind
+          value: RoleBinding
+
+  - it: ignores an empty list entry without granting cluster-wide Secret access
+    set:
+      kube-state-metrics.daemonset.enabled: false
+      kube-state-metrics.deployments.unscheduled-pods.enabled: false
+      kube-state-metrics.deployments.workloads.enabled: false
+      kube-state-metrics.deployments.networking.enabled: false
+      kube-state-metrics.deployments.storage.enabled: false
+      kube-state-metrics.deployments.cluster.enabled: false
+      kube-state-metrics.deployments.configuration.resource_types: [configmaps, secrets]
+      kube-state-metrics.deployments.configuration.namespaces: [team-a, ""]
+    asserts:
+      - hasDocuments:
+          count: 3
+      - equal:
+          path: kind
+          value: RoleBinding
+        documentIndex: 2
+      - equal:
+          path: metadata.namespace
+          value: team-a
+        documentIndex: 2
+      - equal:
+          path: rules
+          value:
+            - apiGroups: [""]
+              resources: [configmaps, secrets]
+              verbs: [list, watch]
+        documentIndex: 1
+
+  - it: trims whitespace and ignores empty workload namespace entries
+    set:
+      kube-state-metrics.daemonset.enabled: false
+      kube-state-metrics.deployments.unscheduled-pods.enabled: false
+      kube-state-metrics.deployments.workloads.enabled: false
+      kube-state-metrics.deployments.networking.enabled: false
+      kube-state-metrics.deployments.storage.enabled: false
+      kube-state-metrics.deployments.cluster.enabled: false
+      kube-state-metrics.deployments.configuration.resource_types: [configmaps, secrets]
+      kube-state-metrics.deployments.configuration.namespaces: ["", " team-a", " ", "team-a", ""]
+    asserts:
+      - hasDocuments:
+          count: 3
+      - equal:
+          path: kind
+          value: RoleBinding
+        documentIndex: 2
+      - equal:
+          path: metadata.namespace
+          value: team-a
+        documentIndex: 2
+      - equal:
+          path: rules
+          value:
+            - apiGroups: [""]
+              resources: [configmaps, secrets]
+              verbs: [list, watch]
+        documentIndex: 1
+
+  - it: normalizes shared namespace entries before granting access
+    set:
+      kube-state-metrics.daemonset.enabled: false
+      kube-state-metrics.deployments.unscheduled-pods.enabled: false
+      kube-state-metrics.deployments.workloads.enabled: false
+      kube-state-metrics.deployments.networking.enabled: false
+      kube-state-metrics.deployments.storage.enabled: false
+      kube-state-metrics.deployments.cluster.enabled: false
+      kube-state-metrics.deployments.configuration.resource_types: [configmaps, secrets]
+      kube-state-metrics.namespaces: ["", " team-a ", "", "team-a"]
+    asserts:
+      - hasDocuments:
+          count: 3
+      - equal:
+          path: kind
+          value: RoleBinding
+        documentIndex: 2
+      - equal:
+          path: metadata.namespace
+          value: team-a
+        documentIndex: 2
+      - equal:
+          path: rules
+          value:
+            - apiGroups: [""]
+              resources: [configmaps, secrets]
+              verbs: [list, watch]
+        documentIndex: 1
+
+  - it: matches KSM all-namespace behavior when every entry is empty
+    set:
+      kube-state-metrics.deployments: null
+      kube-state-metrics.daemonset.namespaces: ["", " ", ""]
+    asserts:
+      - hasDocuments:
+          count: 3
+      - equal:
+          path: kind
+          value: ClusterRoleBinding
+        documentIndex: 2
+
+  - it: grants only ConfigMap access to the configuration workload by default
+    set:
+      kube-state-metrics.daemonset.enabled: false
+      kube-state-metrics.deployments.unscheduled-pods.enabled: false
+      kube-state-metrics.deployments.workloads.enabled: false
+      kube-state-metrics.deployments.networking.enabled: false
+      kube-state-metrics.deployments.storage.enabled: false
+      kube-state-metrics.deployments.cluster.enabled: false
+    asserts:
+      - hasDocuments:
+          count: 3
+      - equal:
+          path: rules
+          value:
+            - apiGroups: [""]
+              resources: [configmaps]
+              verbs: [list, watch]
+        documentIndex: 1
+      - equal:
+          path: kind
+          value: ClusterRoleBinding
+        documentIndex: 2
+
+  - it: grants Secret access only in explicitly selected namespaces
+    set:
+      kube-state-metrics.daemonset.enabled: false
+      kube-state-metrics.deployments.unscheduled-pods.enabled: false
+      kube-state-metrics.deployments.workloads.enabled: false
+      kube-state-metrics.deployments.networking.enabled: false
+      kube-state-metrics.deployments.storage.enabled: false
+      kube-state-metrics.deployments.cluster.enabled: false
+      kube-state-metrics.deployments.configuration.resource_types: [configmaps, secrets]
+      kube-state-metrics.deployments.configuration.namespaces: [team-a]
+    asserts:
+      - hasDocuments:
+          count: 3
+      - equal:
+          path: rules
+          value:
+            - apiGroups: [""]
+              resources: [configmaps, secrets]
+              verbs: [list, watch]
+        documentIndex: 1
+      - equal:
+          path: kind
+          value: RoleBinding
+        documentIndex: 2
+      - equal:
+          path: metadata.namespace
+          value: team-a
+        documentIndex: 2
+
+  - it: grants only Pod access to the DaemonSet regardless of unsupported selection values
+    set:
+      kube-state-metrics.deployments: null
+      kube-state-metrics.daemonset.resource_types: [configmaps, secrets]
+      kube-state-metrics.daemonset.track_unscheduled_pods: true
+    asserts:
+      - hasDocuments:
+          count: 3
+      - equal:
+          path: rules
+          value:
+            - apiGroups: [""]
+              resources: [pods]
+              verbs: [list, watch]
+        documentSelector:
+          path: kind
+          value: ClusterRole

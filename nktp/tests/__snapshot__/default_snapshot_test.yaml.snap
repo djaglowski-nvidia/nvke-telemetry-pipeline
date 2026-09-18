@@ -506,6 +506,8 @@ matches the snapshot with default values:
                   - "true"
         replicas: 1
       terminationGracePeriodSeconds: 60
+      tolerations:
+        - operator: Exists
       upgradeStrategy: automatic
       volumeMounts:
         - mountPath: /var/log/pods
@@ -893,6 +895,1144 @@ matches the snapshot with default values:
           whenUnsatisfiable: ScheduleAnyway
       upgradeStrategy: automatic
   15: |
+    apiVersion: monitoring.coreos.com/v1
+    kind: PodMonitor
+    metadata:
+      labels:
+        app.kubernetes.io/component: kube-state-metrics
+        app.kubernetes.io/instance: RELEASE-NAME
+        app.kubernetes.io/name: nktp-ksm-cluster
+        nktp.nvidia.io/large-target: "true"
+      name: nktp-ksm-cluster
+      namespace: NAMESPACE
+    spec:
+      podMetricsEndpoints:
+        - honorLabels: true
+          port: http-metrics
+        - port: telemetry
+      selector:
+        matchLabels:
+          app.kubernetes.io/component: kube-state-metrics
+          app.kubernetes.io/instance: RELEASE-NAME
+          app.kubernetes.io/name: nktp-ksm-cluster
+  16: |
+    apiVersion: monitoring.coreos.com/v1
+    kind: PodMonitor
+    metadata:
+      labels:
+        app.kubernetes.io/component: kube-state-metrics
+        app.kubernetes.io/instance: RELEASE-NAME
+        app.kubernetes.io/name: nktp-ksm-configuration
+        nktp.nvidia.io/large-target: "true"
+      name: nktp-ksm-configuration
+      namespace: NAMESPACE
+    spec:
+      podMetricsEndpoints:
+        - honorLabels: true
+          port: http-metrics
+        - port: telemetry
+      selector:
+        matchLabels:
+          app.kubernetes.io/component: kube-state-metrics
+          app.kubernetes.io/instance: RELEASE-NAME
+          app.kubernetes.io/name: nktp-ksm-configuration
+  17: |
+    apiVersion: monitoring.coreos.com/v1
+    kind: PodMonitor
+    metadata:
+      labels:
+        app.kubernetes.io/component: kube-state-metrics
+        app.kubernetes.io/instance: RELEASE-NAME
+        app.kubernetes.io/name: nktp-ksm-networking
+        nktp.nvidia.io/large-target: "true"
+      name: nktp-ksm-networking
+      namespace: NAMESPACE
+    spec:
+      podMetricsEndpoints:
+        - honorLabels: true
+          port: http-metrics
+        - port: telemetry
+      selector:
+        matchLabels:
+          app.kubernetes.io/component: kube-state-metrics
+          app.kubernetes.io/instance: RELEASE-NAME
+          app.kubernetes.io/name: nktp-ksm-networking
+  18: |
+    apiVersion: monitoring.coreos.com/v1
+    kind: PodMonitor
+    metadata:
+      labels:
+        app.kubernetes.io/component: kube-state-metrics
+        app.kubernetes.io/instance: RELEASE-NAME
+        app.kubernetes.io/name: nktp-ksm-pods
+      name: nktp-ksm-pods
+      namespace: NAMESPACE
+    spec:
+      podMetricsEndpoints:
+        - honorLabels: true
+          port: http-metrics
+        - port: telemetry
+      selector:
+        matchLabels:
+          app.kubernetes.io/component: kube-state-metrics
+          app.kubernetes.io/instance: RELEASE-NAME
+          app.kubernetes.io/name: nktp-ksm-pods
+  19: |
+    apiVersion: monitoring.coreos.com/v1
+    kind: PodMonitor
+    metadata:
+      labels:
+        app.kubernetes.io/component: kube-state-metrics
+        app.kubernetes.io/instance: RELEASE-NAME
+        app.kubernetes.io/name: nktp-ksm-storage
+        nktp.nvidia.io/large-target: "true"
+      name: nktp-ksm-storage
+      namespace: NAMESPACE
+    spec:
+      podMetricsEndpoints:
+        - honorLabels: true
+          port: http-metrics
+        - port: telemetry
+      selector:
+        matchLabels:
+          app.kubernetes.io/component: kube-state-metrics
+          app.kubernetes.io/instance: RELEASE-NAME
+          app.kubernetes.io/name: nktp-ksm-storage
+  20: |
+    apiVersion: monitoring.coreos.com/v1
+    kind: PodMonitor
+    metadata:
+      labels:
+        app.kubernetes.io/component: kube-state-metrics
+        app.kubernetes.io/instance: RELEASE-NAME
+        app.kubernetes.io/name: nktp-ksm-unscheduled-pods
+        nktp.nvidia.io/large-target: "true"
+      name: nktp-ksm-unscheduled-pods
+      namespace: NAMESPACE
+    spec:
+      podMetricsEndpoints:
+        - honorLabels: true
+          port: http-metrics
+        - port: telemetry
+      selector:
+        matchLabels:
+          app.kubernetes.io/component: kube-state-metrics
+          app.kubernetes.io/instance: RELEASE-NAME
+          app.kubernetes.io/name: nktp-ksm-unscheduled-pods
+  21: |
+    apiVersion: monitoring.coreos.com/v1
+    kind: PodMonitor
+    metadata:
+      labels:
+        app.kubernetes.io/component: kube-state-metrics
+        app.kubernetes.io/instance: RELEASE-NAME
+        app.kubernetes.io/name: nktp-ksm-workloads
+        nktp.nvidia.io/large-target: "true"
+      name: nktp-ksm-workloads
+      namespace: NAMESPACE
+    spec:
+      podMetricsEndpoints:
+        - honorLabels: true
+          port: http-metrics
+        - port: telemetry
+      selector:
+        matchLabels:
+          app.kubernetes.io/component: kube-state-metrics
+          app.kubernetes.io/instance: RELEASE-NAME
+          app.kubernetes.io/name: nktp-ksm-workloads
+  22: |
+    apiVersion: v1
+    kind: ServiceAccount
+    metadata:
+      labels:
+        app.kubernetes.io/component: kube-state-metrics
+        app.kubernetes.io/instance: RELEASE-NAME
+        app.kubernetes.io/name: nktp-ksm-cluster
+      name: nktp-ksm-cluster
+      namespace: NAMESPACE
+  23: |
+    apiVersion: rbac.authorization.k8s.io/v1
+    kind: ClusterRole
+    metadata:
+      labels:
+        app.kubernetes.io/component: kube-state-metrics
+        app.kubernetes.io/instance: RELEASE-NAME
+        app.kubernetes.io/name: nktp-ksm-cluster
+      name: nktp-ksm-cluster-NAMESPACE-RELEASE-NAME-cluster-227d2ffec6
+    rules:
+      - apiGroups:
+          - ""
+        resources:
+          - nodes
+          - namespaces
+        verbs:
+          - list
+          - watch
+      - apiGroups:
+          - admissionregistration.k8s.io
+        resources:
+          - mutatingwebhookconfigurations
+          - validatingadmissionpolicies
+          - validatingadmissionpolicybindings
+          - validatingwebhookconfigurations
+        verbs:
+          - list
+          - watch
+      - apiGroups:
+          - certificates.k8s.io
+        resources:
+          - certificatesigningrequests
+        verbs:
+          - list
+          - watch
+      - apiGroups:
+          - storage.k8s.io
+        resources:
+          - storageclasses
+        verbs:
+          - list
+          - watch
+  24: |
+    apiVersion: rbac.authorization.k8s.io/v1
+    kind: ClusterRoleBinding
+    metadata:
+      labels:
+        app.kubernetes.io/component: kube-state-metrics
+        app.kubernetes.io/instance: RELEASE-NAME
+        app.kubernetes.io/name: nktp-ksm-cluster
+      name: nktp-ksm-cluster-NAMESPACE-RELEASE-NAME-cluster-227d2ffec6
+    roleRef:
+      apiGroup: rbac.authorization.k8s.io
+      kind: ClusterRole
+      name: nktp-ksm-cluster-NAMESPACE-RELEASE-NAME-cluster-227d2ffec6
+    subjects:
+      - kind: ServiceAccount
+        name: nktp-ksm-cluster
+        namespace: NAMESPACE
+  25: |
+    apiVersion: rbac.authorization.k8s.io/v1
+    kind: ClusterRole
+    metadata:
+      labels:
+        app.kubernetes.io/component: kube-state-metrics
+        app.kubernetes.io/instance: RELEASE-NAME
+        app.kubernetes.io/name: nktp-ksm-cluster
+      name: nktp-ksm-cluster-NAMESPACE-RELEASE-NAME-namespaced-30e58c249d
+    rules:
+      - apiGroups:
+          - ""
+        resources:
+          - resourcequotas
+          - limitranges
+        verbs:
+          - list
+          - watch
+      - apiGroups:
+          - coordination.k8s.io
+        resources:
+          - leases
+        verbs:
+          - list
+          - watch
+  26: |
+    apiVersion: rbac.authorization.k8s.io/v1
+    kind: ClusterRoleBinding
+    metadata:
+      labels:
+        app.kubernetes.io/component: kube-state-metrics
+        app.kubernetes.io/instance: RELEASE-NAME
+        app.kubernetes.io/name: nktp-ksm-cluster
+      name: nktp-ksm-cluster-NAMESPACE-RELEASE-NAME-namespaced-30e58c249d
+    roleRef:
+      apiGroup: rbac.authorization.k8s.io
+      kind: ClusterRole
+      name: nktp-ksm-cluster-NAMESPACE-RELEASE-NAME-namespaced-30e58c249d
+    subjects:
+      - kind: ServiceAccount
+        name: nktp-ksm-cluster
+        namespace: NAMESPACE
+  27: |
+    apiVersion: v1
+    kind: ServiceAccount
+    metadata:
+      labels:
+        app.kubernetes.io/component: kube-state-metrics
+        app.kubernetes.io/instance: RELEASE-NAME
+        app.kubernetes.io/name: nktp-ksm-configuration
+      name: nktp-ksm-configuration
+      namespace: NAMESPACE
+  28: |
+    apiVersion: rbac.authorization.k8s.io/v1
+    kind: ClusterRole
+    metadata:
+      labels:
+        app.kubernetes.io/component: kube-state-metrics
+        app.kubernetes.io/instance: RELEASE-NAME
+        app.kubernetes.io/name: nktp-ksm-configuration
+      name: nktp-ksm-configuration-NAMESPACE-RELEASE-NAME-namesp-063f74939a
+    rules:
+      - apiGroups:
+          - ""
+        resources:
+          - configmaps
+        verbs:
+          - list
+          - watch
+  29: |
+    apiVersion: rbac.authorization.k8s.io/v1
+    kind: ClusterRoleBinding
+    metadata:
+      labels:
+        app.kubernetes.io/component: kube-state-metrics
+        app.kubernetes.io/instance: RELEASE-NAME
+        app.kubernetes.io/name: nktp-ksm-configuration
+      name: nktp-ksm-configuration-NAMESPACE-RELEASE-NAME-namesp-063f74939a
+    roleRef:
+      apiGroup: rbac.authorization.k8s.io
+      kind: ClusterRole
+      name: nktp-ksm-configuration-NAMESPACE-RELEASE-NAME-namesp-063f74939a
+    subjects:
+      - kind: ServiceAccount
+        name: nktp-ksm-configuration
+        namespace: NAMESPACE
+  30: |
+    apiVersion: v1
+    kind: ServiceAccount
+    metadata:
+      labels:
+        app.kubernetes.io/component: kube-state-metrics
+        app.kubernetes.io/instance: RELEASE-NAME
+        app.kubernetes.io/name: nktp-ksm-networking
+      name: nktp-ksm-networking
+      namespace: NAMESPACE
+  31: |
+    apiVersion: rbac.authorization.k8s.io/v1
+    kind: ClusterRole
+    metadata:
+      labels:
+        app.kubernetes.io/component: kube-state-metrics
+        app.kubernetes.io/instance: RELEASE-NAME
+        app.kubernetes.io/name: nktp-ksm-networking
+      name: nktp-ksm-networking-NAMESPACE-RELEASE-NAME-namespace-fcf506642c
+    rules:
+      - apiGroups:
+          - ""
+        resources:
+          - services
+        verbs:
+          - list
+          - watch
+      - apiGroups:
+          - discovery.k8s.io
+        resources:
+          - endpointslices
+        verbs:
+          - list
+          - watch
+      - apiGroups:
+          - networking.k8s.io
+        resources:
+          - ingresses
+          - networkpolicies
+        verbs:
+          - list
+          - watch
+  32: |
+    apiVersion: rbac.authorization.k8s.io/v1
+    kind: ClusterRoleBinding
+    metadata:
+      labels:
+        app.kubernetes.io/component: kube-state-metrics
+        app.kubernetes.io/instance: RELEASE-NAME
+        app.kubernetes.io/name: nktp-ksm-networking
+      name: nktp-ksm-networking-NAMESPACE-RELEASE-NAME-namespace-fcf506642c
+    roleRef:
+      apiGroup: rbac.authorization.k8s.io
+      kind: ClusterRole
+      name: nktp-ksm-networking-NAMESPACE-RELEASE-NAME-namespace-fcf506642c
+    subjects:
+      - kind: ServiceAccount
+        name: nktp-ksm-networking
+        namespace: NAMESPACE
+  33: |
+    apiVersion: v1
+    kind: ServiceAccount
+    metadata:
+      labels:
+        app.kubernetes.io/component: kube-state-metrics
+        app.kubernetes.io/instance: RELEASE-NAME
+        app.kubernetes.io/name: nktp-ksm-pods
+      name: nktp-ksm-pods
+      namespace: NAMESPACE
+  34: |
+    apiVersion: rbac.authorization.k8s.io/v1
+    kind: ClusterRole
+    metadata:
+      labels:
+        app.kubernetes.io/component: kube-state-metrics
+        app.kubernetes.io/instance: RELEASE-NAME
+        app.kubernetes.io/name: nktp-ksm-pods
+      name: nktp-ksm-pods-NAMESPACE-RELEASE-NAME-namespaced-c79f4a5534
+    rules:
+      - apiGroups:
+          - ""
+        resources:
+          - pods
+        verbs:
+          - list
+          - watch
+  35: |
+    apiVersion: rbac.authorization.k8s.io/v1
+    kind: ClusterRoleBinding
+    metadata:
+      labels:
+        app.kubernetes.io/component: kube-state-metrics
+        app.kubernetes.io/instance: RELEASE-NAME
+        app.kubernetes.io/name: nktp-ksm-pods
+      name: nktp-ksm-pods-NAMESPACE-RELEASE-NAME-namespaced-c79f4a5534
+    roleRef:
+      apiGroup: rbac.authorization.k8s.io
+      kind: ClusterRole
+      name: nktp-ksm-pods-NAMESPACE-RELEASE-NAME-namespaced-c79f4a5534
+    subjects:
+      - kind: ServiceAccount
+        name: nktp-ksm-pods
+        namespace: NAMESPACE
+  36: |
+    apiVersion: v1
+    kind: ServiceAccount
+    metadata:
+      labels:
+        app.kubernetes.io/component: kube-state-metrics
+        app.kubernetes.io/instance: RELEASE-NAME
+        app.kubernetes.io/name: nktp-ksm-storage
+      name: nktp-ksm-storage
+      namespace: NAMESPACE
+  37: |
+    apiVersion: rbac.authorization.k8s.io/v1
+    kind: ClusterRole
+    metadata:
+      labels:
+        app.kubernetes.io/component: kube-state-metrics
+        app.kubernetes.io/instance: RELEASE-NAME
+        app.kubernetes.io/name: nktp-ksm-storage
+      name: nktp-ksm-storage-NAMESPACE-RELEASE-NAME-cluster-48fb3375e6
+    rules:
+      - apiGroups:
+          - ""
+        resources:
+          - persistentvolumes
+        verbs:
+          - list
+          - watch
+      - apiGroups:
+          - storage.k8s.io
+        resources:
+          - volumeattachments
+        verbs:
+          - list
+          - watch
+  38: |
+    apiVersion: rbac.authorization.k8s.io/v1
+    kind: ClusterRoleBinding
+    metadata:
+      labels:
+        app.kubernetes.io/component: kube-state-metrics
+        app.kubernetes.io/instance: RELEASE-NAME
+        app.kubernetes.io/name: nktp-ksm-storage
+      name: nktp-ksm-storage-NAMESPACE-RELEASE-NAME-cluster-48fb3375e6
+    roleRef:
+      apiGroup: rbac.authorization.k8s.io
+      kind: ClusterRole
+      name: nktp-ksm-storage-NAMESPACE-RELEASE-NAME-cluster-48fb3375e6
+    subjects:
+      - kind: ServiceAccount
+        name: nktp-ksm-storage
+        namespace: NAMESPACE
+  39: |
+    apiVersion: rbac.authorization.k8s.io/v1
+    kind: ClusterRole
+    metadata:
+      labels:
+        app.kubernetes.io/component: kube-state-metrics
+        app.kubernetes.io/instance: RELEASE-NAME
+        app.kubernetes.io/name: nktp-ksm-storage
+      name: nktp-ksm-storage-NAMESPACE-RELEASE-NAME-namespaced-ecf5484e67
+    rules:
+      - apiGroups:
+          - ""
+        resources:
+          - persistentvolumeclaims
+        verbs:
+          - list
+          - watch
+  40: |
+    apiVersion: rbac.authorization.k8s.io/v1
+    kind: ClusterRoleBinding
+    metadata:
+      labels:
+        app.kubernetes.io/component: kube-state-metrics
+        app.kubernetes.io/instance: RELEASE-NAME
+        app.kubernetes.io/name: nktp-ksm-storage
+      name: nktp-ksm-storage-NAMESPACE-RELEASE-NAME-namespaced-ecf5484e67
+    roleRef:
+      apiGroup: rbac.authorization.k8s.io
+      kind: ClusterRole
+      name: nktp-ksm-storage-NAMESPACE-RELEASE-NAME-namespaced-ecf5484e67
+    subjects:
+      - kind: ServiceAccount
+        name: nktp-ksm-storage
+        namespace: NAMESPACE
+  41: |
+    apiVersion: v1
+    kind: ServiceAccount
+    metadata:
+      labels:
+        app.kubernetes.io/component: kube-state-metrics
+        app.kubernetes.io/instance: RELEASE-NAME
+        app.kubernetes.io/name: nktp-ksm-unscheduled-pods
+      name: nktp-ksm-unscheduled-pods
+      namespace: NAMESPACE
+  42: |
+    apiVersion: rbac.authorization.k8s.io/v1
+    kind: ClusterRole
+    metadata:
+      labels:
+        app.kubernetes.io/component: kube-state-metrics
+        app.kubernetes.io/instance: RELEASE-NAME
+        app.kubernetes.io/name: nktp-ksm-unscheduled-pods
+      name: nktp-ksm-unscheduled-pods-NAMESPACE-RELEASE-NAME-nam-669410d62a
+    rules:
+      - apiGroups:
+          - ""
+        resources:
+          - pods
+        verbs:
+          - list
+          - watch
+  43: |
+    apiVersion: rbac.authorization.k8s.io/v1
+    kind: ClusterRoleBinding
+    metadata:
+      labels:
+        app.kubernetes.io/component: kube-state-metrics
+        app.kubernetes.io/instance: RELEASE-NAME
+        app.kubernetes.io/name: nktp-ksm-unscheduled-pods
+      name: nktp-ksm-unscheduled-pods-NAMESPACE-RELEASE-NAME-nam-669410d62a
+    roleRef:
+      apiGroup: rbac.authorization.k8s.io
+      kind: ClusterRole
+      name: nktp-ksm-unscheduled-pods-NAMESPACE-RELEASE-NAME-nam-669410d62a
+    subjects:
+      - kind: ServiceAccount
+        name: nktp-ksm-unscheduled-pods
+        namespace: NAMESPACE
+  44: |
+    apiVersion: v1
+    kind: ServiceAccount
+    metadata:
+      labels:
+        app.kubernetes.io/component: kube-state-metrics
+        app.kubernetes.io/instance: RELEASE-NAME
+        app.kubernetes.io/name: nktp-ksm-workloads
+      name: nktp-ksm-workloads
+      namespace: NAMESPACE
+  45: |
+    apiVersion: rbac.authorization.k8s.io/v1
+    kind: ClusterRole
+    metadata:
+      labels:
+        app.kubernetes.io/component: kube-state-metrics
+        app.kubernetes.io/instance: RELEASE-NAME
+        app.kubernetes.io/name: nktp-ksm-workloads
+      name: nktp-ksm-workloads-NAMESPACE-RELEASE-NAME-namespaced-6ed65d1338
+    rules:
+      - apiGroups:
+          - ""
+        resources:
+          - replicationcontrollers
+        verbs:
+          - list
+          - watch
+      - apiGroups:
+          - apps
+        resources:
+          - deployments
+          - statefulsets
+          - daemonsets
+          - replicasets
+        verbs:
+          - list
+          - watch
+      - apiGroups:
+          - autoscaling
+        resources:
+          - horizontalpodautoscalers
+        verbs:
+          - list
+          - watch
+      - apiGroups:
+          - batch
+        resources:
+          - jobs
+          - cronjobs
+        verbs:
+          - list
+          - watch
+      - apiGroups:
+          - policy
+        resources:
+          - poddisruptionbudgets
+        verbs:
+          - list
+          - watch
+  46: |
+    apiVersion: rbac.authorization.k8s.io/v1
+    kind: ClusterRoleBinding
+    metadata:
+      labels:
+        app.kubernetes.io/component: kube-state-metrics
+        app.kubernetes.io/instance: RELEASE-NAME
+        app.kubernetes.io/name: nktp-ksm-workloads
+      name: nktp-ksm-workloads-NAMESPACE-RELEASE-NAME-namespaced-6ed65d1338
+    roleRef:
+      apiGroup: rbac.authorization.k8s.io
+      kind: ClusterRole
+      name: nktp-ksm-workloads-NAMESPACE-RELEASE-NAME-namespaced-6ed65d1338
+    subjects:
+      - kind: ServiceAccount
+        name: nktp-ksm-workloads
+        namespace: NAMESPACE
+  47: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      labels:
+        app.kubernetes.io/component: kube-state-metrics
+        app.kubernetes.io/instance: RELEASE-NAME
+        app.kubernetes.io/name: nktp-ksm-cluster
+      name: nktp-ksm-cluster-0
+      namespace: NAMESPACE
+    spec:
+      replicas: 1
+      selector:
+        matchLabels:
+          app.kubernetes.io/component: kube-state-metrics
+          app.kubernetes.io/instance: RELEASE-NAME
+          app.kubernetes.io/name: nktp-ksm-cluster
+          nktp.nvidia.io/ksm-shard: "0"
+      strategy:
+        type: Recreate
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/component: kube-state-metrics
+            app.kubernetes.io/instance: RELEASE-NAME
+            app.kubernetes.io/name: nktp-ksm-cluster
+            nktp.nvidia.io/ksm-shard: "0"
+        spec:
+          containers:
+            - args:
+                - --resources=nodes,namespaces,storageclasses,resourcequotas,limitranges,leases,certificatesigningrequests,mutatingwebhookconfigurations,validatingadmissionpolicies,validatingadmissionpolicybindings,validatingwebhookconfigurations
+                - --auto-gomemlimit
+                - --auto-gomemlimit-ratio=0.8
+                - --shard=0
+                - --total-shards=1
+              image: registry.k8s.io/kube-state-metrics/kube-state-metrics:v2.20.0
+              livenessProbe:
+                httpGet:
+                  path: /livez
+                  port: http-metrics
+                initialDelaySeconds: 5
+                timeoutSeconds: 5
+              name: kube-state-metrics
+              ports:
+                - containerPort: 8080
+                  name: http-metrics
+                - containerPort: 8081
+                  name: telemetry
+              readinessProbe:
+                httpGet:
+                  path: /readyz
+                  port: telemetry
+                initialDelaySeconds: 5
+                timeoutSeconds: 5
+              resources:
+                limits:
+                  cpu: "1"
+                  memory: 512Mi
+                requests:
+                  cpu: 100m
+                  memory: 128Mi
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop:
+                    - ALL
+                readOnlyRootFilesystem: true
+                runAsUser: 65534
+          nodeSelector:
+            kubernetes.io/os: linux
+          securityContext:
+            runAsNonRoot: true
+            seccompProfile:
+              type: RuntimeDefault
+          serviceAccountName: nktp-ksm-cluster
+  48: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      labels:
+        app.kubernetes.io/component: kube-state-metrics
+        app.kubernetes.io/instance: RELEASE-NAME
+        app.kubernetes.io/name: nktp-ksm-configuration
+      name: nktp-ksm-configuration-0
+      namespace: NAMESPACE
+    spec:
+      replicas: 1
+      selector:
+        matchLabels:
+          app.kubernetes.io/component: kube-state-metrics
+          app.kubernetes.io/instance: RELEASE-NAME
+          app.kubernetes.io/name: nktp-ksm-configuration
+          nktp.nvidia.io/ksm-shard: "0"
+      strategy:
+        type: Recreate
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/component: kube-state-metrics
+            app.kubernetes.io/instance: RELEASE-NAME
+            app.kubernetes.io/name: nktp-ksm-configuration
+            nktp.nvidia.io/ksm-shard: "0"
+        spec:
+          containers:
+            - args:
+                - --resources=configmaps
+                - --auto-gomemlimit
+                - --auto-gomemlimit-ratio=0.8
+                - --shard=0
+                - --total-shards=1
+              image: registry.k8s.io/kube-state-metrics/kube-state-metrics:v2.20.0
+              livenessProbe:
+                httpGet:
+                  path: /livez
+                  port: http-metrics
+                initialDelaySeconds: 5
+                timeoutSeconds: 5
+              name: kube-state-metrics
+              ports:
+                - containerPort: 8080
+                  name: http-metrics
+                - containerPort: 8081
+                  name: telemetry
+              readinessProbe:
+                httpGet:
+                  path: /readyz
+                  port: telemetry
+                initialDelaySeconds: 5
+                timeoutSeconds: 5
+              resources:
+                limits:
+                  cpu: "1"
+                  memory: 512Mi
+                requests:
+                  cpu: 100m
+                  memory: 128Mi
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop:
+                    - ALL
+                readOnlyRootFilesystem: true
+                runAsUser: 65534
+          nodeSelector:
+            kubernetes.io/os: linux
+          securityContext:
+            runAsNonRoot: true
+            seccompProfile:
+              type: RuntimeDefault
+          serviceAccountName: nktp-ksm-configuration
+  49: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      labels:
+        app.kubernetes.io/component: kube-state-metrics
+        app.kubernetes.io/instance: RELEASE-NAME
+        app.kubernetes.io/name: nktp-ksm-networking
+      name: nktp-ksm-networking-0
+      namespace: NAMESPACE
+    spec:
+      replicas: 1
+      selector:
+        matchLabels:
+          app.kubernetes.io/component: kube-state-metrics
+          app.kubernetes.io/instance: RELEASE-NAME
+          app.kubernetes.io/name: nktp-ksm-networking
+          nktp.nvidia.io/ksm-shard: "0"
+      strategy:
+        type: Recreate
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/component: kube-state-metrics
+            app.kubernetes.io/instance: RELEASE-NAME
+            app.kubernetes.io/name: nktp-ksm-networking
+            nktp.nvidia.io/ksm-shard: "0"
+        spec:
+          containers:
+            - args:
+                - --resources=services,endpointslices,ingresses,networkpolicies
+                - --auto-gomemlimit
+                - --auto-gomemlimit-ratio=0.8
+                - --shard=0
+                - --total-shards=1
+              image: registry.k8s.io/kube-state-metrics/kube-state-metrics:v2.20.0
+              livenessProbe:
+                httpGet:
+                  path: /livez
+                  port: http-metrics
+                initialDelaySeconds: 5
+                timeoutSeconds: 5
+              name: kube-state-metrics
+              ports:
+                - containerPort: 8080
+                  name: http-metrics
+                - containerPort: 8081
+                  name: telemetry
+              readinessProbe:
+                httpGet:
+                  path: /readyz
+                  port: telemetry
+                initialDelaySeconds: 5
+                timeoutSeconds: 5
+              resources:
+                limits:
+                  cpu: "1"
+                  memory: 512Mi
+                requests:
+                  cpu: 100m
+                  memory: 128Mi
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop:
+                    - ALL
+                readOnlyRootFilesystem: true
+                runAsUser: 65534
+          nodeSelector:
+            kubernetes.io/os: linux
+          securityContext:
+            runAsNonRoot: true
+            seccompProfile:
+              type: RuntimeDefault
+          serviceAccountName: nktp-ksm-networking
+  50: |
+    apiVersion: apps/v1
+    kind: DaemonSet
+    metadata:
+      labels:
+        app.kubernetes.io/component: kube-state-metrics
+        app.kubernetes.io/instance: RELEASE-NAME
+        app.kubernetes.io/name: nktp-ksm-pods
+      name: nktp-ksm-pods
+      namespace: NAMESPACE
+    spec:
+      selector:
+        matchLabels:
+          app.kubernetes.io/component: kube-state-metrics
+          app.kubernetes.io/instance: RELEASE-NAME
+          app.kubernetes.io/name: nktp-ksm-pods
+          nktp.nvidia.io/ksm-shard: "0"
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/component: kube-state-metrics
+            app.kubernetes.io/instance: RELEASE-NAME
+            app.kubernetes.io/name: nktp-ksm-pods
+            nktp.nvidia.io/ksm-shard: "0"
+        spec:
+          containers:
+            - args:
+                - --resources=pods
+                - --node=$(NODE_NAME)
+                - --auto-gomemlimit
+                - --auto-gomemlimit-ratio=0.8
+              env:
+                - name: NODE_NAME
+                  valueFrom:
+                    fieldRef:
+                      fieldPath: spec.nodeName
+              image: registry.k8s.io/kube-state-metrics/kube-state-metrics:v2.20.0
+              livenessProbe:
+                httpGet:
+                  path: /livez
+                  port: http-metrics
+                initialDelaySeconds: 5
+                timeoutSeconds: 5
+              name: kube-state-metrics
+              ports:
+                - containerPort: 8080
+                  name: http-metrics
+                - containerPort: 8081
+                  name: telemetry
+              readinessProbe:
+                httpGet:
+                  path: /readyz
+                  port: telemetry
+                initialDelaySeconds: 5
+                timeoutSeconds: 5
+              resources:
+                limits:
+                  cpu: "1"
+                  memory: 512Mi
+                requests:
+                  cpu: 100m
+                  memory: 128Mi
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop:
+                    - ALL
+                readOnlyRootFilesystem: true
+                runAsUser: 65534
+          nodeSelector:
+            kubernetes.io/os: linux
+          securityContext:
+            runAsNonRoot: true
+            seccompProfile:
+              type: RuntimeDefault
+          serviceAccountName: nktp-ksm-pods
+          tolerations:
+            - operator: Exists
+  51: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      labels:
+        app.kubernetes.io/component: kube-state-metrics
+        app.kubernetes.io/instance: RELEASE-NAME
+        app.kubernetes.io/name: nktp-ksm-storage
+      name: nktp-ksm-storage-0
+      namespace: NAMESPACE
+    spec:
+      replicas: 1
+      selector:
+        matchLabels:
+          app.kubernetes.io/component: kube-state-metrics
+          app.kubernetes.io/instance: RELEASE-NAME
+          app.kubernetes.io/name: nktp-ksm-storage
+          nktp.nvidia.io/ksm-shard: "0"
+      strategy:
+        type: Recreate
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/component: kube-state-metrics
+            app.kubernetes.io/instance: RELEASE-NAME
+            app.kubernetes.io/name: nktp-ksm-storage
+            nktp.nvidia.io/ksm-shard: "0"
+        spec:
+          containers:
+            - args:
+                - --resources=persistentvolumes,persistentvolumeclaims,volumeattachments
+                - --auto-gomemlimit
+                - --auto-gomemlimit-ratio=0.8
+                - --shard=0
+                - --total-shards=1
+              image: registry.k8s.io/kube-state-metrics/kube-state-metrics:v2.20.0
+              livenessProbe:
+                httpGet:
+                  path: /livez
+                  port: http-metrics
+                initialDelaySeconds: 5
+                timeoutSeconds: 5
+              name: kube-state-metrics
+              ports:
+                - containerPort: 8080
+                  name: http-metrics
+                - containerPort: 8081
+                  name: telemetry
+              readinessProbe:
+                httpGet:
+                  path: /readyz
+                  port: telemetry
+                initialDelaySeconds: 5
+                timeoutSeconds: 5
+              resources:
+                limits:
+                  cpu: "1"
+                  memory: 512Mi
+                requests:
+                  cpu: 100m
+                  memory: 128Mi
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop:
+                    - ALL
+                readOnlyRootFilesystem: true
+                runAsUser: 65534
+          nodeSelector:
+            kubernetes.io/os: linux
+          securityContext:
+            runAsNonRoot: true
+            seccompProfile:
+              type: RuntimeDefault
+          serviceAccountName: nktp-ksm-storage
+  52: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      labels:
+        app.kubernetes.io/component: kube-state-metrics
+        app.kubernetes.io/instance: RELEASE-NAME
+        app.kubernetes.io/name: nktp-ksm-unscheduled-pods
+      name: nktp-ksm-unscheduled-pods-0
+      namespace: NAMESPACE
+    spec:
+      replicas: 1
+      selector:
+        matchLabels:
+          app.kubernetes.io/component: kube-state-metrics
+          app.kubernetes.io/instance: RELEASE-NAME
+          app.kubernetes.io/name: nktp-ksm-unscheduled-pods
+          nktp.nvidia.io/ksm-shard: "0"
+      strategy:
+        type: Recreate
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/component: kube-state-metrics
+            app.kubernetes.io/instance: RELEASE-NAME
+            app.kubernetes.io/name: nktp-ksm-unscheduled-pods
+            nktp.nvidia.io/ksm-shard: "0"
+        spec:
+          containers:
+            - args:
+                - --resources=pods
+                - --track-unscheduled-pods
+                - --auto-gomemlimit
+                - --auto-gomemlimit-ratio=0.8
+                - --shard=0
+                - --total-shards=1
+              image: registry.k8s.io/kube-state-metrics/kube-state-metrics:v2.20.0
+              livenessProbe:
+                httpGet:
+                  path: /livez
+                  port: http-metrics
+                initialDelaySeconds: 5
+                timeoutSeconds: 5
+              name: kube-state-metrics
+              ports:
+                - containerPort: 8080
+                  name: http-metrics
+                - containerPort: 8081
+                  name: telemetry
+              readinessProbe:
+                httpGet:
+                  path: /readyz
+                  port: telemetry
+                initialDelaySeconds: 5
+                timeoutSeconds: 5
+              resources:
+                limits:
+                  cpu: "1"
+                  memory: 512Mi
+                requests:
+                  cpu: 100m
+                  memory: 128Mi
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop:
+                    - ALL
+                readOnlyRootFilesystem: true
+                runAsUser: 65534
+          nodeSelector:
+            kubernetes.io/os: linux
+          securityContext:
+            runAsNonRoot: true
+            seccompProfile:
+              type: RuntimeDefault
+          serviceAccountName: nktp-ksm-unscheduled-pods
+  53: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      labels:
+        app.kubernetes.io/component: kube-state-metrics
+        app.kubernetes.io/instance: RELEASE-NAME
+        app.kubernetes.io/name: nktp-ksm-workloads
+      name: nktp-ksm-workloads-0
+      namespace: NAMESPACE
+    spec:
+      replicas: 1
+      selector:
+        matchLabels:
+          app.kubernetes.io/component: kube-state-metrics
+          app.kubernetes.io/instance: RELEASE-NAME
+          app.kubernetes.io/name: nktp-ksm-workloads
+          nktp.nvidia.io/ksm-shard: "0"
+      strategy:
+        type: Recreate
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/component: kube-state-metrics
+            app.kubernetes.io/instance: RELEASE-NAME
+            app.kubernetes.io/name: nktp-ksm-workloads
+            nktp.nvidia.io/ksm-shard: "0"
+        spec:
+          containers:
+            - args:
+                - --resources=deployments,statefulsets,daemonsets,replicasets,replicationcontrollers,jobs,cronjobs,horizontalpodautoscalers,poddisruptionbudgets
+                - --auto-gomemlimit
+                - --auto-gomemlimit-ratio=0.8
+                - --shard=0
+                - --total-shards=1
+              image: registry.k8s.io/kube-state-metrics/kube-state-metrics:v2.20.0
+              livenessProbe:
+                httpGet:
+                  path: /livez
+                  port: http-metrics
+                initialDelaySeconds: 5
+                timeoutSeconds: 5
+              name: kube-state-metrics
+              ports:
+                - containerPort: 8080
+                  name: http-metrics
+                - containerPort: 8081
+                  name: telemetry
+              readinessProbe:
+                httpGet:
+                  path: /readyz
+                  port: telemetry
+                initialDelaySeconds: 5
+                timeoutSeconds: 5
+              resources:
+                limits:
+                  cpu: "1"
+                  memory: 512Mi
+                requests:
+                  cpu: 100m
+                  memory: 128Mi
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop:
+                    - ALL
+                readOnlyRootFilesystem: true
+                runAsUser: 65534
+          nodeSelector:
+            kubernetes.io/os: linux
+          securityContext:
+            runAsNonRoot: true
+            seccompProfile:
+              type: RuntimeDefault
+          serviceAccountName: nktp-ksm-workloads
+  54: |
     apiVersion: rbac.authorization.k8s.io/v1
     kind: ClusterRole
     metadata:
@@ -929,7 +2069,7 @@ matches the snapshot with default values:
           - get
           - list
           - watch
-  16: |
+  55: |
     apiVersion: rbac.authorization.k8s.io/v1
     kind: ClusterRoleBinding
     metadata:
@@ -942,7 +2082,7 @@ matches the snapshot with default values:
       - kind: ServiceAccount
         name: nktp-large-target-metrics-targetallocator
         namespace: NAMESPACE
-  17: |
+  56: |
     apiVersion: opentelemetry.io/v1beta1
     kind: OpenTelemetryCollector
     metadata:
@@ -1121,7 +2261,7 @@ matches the snapshot with default values:
           topologyKey: kubernetes.io/hostname
           whenUnsatisfiable: ScheduleAnyway
       upgradeStrategy: automatic
-  18: |
+  57: |
     apiVersion: v1
     data:
       nktp.yaml: |
@@ -1138,7 +2278,7 @@ matches the snapshot with default values:
     kind: ConfigMap
     metadata:
       name: lgtm-dashboard-provider
-  19: |
+  58: |
     apiVersion: v1
     data:
       nktp-cluster-events.json: |
@@ -2907,7 +4047,7 @@ matches the snapshot with default values:
     kind: ConfigMap
     metadata:
       name: lgtm-dashboards
-  20: |
+  59: |
     apiVersion: v1
     kind: Service
     metadata:
@@ -2932,7 +4072,7 @@ matches the snapshot with default values:
           targetPort: 4318
       selector:
         app: lgtm
-  21: |
+  60: |
     apiVersion: apps/v1
     kind: Deployment
     metadata:
@@ -3006,7 +4146,7 @@ matches the snapshot with default values:
               name: p8s-storage
             - emptyDir: {}
               name: pyroscope-storage
-  22: |
+  61: |
     apiVersion: rbac.authorization.k8s.io/v1
     kind: ClusterRoleBinding
     metadata:
@@ -3019,7 +4159,7 @@ matches the snapshot with default values:
       - kind: ServiceAccount
         name: nktp-watchdog-collector
         namespace: NAMESPACE
-  23: |
+  62: |
     apiVersion: rbac.authorization.k8s.io/v1
     kind: Role
     metadata:
@@ -3043,7 +4183,7 @@ matches the snapshot with default values:
           - get
           - list
           - watch
-  24: |
+  63: |
     apiVersion: rbac.authorization.k8s.io/v1
     kind: RoleBinding
     metadata:
@@ -3057,7 +4197,7 @@ matches the snapshot with default values:
       - kind: ServiceAccount
         name: nktp-watchdog-targetallocator
         namespace: NAMESPACE
-  25: |
+  64: |
     apiVersion: opentelemetry.io/v1beta1
     kind: OpenTelemetryCollector
     metadata:

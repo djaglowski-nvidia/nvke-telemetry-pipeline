@@ -204,56 +204,73 @@ kube-state-metrics:
   deployments:
     unscheduled-pods:
       enabled: true
-      resource_types: [unscheduled_pods]
+      resource_types: [pods]
+      track_unscheduled_pods: true # Requires resource_types to be exactly [pods].
       shards: 1
       kubernetes: ...
     workloads:
       enabled: true
       resource_types: [deployments, statefulsets, daemonsets, replicasets, replicationcontrollers, jobs, cronjobs, horizontalpodautoscalers, poddisruptionbudgets]
+      track_unscheduled_pods: false
       shards: 1
       kubernetes: ...
     networking:
       enabled: true
       resource_types: [services, endpointslices, ingresses, networkpolicies]
+      track_unscheduled_pods: false
       shards: 1
       kubernetes: ...
     storage:
       enabled: true
       resource_types: [persistentvolumes, persistentvolumeclaims, volumeattachments]
+      track_unscheduled_pods: false
       shards: 1
       kubernetes: ...
     configuration:
       enabled: true
-      resource_types: [configmaps, secrets]
+      resource_types: [configmaps]
+      track_unscheduled_pods: false
       shards: 1
       kubernetes: ...
     cluster:
       enabled: true
-      resource_types: [nodes, namespaces, storageclasses, resourcequotas, limitranges, leases, certificatesigningrequests, mutatingadmissionpolicies, mutatingadmissionpolicybindings, mutatingwebhookconfigurations, validatingadmissionpolicies, validatingadmissionpolicybindings, validatingwebhookconfigurations]
+      resource_types: [nodes, namespaces, storageclasses, resourcequotas, limitranges, leases, certificatesigningrequests, mutatingwebhookconfigurations, validatingadmissionpolicies, validatingadmissionpolicybindings, validatingwebhookconfigurations]
+      track_unscheduled_pods: false
       shards: 1
       kubernetes: ...
 ```
 
 Deployment names are user-defined and form names such as `nktp-ksm-workloads`. `kubernetes` passes through workload settings.
 
-One namespace list applies to all workloads. An empty list selects all namespaces.
+The shared namespace list applies unless a workload supplies its own `namespaces` list. An empty list selects all namespaces. Empty strings are ignored.
+Helm generates collection arguments and RBAC from each central workload's `resource_types` and effective namespace selection.
 
-The DaemonSet collects scheduled Pods. `resource_types: [unscheduled_pods]` selects Pods without a node assignment, regardless of Pod phase.
-Other resource names map directly to KSM names.
-`shards` sets the number of hash shards for a central workload.
+The DaemonSet always collects scheduled Pods on its node. `track_unscheduled_pods: true` selects Pods without a node assignment, regardless of Pod phase,
+is supported only for central workloads, and requires `resource_types` to be exactly `[pods]`. It defaults to `false`.
+Helm supplies the DaemonSet's `--node` argument and `NODE_NAME` through the downward API.
+
+`shards` sets the number of hash shards for a central workload. Helm supplies `--shard` and `--total-shards`.
 
 ## Proposed default groups
 
-| Deployment | Resources |
+| Workload | Resources |
 | --- | --- |
-| `unscheduled-pods` | Pods without a node assignment |
-| `workloads` | Controllers, Jobs, autoscalers, and disruption budgets |
-| `networking` | Services, EndpointSlices, Ingresses, and NetworkPolicies |
-| `storage` | PersistentVolumes, PersistentVolumeClaims, and VolumeAttachments |
-| `configuration` | ConfigMaps and Secrets |
-| `cluster` | Nodes, Namespaces, StorageClasses, quotas, limits, Leases, certificates, and supported admission resources |
+| `daemonset` | Scheduled Pods, collected per node |
+| `deployments.unscheduled-pods` | Pods without a node assignment |
+| `deployments.workloads` | Controllers, Jobs, autoscalers, and disruption budgets |
+| `deployments.networking` | Services, EndpointSlices, Ingresses, and NetworkPolicies |
+| `deployments.storage` | PersistentVolumes, PersistentVolumeClaims, and VolumeAttachments |
+| `deployments.configuration` | ConfigMaps |
+| `deployments.cluster` | Nodes, Namespaces, StorageClasses, quotas, limits, Leases, certificates, and supported admission resources |
 
-Defaults assign each supported resource type to one collection group, with one shard per central workload unless its size requires more.
+Defaults assign each selected resource type to one collection group, with one shard per central workload unless its size requires more.
+
+Secret metrics are opt-in because collection requires list/watch access to complete Secret objects, including their contents.
+Add `secrets` to a workload's `resource_types` to enable them. Its `namespaces` list limits access. An empty list grants access across the cluster.
+
+`mutatingadmissionpolicies` and `mutatingadmissionpolicybindings` are disabled by default because KSM uses their
+`admissionregistration.k8s.io/v1` APIs, which older clusters do not serve.
+Add them to `resource_types` only when the cluster serves both APIs.
 
 [ksm-options]: https://github.com/kubernetes/kube-state-metrics/blob/main/docs/developer/cli-arguments.md
 [ksm-hash-sharding]: https://github.com/kubernetes/kube-state-metrics#horizontal-sharding

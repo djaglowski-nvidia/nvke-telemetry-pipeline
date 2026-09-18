@@ -534,6 +534,9 @@ gateway_traces:
 daemonset:
   kubernetes:
     mode: daemonset
+    # Match KSM node coverage so targets on tainted nodes have a local Collector.
+    tolerations:
+      - operator: Exists
     targetAllocator:
       enabled: true
       replicas: 1
@@ -1002,6 +1005,80 @@ otel-lgtm:
   enabled: true
   image: grafana/otel-lgtm:0.32.0
 
+# Kubernetes object state metrics, partitioned by resource type.
+kube-state-metrics:
+  enabled: true
+  image: registry.k8s.io/kube-state-metrics/kube-state-metrics:v2.20.0
+  namespaces: [] # All namespaces. Each workload can override this list.
+  # Shared Kubernetes defaults. Each workload can override these fields.
+  kubernetes:
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: "1"
+        memory: 512Mi
+    podSecurityContext:
+      runAsNonRoot: true
+      seccompProfile:
+        type: RuntimeDefault
+    securityContext:
+      runAsUser: 65534 # The upstream image's nobody user, expressed numerically for runAsNonRoot.
+      allowPrivilegeEscalation: false
+      readOnlyRootFilesystem: true
+      capabilities:
+        drop: [ALL]
+    nodeSelector:
+      kubernetes.io/os: linux
+  # Node-local collection. NODE_NAME is supplied through the downward API.
+  daemonset:
+    enabled: true
+    kubernetes:
+      # Include tainted nodes so their scheduled Pods are also collected.
+      tolerations:
+        - operator: Exists
+  # Named Deployments. resource_types and namespaces also determine RBAC.
+  # Helm supplies shard identities from shards.
+  deployments:
+    unscheduled-pods:
+      enabled: true
+      resource_types: [pods]
+      track_unscheduled_pods: true # Requires resource_types to be exactly [pods].
+      shards: 1
+      kubernetes: {}
+    workloads:
+      enabled: true
+      resource_types: [deployments, statefulsets, daemonsets, replicasets, replicationcontrollers, jobs, cronjobs, horizontalpodautoscalers, poddisruptionbudgets]
+      track_unscheduled_pods: false
+      shards: 1
+      kubernetes: {}
+    networking:
+      enabled: true
+      resource_types: [services, endpointslices, ingresses, networkpolicies]
+      track_unscheduled_pods: false
+      shards: 1
+      kubernetes: {}
+    storage:
+      enabled: true
+      resource_types: [persistentvolumes, persistentvolumeclaims, volumeattachments]
+      track_unscheduled_pods: false
+      shards: 1
+      kubernetes: {}
+    configuration:
+      enabled: true
+      # Add secrets to opt in to Secret metrics and list/watch access to Secret contents.
+      resource_types: [configmaps]
+      track_unscheduled_pods: false
+      shards: 1
+      kubernetes: {}
+    cluster:
+      enabled: true
+      resource_types: [nodes, namespaces, storageclasses, resourcequotas, limitranges, leases, certificatesigningrequests, mutatingwebhookconfigurations, validatingadmissionpolicies, validatingadmissionpolicybindings, validatingwebhookconfigurations]
+      track_unscheduled_pods: false
+      shards: 1
+      kubernetes: {}
+
 # Configuration below this point is inherited from bundled charts. Each
 # chart has an install or enabled flag, and further configuration passes
 # through under its key using the chart's own conventions.
@@ -1027,10 +1104,6 @@ opentelemetry-kube-stack:
         enabled: false
       autoGenerateCert:
         recreate: false
-
-# Kubernetes object state metrics. Sharded for scalability.
-kube-state-metrics:
-  enabled: true
 
 # Host-level metrics from each node. Runs as a DaemonSet with host networking,
 # so it binds port 9100 on every node.

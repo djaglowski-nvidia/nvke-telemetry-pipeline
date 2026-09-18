@@ -1,0 +1,82 @@
+suite: kube-state-metrics discovery
+release:
+  namespace: nktp
+templates:
+  - templates/ksm-monitors.yaml
+tests:
+  - it: routes node-local collection separately from central groups
+    asserts:
+      - hasDocuments:
+          count: 7
+      - notExists:
+          path: metadata.labels["nktp.nvidia.io/large-target"]
+        documentSelector:
+          path: metadata.name
+          value: nktp-ksm-pods
+      - equal:
+          path: metadata.labels["nktp.nvidia.io/large-target"]
+          value: "true"
+        documentSelector:
+          path: metadata.name
+          value: nktp-ksm-workloads
+      - equal:
+          path: spec.podMetricsEndpoints
+          value: [{port: http-metrics, honorLabels: true}, {port: telemetry}]
+        documentSelector:
+          path: metadata.name
+          value: nktp-ksm-workloads
+      - equal:
+          path: spec.selector.matchLabels["app.kubernetes.io/name"]
+          value: nktp-ksm-workloads
+        documentSelector:
+          path: metadata.name
+          value: nktp-ksm-workloads
+      - notExists:
+          path: spec.selector.matchLabels["nktp.nvidia.io/ksm-shard"]
+        documentSelector:
+          path: metadata.name
+          value: nktp-ksm-workloads
+
+  - it: selects every shard through the same monitor
+    set:
+      kube-state-metrics.deployments.workloads.shards: 4
+    asserts:
+      - hasDocuments:
+          count: 7
+      - notExists:
+          path: spec.selector.matchLabels["nktp.nvidia.io/ksm-shard"]
+        documentSelector:
+          path: metadata.name
+          value: nktp-ksm-workloads
+
+  - it: removes monitors with the component
+    set:
+      kube-state-metrics.enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: routes central Pod collection to the large-target pool
+    set:
+      kube-state-metrics.daemonset.enabled: false
+      kube-state-metrics.deployments.unscheduled-pods.enabled: false
+      kube-state-metrics.deployments.pods:
+        enabled: true
+        resource_types: [pods]
+        shards: 2
+    documentSelector:
+      path: metadata.name
+      value: nktp-ksm-pods
+    asserts:
+      - equal:
+          path: metadata.labels["nktp.nvidia.io/large-target"]
+          value: "true"
+
+  - it: uses the chart-managed listener names
+    documentSelector:
+      path: metadata.name
+      value: nktp-ksm-pods
+    asserts:
+      - equal:
+          path: spec.podMetricsEndpoints
+          value: [{port: http-metrics, honorLabels: true}, {port: telemetry}]
