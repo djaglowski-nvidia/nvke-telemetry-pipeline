@@ -1,0 +1,16 @@
+# Keep KWOK's default rule from completing labelled Job pods before 30 seconds.
+# Replace the full selector so repeated installation does not append conditions.
+spec:
+  selector:
+    matchExpressions:
+      - key: .metadata.deletionTimestamp
+        operator: DoesNotExist
+      - key: .status.phase
+        operator: In
+        values: [Running]
+      - key: .metadata.ownerReferences.[].kind
+        operator: In
+        values: [Job]
+      - jq:
+          key: '.metadata.labels["scale.nktp.io/lifecycle"]'
+          operator: DoesNotExist

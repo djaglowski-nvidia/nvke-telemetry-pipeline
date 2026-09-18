@@ -9,7 +9,7 @@ performance.
 
 ## Local cluster
 
-Requires Docker, Kind, kubectl, Helm, and Task. From the repository root:
+Requires Docker, Kind, kubectl, Helm 3 or 4, and Task. From the repository root:
 
 ```sh
 task scale:up
@@ -17,14 +17,28 @@ task scale:down
 ```
 
 `scale:up` creates `nktp-scale` with the [dedicated Kind config](kind-config.yaml)
-if needed, then installs or upgrades the NKTP Helm release in namespace `nktp`
-from the local chart. It prepares chart dependencies and waits for nodes and NKTP
-workloads, including workloads created by the Operator. Each readiness wait has a
+if needed, installs KWOK, then installs or upgrades the NKTP Helm release in
+namespace `nktp` from the local chart. It prepares chart dependencies and waits
+for nodes and NKTP workloads, including workloads created by the Operator. Each readiness wait has a
 five-minute timeout. Workload readiness does not verify telemetry delivery.
 Chart dependencies are downloaded only when missing or invalid. Once workloads
 are ready, `scale:up` starts a background port-forward from `127.0.0.1:9090` to
 Prometheus in `service/lgtm`. Keep local port 9090 free. Repeating `scale:up`
 restarts the forward. Its log is `tests/scale/.prometheus-port-forward.log`.
+
+`scale:up` installs KWOK v0.8.0 using the upstream `kwok` and `stage-fast`
+Helm charts at version 0.3.0. It waits for the controller and applies the pod
+lifecycle policy. Repeating the command upgrades the releases and reapplies the
+policy. The controller is not pinned to the control plane. It manages nodes
+annotated `kwok.x-k8s.io/node: fake` and simulates node and pod status without
+running containers. Create emulated nodes and pods separately, and taint the
+nodes to keep ordinary workloads off them.
+
+Label emulated pods `scale.nktp.io/lifecycle: complete-30s` to use the
+[30-second completion policy](kwok/stages/pod-complete-30s.yaml). It marks a
+Running pod `Succeeded` 30 seconds after `status.startTime`. Controller delays
+may extend this lifetime. Delete completed pods after collecting their results.
+Pods without the lifecycle label use KWOK's default behavior.
 
 Use `HELM_VALUES_FILE=/absolute/path/to/values.yaml` to supply Helm values.
 Relative paths are resolved from `tests/scale/`. Each run applies the current

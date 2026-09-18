@@ -5,7 +5,7 @@ vars:
 
 tasks:
   up:
-    desc: Create or reuse the scale test Kind cluster and deploy NKTP
+    desc: Create or reuse the scale test Kind cluster and deploy KWOK and NKTP
     deps: [check-local-deps]
     preconditions:
       - sh: test -f kind-config.yaml
@@ -31,7 +31,12 @@ tasks:
           kind create cluster --name nktp-scale --config kind-config.yaml --kubeconfig .kubeconfig || exit $?
         fi
       - kind export kubeconfig --name nktp-scale --kubeconfig .kubeconfig
-      - kubectl --kubeconfig .kubeconfig --context kind-nktp-scale wait --for=condition=Ready nodes --all --timeout=5m
+      # Emulated Nodes may need KWOK to recover; wait only for real Kind nodes here.
+      - |
+        nodes=$(kind get nodes --name nktp-scale) || exit $?
+        test -n "$nodes" || { echo "No Kind nodes found." >&2; exit 1; }
+        kubectl --kubeconfig .kubeconfig --context kind-nktp-scale wait --for=condition=Ready nodes $nodes --timeout=5m
+      - task: kwok:install
       - helm upgrade --install nktp ../../nktp --reset-values --namespace nktp --create-namespace --kubeconfig .kubeconfig --kube-context kind-nktp-scale --wait --timeout 5m {{if .HELM_VALUES_FILE}}--values {{.HELM_VALUES_FILE | shellQuote}}{{end}}
       - task: wait-ready
       - task: prometheus:up
@@ -43,6 +48,21 @@ tasks:
       - task: prometheus:down
       - kind delete cluster --name nktp-scale --kubeconfig .kubeconfig
       - rm -f .kubeconfig
+
+  kwok:install:
+    internal: true
+    vars:
+      # Preserve the separate Stage patch with Helm 3 and Helm 4.
+      HELM_STAGE_APPLY_FLAGS:
+        sh: |
+          case "$(helm version --short)" in
+            v4.*) echo --server-side=false ;;
+          esac
+    cmds:
+      - helm upgrade --install kwok https://github.com/kubernetes-sigs/kwok/releases/download/v0.8.0/kwok-chart-0.3.0.tgz --reset-values --namespace kube-system --kubeconfig .kubeconfig --kube-context kind-nktp-scale --wait --timeout 5m
+      - helm upgrade --install kwok-stage-fast https://github.com/kubernetes-sigs/kwok/releases/download/v0.8.0/kwok-stage-fast-chart-0.3.0.tgz {{.HELM_STAGE_APPLY_FLAGS}} --reset-values --namespace kube-system --kubeconfig .kubeconfig --kube-context kind-nktp-scale --wait --timeout 5m
+      - kubectl --kubeconfig .kubeconfig --context kind-nktp-scale patch stage pod-complete --type=merge --patch-file kwok/stages/pod-complete-selector-patch.yaml
+      - kubectl --kubeconfig .kubeconfig --context kind-nktp-scale apply -f kwok/stages/pod-complete-30s.yaml
 
   prometheus:up:
     internal: true

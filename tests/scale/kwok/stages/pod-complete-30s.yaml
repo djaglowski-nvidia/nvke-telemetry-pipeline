@@ -1,0 +1,60 @@
+# KWOK v0.8.0: complete labelled Pods after 30 seconds of Running time.
+# The pinned pod-ready Stage sets Running and status.startTime together.
+# The caller can observe Succeeded before deleting the Pod.
+apiVersion: kwok.x-k8s.io/v1alpha1
+kind: Stage
+metadata:
+  name: nktp-pod-complete-30s
+spec:
+  resourceRef:
+    apiGroup: v1
+    kind: Pod
+  selector:
+    matchLabels:
+      scale.nktp.io/lifecycle: complete-30s
+    matchExpressions:
+      - jq:
+          key: .metadata.deletionTimestamp
+          operator: DoesNotExist
+      - jq:
+          key: .status.phase
+          operator: In
+          values: [Running]
+      - jq:
+          key: .status.startTime
+          operator: Exists
+  delay:
+    durationFrom:
+      jq:
+        expression: >-
+          .status.startTime | fromdateiso8601 + 30 | todateiso8601
+  steps:
+    - patch:
+        subresource: status
+        root: status
+        type: merge
+        template: |
+          {{ $now := Now }}
+          {{ $root := . }}
+          phase: Succeeded
+          conditions:
+          - type: Ready
+            status: "False"
+            lastTransitionTime: {{ $now | Quote }}
+          - type: ContainersReady
+            status: "False"
+            lastTransitionTime: {{ $now | Quote }}
+          containerStatuses:
+          {{ range .spec.containers }}
+          - name: {{ .name | Quote }}
+            image: {{ .image | Quote }}
+            ready: false
+            started: false
+            restartCount: 0
+            state:
+              terminated:
+                exitCode: 0
+                reason: Completed
+                startedAt: {{ $root.status.startTime | Quote }}
+                finishedAt: {{ $now | Quote }}
+          {{ end }}
