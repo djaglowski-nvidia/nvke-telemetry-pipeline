@@ -23,6 +23,7 @@ import (
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/scheme"
 	batchclient "k8s.io/client-go/kubernetes/typed/batch/v1"
@@ -91,6 +92,47 @@ func jobSpec(t *testing.T, data string) yaml.Node {
 	return *document.Content[0]
 }
 
+// TestJobTopologySpread isolates placement by generated Job and preserves other pod labels.
+func TestJobTopologySpread(t *testing.T) {
+	for _, podLabels := range []string{"", "pod_labels: {scale.nktp.io/workload: avalanche}\n"} {
+		t.Run(podLabels, func(t *testing.T) {
+			g, err := NewJobGenerator(jobSpec(t, "namespace: load\nimage: example:test\n"+podLabels), "/does/not/exist")
+			require.NoError(t, err)
+			first := g.manifest(time.Now().Add(time.Minute))
+			second := g.manifest(time.Now().Add(time.Minute))
+			require.NotEqual(t, first.Name, second.Name, "independent Job names")
+			for _, job := range []*batchv1.Job{first, second} {
+				assert.Equal(t, job.Name, job.Labels[jobOwnerLabel], "Job ownership unchanged")
+				assert.Equal(t, job.Name, job.Spec.Template.Labels[jobOwnerLabel], "Pod spread group")
+				assert.Nil(t, job.Spec.Selector, "Job controller still assigns its selector")
+				require.Len(t, job.Spec.Template.Spec.TopologySpreadConstraints, 1)
+				spread := job.Spec.Template.Spec.TopologySpreadConstraints[0]
+				assert.Equal(t, int32(1), spread.MaxSkew)
+				assert.Equal(t, "kubernetes.io/hostname", spread.TopologyKey)
+				assert.Equal(t, corev1.DoNotSchedule, spread.WhenUnsatisfiable)
+				require.NotNil(t, spread.NodeAffinityPolicy)
+				require.NotNil(t, spread.NodeTaintsPolicy)
+				assert.Equal(t, corev1.NodeInclusionPolicyHonor, *spread.NodeAffinityPolicy)
+				assert.Equal(t, corev1.NodeInclusionPolicyHonor, *spread.NodeTaintsPolicy)
+				assert.Nil(t, spread.MinDomains, "use the eligible nodes, not a fixed node count")
+				selector, err := metav1.LabelSelectorAsSelector(spread.LabelSelector)
+				require.NoError(t, err)
+				assert.True(t, selector.Matches(labels.Set(job.Spec.Template.Labels)), "count this Job's pods")
+				other := first
+				if job == first {
+					other = second
+				}
+				assert.False(t, selector.Matches(labels.Set(other.Spec.Template.Labels)), "ignore another Job's pods")
+				assert.Equal(t, g.config.PodLabels["scale.nktp.io/workload"], job.Spec.Template.Labels["scale.nktp.io/workload"], "discovery label retained")
+			}
+			assert.NotContains(t, g.config.PodLabels, jobOwnerLabel, "manifest does not alter configuration")
+			first.Spec.Template.Labels["scale.nktp.io/workload"] = "changed"
+			assert.NotEqual(t, "changed", second.Spec.Template.Labels["scale.nktp.io/workload"], "manifests do not share labels")
+			assert.NotEqual(t, "changed", g.config.PodLabels["scale.nktp.io/workload"], "configuration does not share labels")
+		})
+	}
+}
+
 // TestJobGeneratorRun checks completion, failures and cleanup through the Kubernetes API.
 func TestJobGeneratorRun(t *testing.T) {
 	for _, test := range []struct {
@@ -110,6 +152,7 @@ func TestJobGeneratorRun(t *testing.T) {
 		{name: "lost create response", wantError: "create Job", wantDeleted: true},
 		{name: "canceled", wantError: "context canceled", wantDeleted: true},
 		{name: "deadline", wantError: "context deadline exceeded", wantDeleted: true},
+		{name: "unschedulable", wantError: "PodScheduled=False reason=Unschedulable: 0/3 nodes satisfy topology spread", wantDeleted: true, parallelism: 3},
 		{name: "get failed", wantError: "wait for Job", wantDeleted: true},
 		{name: "replaced", wantError: "refuse to delete unowned Job"},
 		{name: "ownership changed", wantError: "refuse to delete unowned Job"},
@@ -117,7 +160,7 @@ func TestJobGeneratorRun(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			timeout := 2 * time.Second
-			if test.parallelism > 1 {
+			if test.parallelism > 1 && test.name != "unschedulable" {
 				timeout = 10 * time.Second
 			}
 			ctx, cancel := context.WithTimeout(t.Context(), timeout)
@@ -151,12 +194,15 @@ func TestJobGeneratorRun(t *testing.T) {
 			if mode == "canceled" {
 				require.ErrorIs(t, err, context.Canceled, "Run()")
 			}
-			if test.name == "deadline" {
+			if test.name == "deadline" || test.name == "unschedulable" {
 				require.ErrorIs(t, err, context.DeadlineExceeded, "Run()")
 			}
 			api.mu.Lock()
 			defer api.mu.Unlock()
 			assert.Equal(t, test.wantDeleted, api.deleted, "Job deleted")
+			if test.name == "unschedulable" {
+				assert.False(t, api.logsRead, "unscheduled pods have no container logs")
+			}
 			if test.name == "failed" {
 				if err != nil {
 					assert.LessOrEqual(t, len(err.Error()), 9000, "bounded failure logs")
@@ -227,6 +273,8 @@ func (a *jobTestAPI) serveHTTP(w http.ResponseWriter, r *http.Request) {
 		if a.parallelism > 1 {
 			assert.Equal(a.t, "avalanche", job.Spec.Template.Labels["scale.nktp.io/workload"], "workload selection label")
 		}
+		assert.Equal(a.t, job.Name, job.Spec.Template.Labels[jobOwnerLabel], "default spread selector label reaches the API")
+		assert.Len(a.t, job.Spec.Template.Spec.TopologySpreadConstraints, 1, "default spread constraint reaches the API")
 		assert.Positive(a.t, *job.Spec.ActiveDeadlineSeconds, "Job controller deadline")
 		assert.Positive(a.t, *job.Spec.TTLSecondsAfterFinished, "Job cleanup fallback")
 		container := job.Spec.Template.Spec.Containers[0]
@@ -239,7 +287,7 @@ func (a *jobTestAPI) serveHTTP(w http.ResponseWriter, r *http.Request) {
 		if a.mode == "failed" {
 			condition = batchv1.JobFailed
 		}
-		if a.mode != "deadline" {
+		if a.mode != "deadline" && a.mode != "unschedulable" {
 			job.Status.Conditions = []batchv1.JobCondition{{Type: condition, Status: corev1.ConditionTrue, Reason: "WorkloadExited", Message: "export failed"}}
 		}
 		a.job = &job
@@ -315,6 +363,15 @@ func (a *jobTestAPI) serveHTTP(w http.ResponseWriter, r *http.Request) {
 		if a.job != nil && a.job.UID == "owned" {
 			controller := true
 			list.Items = []corev1.Pod{{ObjectMeta: metav1.ObjectMeta{Name: "generator-pod", OwnerReferences: []metav1.OwnerReference{{UID: "owned", Controller: &controller}}}, Status: corev1.PodStatus{Phase: corev1.PodRunning}}}
+			if a.mode == "unschedulable" {
+				list.Items[0].Status = corev1.PodStatus{
+					Phase: corev1.PodPending,
+					Conditions: []corev1.PodCondition{{
+						Type: corev1.PodScheduled, Status: corev1.ConditionFalse, Reason: "Unschedulable",
+						Message: "0/3 nodes satisfy topology spread",
+					}},
+				}
+			}
 		}
 		if a.deleted && a.remainingPods > 0 {
 			controller := true

@@ -22,9 +22,10 @@ namespace `nktp` from the local chart. It prepares chart dependencies and waits
 for nodes and NKTP workloads, including workloads created by the Operator. Each readiness wait has a
 five-minute timeout. Workload readiness does not verify telemetry delivery.
 Chart dependencies are downloaded only when missing or invalid. Once workloads
-are ready, `scale:up` starts a background port-forward from `127.0.0.1:9090` to
-Prometheus in `service/lgtm`. Keep local port 9090 free. Repeating `scale:up`
-restarts the forward. Its log is `tests/scale/.prometheus-port-forward.log`.
+are ready, `scale:up` forwards [Prometheus](http://127.0.0.1:9090) and
+[Grafana](http://127.0.0.1:3000) in the background. Keep local ports 9090 and 3000
+free. Repeating `scale:up` restarts both forwards. Logs are in
+`tests/scale/.prometheus-port-forward.log` and `.grafana-port-forward.log`.
 
 `scale:up` installs KWOK v0.8.0 using the upstream `kwok` and `stage-fast`
 Helm charts at version 0.3.0. It waits for the controller and applies the pod
@@ -57,7 +58,7 @@ context. For manual access:
 export KUBECONFIG="$PWD/tests/scale/.kubeconfig"
 ```
 
-`scale:down` stops the managed port-forward, then deletes the scale cluster and
+`scale:down` stops both managed port-forwards, then deletes the scale cluster and
 its kubeconfig. It does not stop the dev Tilt session or delete the dev cluster.
 The no-op plans below do not require `scale:up`.
 
@@ -166,7 +167,7 @@ task test:scale -- -plan "$PWD/tests/scale/plans/noop.yaml"
 Or from `tests/`:
 
 ```sh
-go test -tags scale -count=1 -v -timeout=5m -run '^TestRun$' ./scale
+go test -tags scale -count=1 -v -timeout=12m -run '^TestRun$' ./scale
 go test -race -tags scale -count=1 ./...
 ```
 
@@ -311,6 +312,11 @@ The telemetrygen plan uses namespace `nktp` and the NKTP services installed by
 `task scale:up`. When using another cluster, adjust the plan namespace and
 endpoints as needed. The test harness itself does not provision a cluster.
 
+Jobs spread their pods evenly across eligible nodes. Each Job spreads
+independently, with pod counts differing by at most one. Pods remain Pending when
+the placement constraint cannot be satisfied. Running pods are not automatically
+rebalanced.
+
 **Jobs and pods are cleaned up before the test returns**, including after failure
 or cancellation. Workload and cleanup errors fail the test.
 
@@ -319,13 +325,14 @@ or cancellation. Workload and cleanup errors fail the test.
 [Avalanche](https://github.com/prometheus-community/avalanche) generates
 Prometheus metrics for NKTP to scrape. The [example plan](plans/avalanche.yaml)
 runs three independent pods for three minutes. Each pod serves 10,000 gauge
-series. The [scrape profile](avalanche-values.yaml) discovers each pod through
-NKTP's existing collectors.
+series. The [scrape profile](scale-test-values.yaml) routes Avalanche targets
+through NKTP's two large-target collectors and the metrics gateway to the
+blackhole collectors.
 
 From the repository root:
 
 ```sh
-task scale:up HELM_VALUES_FILE=avalanche-values.yaml
+task scale:up HELM_VALUES_FILE=scale-test-values.yaml
 task test:scale -- -plan "$PWD/tests/scale/plans/avalanche.yaml"
 ```
 
@@ -348,3 +355,58 @@ series in backend queries. This can inflate the observed series count or mask
 missing data, so the count alone does not prove that the expected number of
 series is being received simultaneously. StatefulSet support with stable replica
 identities and label mapping is planned.
+
+## Continuous metrics load
+
+[plans/metrics-1m.yaml](plans/metrics-1m.yaml) runs upstream Avalanche and
+telemetrygen concurrently in the kind cluster for ten minutes. It targets
+approximately **1 million distinct series offered per rolling 60-second window**
+after startup.
+
+| Generator | Workloads | Delivery to NKTP | Target series per window |
+| --- | --- | --- | --- |
+| Avalanche | 1 Job with 5 pods, each serving 100,000 series | Two large-target collectors scrape every 15 seconds | 500,000 |
+| telemetrygen | 1 Job with 3 pods, each running 128 workers | Continuous OTLP stream of new series | About 507,000 |
+
+From the repository root:
+
+```sh
+task scale:up HELM_VALUES_FILE=scale-test-values.yaml
+task test:scale -- -plan "$PWD/tests/scale/plans/metrics-1m.yaml"
+```
+
+[plans/metrics-2m.yaml](plans/metrics-2m.yaml) doubles the offered load to about
+2 million series per rolling 60-second window using 10 Avalanche pods and
+6 telemetrygen pods. It uses the same ten-minute duration and scale profile.
+
+```sh
+task test:scale -- -plan "$PWD/tests/scale/plans/metrics-2m.yaml"
+```
+
+The [scale profile](scale-test-values.yaml) runs two blackhole collectors that
+accept and discard traffic from all three gateways. Watchdog keeps component and
+producer observations in LGTM. Generator pods spread evenly across the three
+kind workers.
+
+The report covers resource use, gateway and blackhole throughput, queues and
+scrape health. Compare results after all generators have started and produced
+traffic for at least one minute. Jobs and pods are cleaned up automatically.
+
+Limitations:
+
+- The target is approximate and received unique-series counts are not verified.
+  Generated telemetry is discarded. Series-count queries in other plans require
+  the normal LGTM setup without this profile.
+- Throughput counters include background traffic and may include retries. Run
+  one load test at a time when comparing the measurements with the target.
+- Watchdog outages can cause missing scrape diagnostics and collection errors.
+- All kind nodes share the Docker VM's resources. Even placement adds no CPU or
+  memory. The blackhole also consumes resources and can limit throughput.
+  A measurement timeout stops its paired generator.
+- Spreading balances pod counts, not resource use. Insufficient capacity can
+  leave pods Pending, and node failures do not trigger automatic rebalancing.
+- Telemetrygen's [upstream throughput issue](https://github.com/open-telemetry/opentelemetry-collector-contrib/issues/49950)
+  can reduce the load during a run.
+- Telemetrygen must connect directly to the metrics gateway with its source
+  address preserved. An intermediary that hides client addresses can merge
+  identities. Pod replacement or address reuse can also distort the load.

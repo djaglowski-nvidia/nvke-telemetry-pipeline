@@ -1,0 +1,247 @@
+# The large-target pool scrapes Avalanche independently of producer placement.
+opentelemetry-kube-stack:
+  extraObjects:
+    - apiVersion: monitoring.coreos.com/v1
+      kind: PodMonitor
+      metadata:
+        name: nktp-scale-avalanche
+        namespace: nktp
+        labels:
+          nktp.nvidia.io/large-target: "true"
+      spec:
+        selector:
+          matchLabels:
+            scale.nktp.io/workload: avalanche
+        podMetricsEndpoints:
+          - path: /metrics
+            interval: 15s
+            scrapeTimeout: 10s
+            # Job containers need no declared port when discovery supplies the address.
+            relabelings:
+              - targetLabel: scale_generator
+                replacement: avalanche
+              - sourceLabels: [__meta_kubernetes_pod_ip]
+                regex: '(.+)'
+                targetLabel: __address__
+                replacement: '${1}:9001'
+              - sourceLabels: [__meta_kubernetes_pod_ip]
+                regex: '(.+:.*)'
+                targetLabel: __address__
+                replacement: '[${1}]:9001'
+
+    # Discard test traffic to measure NKTP performance without backend storage costs.
+    - apiVersion: opentelemetry.io/v1beta1
+      kind: OpenTelemetryCollector
+      metadata:
+        name: nktp-scale-blackhole
+        namespace: '{{ .Release.Namespace }}'
+        labels:
+          helm.sh/chart: '{{ include "opentelemetry-kube-stack.chart" . }}'
+      spec:
+        image: otel/opentelemetry-collector-k8s:0.159.0
+        mode: deployment
+        managementState: managed
+        upgradeStrategy: automatic
+        replicas: 2
+        resources:
+          requests:
+            cpu: 500m
+            memory: 256Mi
+          limits:
+            memory: 1Gi
+        env:
+          - name: GOMEMLIMIT
+            value: 896MiB
+          - name: GOGC
+            value: "50"
+        topologySpreadConstraints:
+          - maxSkew: 1
+            topologyKey: kubernetes.io/hostname
+            whenUnsatisfiable: ScheduleAnyway
+            labelSelector:
+              matchLabels:
+                app.kubernetes.io/name: nktp-scale-blackhole-collector
+        podSecurityContext:
+          runAsNonRoot: true
+          seccompProfile:
+            type: RuntimeDefault
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop: [ALL]
+        config:
+          extensions:
+            health_check:
+              endpoint: 0.0.0.0:13133
+          receivers:
+            otlp:
+              protocols:
+                grpc:
+                  endpoint: 0.0.0.0:4317
+                http:
+                  endpoint: 0.0.0.0:4318
+          processors:
+            memory_limiter:
+              check_interval: 500ms
+              limit_percentage: 80
+              spike_limit_percentage: 25
+          exporters:
+            nop: {}
+          service:
+            extensions: [health_check]
+            telemetry:
+              resource:
+                service.name: nktp-scale-blackhole
+              metrics:
+                readers:
+                  - periodic:
+                      exporter:
+                        otlp:
+                          protocol: http/protobuf
+                          endpoint: http://nktp-watchdog-collector:4318
+              logs:
+                processors:
+                  - batch:
+                      exporter:
+                        otlp:
+                          protocol: http/protobuf
+                          endpoint: http://nktp-watchdog-collector:4318
+              traces:
+                processors:
+                  - batch:
+                      exporter:
+                        otlp:
+                          protocol: http/protobuf
+                          endpoint: http://nktp-watchdog-collector:4318
+            pipelines:
+              metrics:
+                receivers: [otlp]
+                processors: [memory_limiter]
+                exporters: [nop]
+              logs:
+                receivers: [otlp]
+                processors: [memory_limiter]
+                exporters: [nop]
+              traces:
+                receivers: [otlp]
+                processors: [memory_limiter]
+                exporters: [nop]
+
+# Direct OTLP clients keep distinct series when replicas use identical arguments.
+gateway_metrics:
+  otelcol:
+    config:
+      exporters:
+        otlp_http:
+          endpoint: http://nktp-scale-blackhole-collector:4318
+      processors:
+        attributes/scale_instance:
+          include:
+            match_type: strict
+            metric_names: [nktp_scale_e2e]
+          actions:
+            - key: generator_instance
+              from_context: client.address
+              action: upsert
+      service:
+        pipelines:
+          metrics:
+            # Read the client address before export queues discard connection context.
+            processors: [memory_limiter, attributes/scale_instance]
+
+# Discard gateway payloads while collector observations continue through watchdog.
+gateway_logs:
+  otelcol:
+    config:
+      exporters:
+        otlp_http:
+          endpoint: http://nktp-scale-blackhole-collector:4318
+
+gateway_traces:
+  otelcol:
+    config:
+      exporters:
+        otlp_http:
+          endpoint: http://nktp-scale-blackhole-collector:4318
+
+# Keep scrape diagnostics without retaining the generated load in LGTM.
+large_target_metrics:
+  otelcol:
+    config:
+      connectors:
+        routing/scale_diagnostics:
+          error_mode: ignore
+          default_pipelines: [metrics/load]
+          table:
+            - context: metric
+              condition: >-
+                metric.name == "up" or
+                metric.name == "scrape_duration_seconds" or
+                metric.name == "scrape_samples_scraped" or
+                metric.name == "scrape_samples_post_metric_relabeling"
+              action: move
+              pipelines: [metrics/scale_diagnostics]
+      exporters:
+        otlp_http/scale_diagnostics:
+          endpoint: http://nktp-watchdog-collector:4318
+          retry_on_failure:
+            max_elapsed_time: 30s
+          sending_queue:
+            block_on_overflow: false
+            sizer: bytes
+            queue_size: 1048576
+            num_consumers: 2
+      service:
+        pipelines:
+          metrics:
+            exporters: [routing/scale_diagnostics]
+          metrics/load:
+            receivers: [routing/scale_diagnostics]
+            exporters: [otlp_http]
+          metrics/scale_diagnostics:
+            receivers: [routing/scale_diagnostics]
+            exporters: [otlp_http/scale_diagnostics]
+
+# Observe the generators through the existing host /proc mount and watchdog path.
+daemonset:
+  otelcol:
+    config:
+      receivers:
+        hostmetrics/scale_producers:
+          root_path: /hostfs
+          collection_interval: 15s
+          scrapers:
+            process:
+              include:
+                match_type: strict
+                names: [avalanche, telemetrygen]
+              resource_attributes:
+                process.command_line:
+                  enabled: false
+              metrics:
+                process.disk.io:
+                  enabled: false
+                process.memory.virtual:
+                  enabled: false
+      processors:
+        resource/scale_producers:
+          attributes:
+            - key: service.name
+              value: nktp-scale-producers
+              action: upsert
+            - key: k8s.node.name
+              value: ${env:NODE_NAME}
+              action: upsert
+        transform/scale_producers:
+          metric_statements:
+            - context: datapoint
+              statements:
+                - set(attributes["load_generator"], resource.attributes["process.executable.name"])
+                - set(attributes["producer_pid"], resource.attributes["process.pid"])
+      service:
+        pipelines:
+          metrics/scale_producers:
+            receivers: [hostmetrics/scale_producers]
+            processors: [memory_limiter, resource/scale_producers, transform/scale_producers]
+            exporters: [otlp_http/watchdog]

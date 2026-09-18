@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"path/filepath"
 	"strings"
 	"time"
@@ -218,13 +219,13 @@ func (g *JobGenerator) manifest(deadline time.Time) *batchv1.Job {
 	// Controller bounds also cover a lost Create response or a crashed harness.
 	activeSeconds := max(int64(1), int64(time.Until(deadline).Seconds())+1)
 	ttlSeconds := int32(60)
-	return &batchv1.Job{
+	job := &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: g.config.Namespace, Labels: map[string]string{jobOwnerLabel: name}},
 		Spec: batchv1.JobSpec{
 			Parallelism: &parallelism, Completions: &parallelism, BackoffLimit: &zero,
 			ActiveDeadlineSeconds: &activeSeconds, TTLSecondsAfterFinished: &ttlSeconds,
 			Template: corev1.PodTemplateSpec{
-				ObjectMeta: metav1.ObjectMeta{Labels: g.config.PodLabels},
+				ObjectMeta: metav1.ObjectMeta{Labels: maps.Clone(g.config.PodLabels)},
 				Spec: corev1.PodSpec{
 					RestartPolicy: corev1.RestartPolicyNever, AutomountServiceAccountToken: &noToken,
 					Containers: []corev1.Container{{Name: "generator", Image: g.config.Image, Command: g.config.Cmd, Args: g.config.Args}},
@@ -232,6 +233,17 @@ func (g *JobGenerator) manifest(deadline time.Time) *batchv1.Job {
 			},
 		},
 	}
+	if job.Spec.Template.Labels == nil {
+		job.Spec.Template.Labels = make(map[string]string)
+	}
+	job.Spec.Template.Labels[jobOwnerLabel] = name
+	honor := corev1.NodeInclusionPolicyHonor
+	job.Spec.Template.Spec.TopologySpreadConstraints = []corev1.TopologySpreadConstraint{{
+		MaxSkew: 1, TopologyKey: "kubernetes.io/hostname", WhenUnsatisfiable: corev1.DoNotSchedule,
+		NodeAffinityPolicy: &honor, NodeTaintsPolicy: &honor,
+		LabelSelector: &metav1.LabelSelector{MatchLabels: map[string]string{jobOwnerLabel: name}},
+	}}
+	return job
 }
 
 // cleanupJob checks the ownership label and any known UID before deleting the Job,
@@ -298,8 +310,18 @@ func jobDiagnostics(ctx context.Context, pods coreclient.PodInterface, job *batc
 			continue
 		}
 		details = append(details, fmt.Errorf("Pod %s phase=%s: %s", pod.Name, pod.Status.Phase, pod.Status.Message))
+		unscheduled := false
+		for _, condition := range pod.Status.Conditions {
+			if condition.Type == corev1.PodScheduled && condition.Status == corev1.ConditionFalse {
+				details = append(details, fmt.Errorf("Pod %s %s=%s reason=%s: %s", pod.Name, condition.Type, condition.Status, condition.Reason, condition.Message))
+				unscheduled = true
+			}
+		}
 		for _, status := range pod.Status.ContainerStatuses {
 			details = append(details, fmt.Errorf("container %s: %+v", status.Name, status.State))
+		}
+		if unscheduled {
+			continue
 		}
 		lines, limit := int64(40), int64(8192)
 		stream, err := pods.GetLogs(pod.Name, &corev1.PodLogOptions{Container: "generator", TailLines: &lines, LimitBytes: &limit}).Stream(ctx)

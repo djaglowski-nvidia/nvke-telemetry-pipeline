@@ -1,4 +1,4 @@
-# Install the scrape profile from ../avalanche-values.yaml before running this plan.
+# Install the scrape profile from ../scale-test-values.yaml before running this plan.
 name: avalanche
 timeout: 4m
 stages:

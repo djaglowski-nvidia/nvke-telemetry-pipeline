@@ -40,12 +40,14 @@ tasks:
       - helm upgrade --install nktp ../../nktp --reset-values --namespace nktp --create-namespace --kubeconfig .kubeconfig --kube-context kind-nktp-scale --wait --timeout 5m {{if .HELM_VALUES_FILE}}--values {{.HELM_VALUES_FILE | shellQuote}}{{end}}
       - task: wait-ready
       - task: prometheus:up
+      - task: grafana:up
       - 'echo "NKTP is ready. Kubeconfig: $(pwd)/.kubeconfig"'
 
   down:
-    desc: Stop Prometheus forwarding and delete the scale test Kind cluster
+    desc: Stop Prometheus and Grafana forwarding and delete the scale test Kind cluster
     cmds:
       - task: prometheus:down
+      - task: grafana:down
       - kind delete cluster --name nktp-scale --kubeconfig .kubeconfig
       - rm -f .kubeconfig
 
@@ -116,6 +118,59 @@ tasks:
           esac
         fi
         rm -f .prometheus-port-forward.pid .prometheus-port-forward.log
+
+  grafana:up:
+    internal: true
+    silent: true
+    cmds:
+      - task: grafana:down
+      - |
+        sh -c 'nohup kubectl --kubeconfig "$(pwd)/.kubeconfig" --context kind-nktp-scale --namespace nktp port-forward --address 127.0.0.1 service/lgtm 3000:3000 > .grafana-port-forward.log 2>&1 < /dev/null & echo $! > .grafana-port-forward.pid'
+        pid=$(cat .grafana-port-forward.pid)
+        for attempt in $(seq 1 50); do
+          if ! /bin/kill -0 "$pid" 2>/dev/null; then
+            break
+          fi
+          if grep -q 'Forwarding from 127.0.0.1:3000' .grafana-port-forward.log; then
+            echo "Grafana is available at http://127.0.0.1:3000"
+            exit 0
+          fi
+          sleep 0.1
+        done
+        /bin/kill "$pid" 2>/dev/null || true
+        rm -f .grafana-port-forward.pid
+        cat .grafana-port-forward.log >&2
+        echo "Grafana port-forward failed to start. Ensure local port 3000 is available and retry task scale:up." >&2
+        exit 1
+
+  grafana:down:
+    internal: true
+    silent: true
+    cmds:
+      - |
+        if test -f .grafana-port-forward.pid; then
+          pid=$(cat .grafana-port-forward.pid)
+          case "$pid" in
+            ''|*[!0-9]*) echo "Invalid Grafana port-forward PID." >&2; exit 1 ;;
+          esac
+          command=$(ps -p "$pid" -o command= 2>/dev/null || true)
+          case "$command" in
+            *"kubectl --kubeconfig $(pwd)/.kubeconfig --context kind-nktp-scale --namespace nktp port-forward --address 127.0.0.1 service/lgtm 3000:3000")
+              /bin/kill "$pid" 2>/dev/null || true
+              for attempt in $(seq 1 50); do
+                if ! /bin/kill -0 "$pid" 2>/dev/null; then
+                  break
+                fi
+                sleep 0.1
+              done
+              if /bin/kill -0 "$pid" 2>/dev/null; then
+                echo "Grafana port-forward did not stop. Retry task scale:down." >&2
+                exit 1
+              fi
+              ;;
+          esac
+        fi
+        rm -f .grafana-port-forward.pid .grafana-port-forward.log
 
   chart:deps:
     internal: true
