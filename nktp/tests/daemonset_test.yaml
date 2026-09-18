@@ -38,7 +38,7 @@ tests:
           path: spec.config.service.pipelines
           value:
             logs: {receivers: [filelog, otlp], processors: [memory_limiter, resource/node], exporters: [otlp_http/logs]}
-            metrics: {receivers: [prometheus, hostmetrics, otlp], processors: [memory_limiter, resource/node], exporters: [otlp_http/metrics]}
+            metrics: {receivers: [prometheus, prometheus/kubelet, hostmetrics, otlp], processors: [memory_limiter, resource/node], exporters: [otlp_http/metrics]}
             traces: {receivers: [otlp], processors: [memory_limiter, resource/node], exporters: [otlp_http/traces]}
             metrics/targetallocator: {receivers: [prometheus/targetallocator], processors: [memory_limiter/targetallocator, resource/targetallocator], exporters: [otlp_http/watchdog]}
       - equal:
@@ -52,6 +52,120 @@ tests:
           value: {scrape_configs: []}
       - notExists:
           path: spec.config.processors.batch
+
+  - it: scrapes only the local kubelet metrics endpoint directly
+    asserts:
+      - equal:
+          path: spec.config.receivers["prometheus/kubelet"].config.scrape_configs
+          value:
+            - job_name: kubelet
+              scrape_interval: 30s
+              scrape_timeout: 10s
+              scheme: https
+              metrics_path: /metrics
+              authorization:
+                type: Bearer
+                credentials_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+              tls_config:
+                insecure_skip_verify: true
+              static_configs:
+                - targets: ["127.0.0.1:10250"]
+                  labels:
+                    __tmp_kubelet_host: ${env:OTEL_K8S_NODE_IP}
+              relabel_configs:
+                - source_labels: [__tmp_kubelet_host]
+                  regex: (.+:.*)
+                  target_label: __address__
+                  replacement: "[$$1]:10250"
+                - source_labels: [__tmp_kubelet_host]
+                  regex: ([^:]+)
+                  target_label: __address__
+                  replacement: "$$1:10250"
+                - target_label: node
+                  replacement: ${env:NODE_NAME}
+                - target_label: endpoint
+                  replacement: https-metrics
+                - target_label: metrics_path
+                  replacement: /metrics
+      - notExists:
+          path: spec.config.receivers["prometheus/kubelet"].target_allocator
+
+  - it: optionally scrapes local kubelet cAdvisor, probe, and resource metrics
+    set:
+      daemonset.kubelet.cadvisor: true
+      daemonset.kubelet.probes: true
+      daemonset.kubelet.resource: true
+    asserts:
+      - equal:
+          path: spec.config.receivers["prometheus/kubelet"].config.scrape_configs[1].job_name
+          value: kubelet-cadvisor
+      - equal:
+          path: spec.config.receivers["prometheus/kubelet"].config.scrape_configs[1].metrics_path
+          value: /metrics/cadvisor
+      - equal:
+          path: spec.config.receivers["prometheus/kubelet"].config.scrape_configs[1].relabel_configs[4].replacement
+          value: /metrics/cadvisor
+      - equal:
+          path: spec.config.receivers["prometheus/kubelet"].config.scrape_configs[2].job_name
+          value: kubelet-probes
+      - equal:
+          path: spec.config.receivers["prometheus/kubelet"].config.scrape_configs[2].metrics_path
+          value: /metrics/probes
+      - equal:
+          path: spec.config.receivers["prometheus/kubelet"].config.scrape_configs[2].relabel_configs[4].replacement
+          value: /metrics/probes
+      - equal:
+          path: spec.config.receivers["prometheus/kubelet"].config.scrape_configs[3].job_name
+          value: kubelet-resource
+      - equal:
+          path: spec.config.receivers["prometheus/kubelet"].config.scrape_configs[3].metrics_path
+          value: /metrics/resource
+      - equal:
+          path: spec.config.receivers["prometheus/kubelet"].config.scrape_configs[3].relabel_configs[4].replacement
+          value: /metrics/resource
+
+  - it: mounts a kubelet-serving CA and preserves other TLS settings
+    set:
+      daemonset.kubelet.cadvisor: true
+      daemonset.kubelet.tls.ca.configMap.name: kubelet-serving-ca
+      daemonset.kubelet.tls.ca.configMap.key: cluster-ca.crt
+      daemonset.otelcol.config.receivers.prometheus/kubelet.config.scrape_configs:
+        - job_name: kubelet
+          scheme: https
+          tls_config:
+            ca_file: /custom/ignored-ca.crt
+            insecure_skip_verify: true
+            server_name: kubelet.example
+          static_configs:
+            - targets: ["127.0.0.1:10250"]
+    asserts:
+      - equal:
+          path: spec.config.receivers["prometheus/kubelet"].config.scrape_configs[0].tls_config
+          value:
+            ca_file: /etc/nktp/kubelet-serving-ca/ca.crt
+            insecure_skip_verify: false
+            server_name: kubelet.example
+      - equal:
+          path: spec.config.receivers["prometheus/kubelet"].config.scrape_configs[1].tls_config
+          value:
+            ca_file: /etc/nktp/kubelet-serving-ca/ca.crt
+            insecure_skip_verify: false
+            server_name: kubelet.example
+      - contains:
+          path: spec.volumes
+          content:
+            name: kubelet-serving-ca
+            configMap:
+              name: kubelet-serving-ca
+              items:
+                - key: cluster-ca.crt
+                  path: ca.crt
+      - contains:
+          path: spec.volumeMounts
+          content:
+            name: kubelet-serving-ca
+            mountPath: /etc/nktp/kubelet-serving-ca
+            readOnly: true
 
   - it: parses container records from a read-only host mount and excludes NKTP Collector logs
     asserts:
@@ -102,6 +216,12 @@ tests:
             name: POD_NAMESPACE
             valueFrom:
               fieldRef: {fieldPath: metadata.namespace}
+      - contains:
+          path: spec.env
+          content:
+            name: OTEL_K8S_NODE_IP
+            valueFrom:
+              fieldRef: {fieldPath: status.hostIP}
       - equal:
           path: spec.config.processors["resource/node"].attributes
           value:
@@ -114,7 +234,7 @@ tests:
             service.name: nktp-daemonset
             k8s.node.name: ${env:NODE_NAME}
 
-  - it: allocates per node and excludes large-target monitoring CRs
+  - it: allocates per node and excludes large-target and kubelet ServiceMonitors
     asserts:
       - equal:
           path: spec.targetAllocator
@@ -126,7 +246,9 @@ tests:
               enabled: true
               denyFSAccessThroughSMs: true
               serviceMonitorSelector:
-                matchExpressions: [{key: nktp.nvidia.io/large-target, operator: NotIn, values: ["true"]}]
+                matchExpressions:
+                  - {key: nktp.nvidia.io/large-target, operator: NotIn, values: ["true"]}
+                  - {key: app, operator: NotIn, values: [kube-prometheus-stack-kubelet, prometheus-operator-kubelet]}
               podMonitorSelector:
                 matchExpressions: [{key: nktp.nvidia.io/large-target, operator: NotIn, values: ["true"]}]
               probeSelector:
@@ -183,6 +305,9 @@ tests:
               value: custom-node
             - name: POD_NAMESPACE
               value: telemetry
+            - name: OTEL_K8S_NODE_IP
+              valueFrom:
+                fieldRef: {fieldPath: status.hostIP}
       - equal:
           path: spec.resources
           value:
@@ -449,7 +574,7 @@ tests:
       - equal:
           path: spec.config.service.pipelines.metrics
           value:
-            receivers: [prometheus, hostmetrics, otlp]
+            receivers: [prometheus, prometheus/kubelet, hostmetrics, otlp]
             processors: [memory_limiter, resource/node]
             exporters: [otlp_http/metrics]
       - notExists:
@@ -467,7 +592,7 @@ tests:
           value: {receivers: [filelog, otlp], processors: [memory_limiter, resource/node], exporters: [otlp_http/logs]}
       - equal:
           path: spec.config.service.pipelines.metrics
-          value: {receivers: [prometheus, hostmetrics, otlp], processors: [memory_limiter, resource/node], exporters: [otlp_http/metrics]}
+          value: {receivers: [prometheus, prometheus/kubelet, hostmetrics, otlp], processors: [memory_limiter, resource/node], exporters: [otlp_http/metrics]}
       - equal:
           path: spec.config.service.pipelines.traces
           value: {receivers: [otlp], processors: [memory_limiter, resource/node], exporters: [otlp_http/traces]}

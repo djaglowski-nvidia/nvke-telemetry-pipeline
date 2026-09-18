@@ -71,8 +71,63 @@ service:
 {{- end -}}
 {{- $config = mustMergeOverwrite $config $monitoring -}}
 {{- $workload := deepCopy .Values.daemonset.kubernetes -}}
+{{- $kubelet := .Values.daemonset.kubelet | default dict -}}
+{{- $kubeletCA := dig "tls" "ca" "configMap" dict $kubelet -}}
+{{- $optionalKubeletScrapes := list
+      (dict "enabled" ($kubelet.cadvisor | default false) "jobName" "kubelet-cadvisor" "metricsPath" "/metrics/cadvisor")
+      (dict "enabled" ($kubelet.probes | default false) "jobName" "kubelet-probes" "metricsPath" "/metrics/probes")
+      (dict "enabled" ($kubelet.resource | default false) "jobName" "kubelet-resource" "metricsPath" "/metrics/resource") -}}
+{{- $hasOptionalKubeletScrapes := false -}}
+{{- range $optional := $optionalKubeletScrapes -}}
+  {{- if $optional.enabled -}}{{- $hasOptionalKubeletScrapes = true -}}{{- end -}}
+{{- end -}}
+{{- if or $kubeletCA.name $hasOptionalKubeletScrapes -}}
+  {{- $kubeletReceiverConfig := dig "receivers" "prometheus/kubelet" "config" dict $config -}}
+  {{- $kubeletScrapeConfigs := $kubeletReceiverConfig.scrape_configs | default list -}}
+  {{- $kubeletJob := dict -}}
+  {{- range $scrapeConfig := $kubeletScrapeConfigs -}}
+    {{- if eq ($scrapeConfig.job_name | default "") "kubelet" -}}
+      {{- $kubeletJob = $scrapeConfig -}}
+    {{- end -}}
+  {{- end -}}
+  {{- if eq (len $kubeletJob) 0 -}}
+    {{- fail "daemonset.otelcol.config.receivers[prometheus/kubelet].config.scrape_configs must contain a kubelet job when kubelet TLS or optional scrapes are configured" -}}
+  {{- end -}}
+  {{- if $kubeletCA.name -}}
+    {{- $tlsConfig := $kubeletJob.tls_config | default dict -}}
+    {{- $_ := set $tlsConfig "ca_file" "/etc/nktp/kubelet-serving-ca/ca.crt" -}}
+    {{- $_ := set $tlsConfig "insecure_skip_verify" false -}}
+    {{- $_ := set $kubeletJob "tls_config" $tlsConfig -}}
+    {{- if not $kubeletCA.key -}}
+      {{- fail "daemonset.kubelet.tls.ca.configMap.key must be set when daemonset.kubelet.tls.ca.configMap.name is set" -}}
+    {{- end -}}
+    {{- $caVolume := dict "name" "kubelet-serving-ca" "configMap" (dict "name" $kubeletCA.name "items" (list (dict "key" $kubeletCA.key "path" "ca.crt"))) -}}
+    {{- $caMount := dict "name" "kubelet-serving-ca" "mountPath" "/etc/nktp/kubelet-serving-ca" "readOnly" true -}}
+    {{- $_ := set $workload "volumes" (append ($workload.volumes | default list) $caVolume) -}}
+    {{- $_ := set $workload "volumeMounts" (append ($workload.volumeMounts | default list) $caMount) -}}
+  {{- end -}}
+  {{- range $optional := $optionalKubeletScrapes -}}
+    {{- if $optional.enabled -}}
+      {{- range $scrapeConfig := $kubeletScrapeConfigs -}}
+        {{- if eq ($scrapeConfig.job_name | default "") $optional.jobName -}}
+          {{- fail (printf "daemonset.otelcol.config.receivers[prometheus/kubelet].config.scrape_configs already contains job %s; disable daemonset.kubelet.%s or remove the manual job" $optional.jobName (trimPrefix "kubelet-" $optional.jobName)) -}}
+        {{- end -}}
+      {{- end -}}
+      {{- $optionalJob := deepCopy $kubeletJob -}}
+      {{- $_ := set $optionalJob "job_name" $optional.jobName -}}
+      {{- $_ := set $optionalJob "metrics_path" $optional.metricsPath -}}
+      {{- range $relabelConfig := ($optionalJob.relabel_configs | default list) -}}
+        {{- if eq ($relabelConfig.target_label | default "") "metrics_path" -}}
+          {{- $_ := set $relabelConfig "replacement" $optional.metricsPath -}}
+        {{- end -}}
+      {{- end -}}
+      {{- $kubeletScrapeConfigs = append $kubeletScrapeConfigs $optionalJob -}}
+    {{- end -}}
+  {{- end -}}
+  {{- $_ := set $kubeletReceiverConfig "scrape_configs" $kubeletScrapeConfigs -}}
+{{- end -}}
 {{- $env := $workload.env | default list -}}
-{{- range $name, $field := dict "NODE_NAME" "spec.nodeName" "POD_NAMESPACE" "metadata.namespace" -}}
+{{- range $name, $field := dict "NODE_NAME" "spec.nodeName" "OTEL_K8S_NODE_IP" "status.hostIP" "POD_NAMESPACE" "metadata.namespace" -}}
   {{- $found := false -}}
   {{- range $env -}}
     {{- if eq .name $name -}}{{- $found = true -}}{{- end -}}

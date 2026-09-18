@@ -7,7 +7,7 @@ tests:
   - it: grants read-only discovery without credential access
     asserts:
       - hasDocuments:
-          count: 4
+          count: 6
       - equal:
           path: rules
           value:
@@ -21,8 +21,8 @@ tests:
               resources: [servicemonitors, podmonitors, probes, scrapeconfigs]
               verbs: [get, list, watch]
         documentSelector:
-          path: kind
-          value: ClusterRole
+          path: $[?(@.kind == "ClusterRole")].metadata.name
+          value: nktp-daemonset-targetallocator-nktp
       - equal:
           path: subjects
           value:
@@ -30,8 +30,8 @@ tests:
               name: nktp-daemonset-targetallocator
               namespace: nktp
         documentSelector:
-          path: kind
-          value: ClusterRoleBinding
+          path: $[?(@.kind == "ClusterRoleBinding")].metadata.name
+          value: nktp-daemonset-targetallocator-nktp
 
   - it: binds a custom allocator account in another release namespace
     release:
@@ -43,8 +43,8 @@ tests:
           path: metadata.name
           value: nktp-daemonset-targetallocator-telemetry
         documentSelector:
-          path: kind
-          value: ClusterRole
+          path: $[?(@.kind == "ClusterRole")].metadata.name
+          value: nktp-daemonset-targetallocator-telemetry
       - equal:
           path: roleRef
           value:
@@ -52,8 +52,8 @@ tests:
             kind: ClusterRole
             name: nktp-daemonset-targetallocator-telemetry
         documentSelector:
-          path: kind
-          value: ClusterRoleBinding
+          path: $[?(@.kind == "ClusterRoleBinding")].metadata.name
+          value: nktp-daemonset-targetallocator-telemetry
       - equal:
           path: subjects
           value:
@@ -61,8 +61,8 @@ tests:
               name: existing-allocator
               namespace: telemetry
         documentSelector:
-          path: kind
-          value: ClusterRoleBinding
+          path: $[?(@.kind == "ClusterRoleBinding")].metadata.name
+          value: nktp-daemonset-targetallocator-telemetry
 
   - it: grants the collector only namespace pod discovery for Target Allocator metrics
     asserts:
@@ -90,6 +90,36 @@ tests:
         documentSelector:
           path: kind
           value: RoleBinding
+
+  - it: grants the collector read-only access to kubelet metrics
+    asserts:
+      - equal:
+          path: rules
+          value:
+            - apiGroups: [""]
+              resources: [nodes/metrics]
+              verbs: [get]
+        documentSelector:
+          path: metadata.name
+          value: nktp-daemonset-kubelet-metrics-nktp
+      - equal:
+          path: roleRef
+          value:
+            apiGroup: rbac.authorization.k8s.io
+            kind: ClusterRole
+            name: nktp-daemonset-kubelet-metrics-nktp
+        documentSelector:
+          path: metadata.name
+          value: nktp-daemonset-kubelet-metrics-binding-nktp
+      - equal:
+          path: subjects
+          value:
+            - kind: ServiceAccount
+              name: nktp-daemonset-collector
+              namespace: nktp
+        documentSelector:
+          path: metadata.name
+          value: nktp-daemonset-kubelet-metrics-binding-nktp
 
   - it: binds a custom collector account in the release namespace
     release:
@@ -121,13 +151,22 @@ tests:
         documentSelector:
           path: kind
           value: RoleBinding
+      - equal:
+          path: subjects
+          value:
+            - kind: ServiceAccount
+              name: existing-collector
+              namespace: telemetry
+        documentSelector:
+          path: metadata.name
+          value: nktp-daemonset-kubelet-metrics-binding-telemetry
 
   - it: retains collector discovery permissions with replaced user configuration
     set:
       daemonset.otelcol.config.receivers: null
     asserts:
       - hasDocuments:
-          count: 4
+          count: 6
       - containsDocument:
           kind: Role
           apiVersion: rbac.authorization.k8s.io/v1
