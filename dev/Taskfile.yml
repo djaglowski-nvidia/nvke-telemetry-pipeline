@@ -66,7 +66,10 @@ tasks:
         msg: 'Docker daemon is not running. Start it (e.g. colima start, or Docker Desktop) and retry.'
     silent: true
     cmds:
-      - kind get clusters | grep -qx nktp || kind create cluster --name nktp --kubeconfig .kubeconfig
+      # NODE_IMAGE comes from the root Taskfile, so every cluster in the
+      # repository runs one Kubernetes version rather than whichever one the
+      # installed kind binary happens to default to.
+      - kind get clusters | grep -qx nktp || kind create cluster --name nktp --image {{.NODE_IMAGE}} --kubeconfig .kubeconfig
       - kind -q export kubeconfig --name nktp --kubeconfig .kubeconfig
       - kubectl wait --kubeconfig .kubeconfig --context kind-nktp --for=condition=Ready nodes --all --timeout=5m
 

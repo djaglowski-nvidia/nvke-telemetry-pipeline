@@ -8,3 +8,4 @@ tests/scale/.prometheus-port-forward.pid
 tests/scale/.prometheus-port-forward.log
 tests/scale/.grafana-port-forward.pid
 tests/scale/.grafana-port-forward.log
+tests/e2e/.kubeconfig

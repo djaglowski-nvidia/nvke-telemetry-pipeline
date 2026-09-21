@@ -46,3 +46,45 @@ jobs:
 
       - name: Run unit tests
         run: helm unittest nktp
+
+  e2e:
+    name: End-to-End Tests
+    runs-on: ubuntu-latest
+    # Long because the job creates a cluster and pulls every image the chart
+    # installs, including the full observability stack of the default backend.
+    timeout-minutes: 35
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: tests/go.mod
+          cache-dependency-path: tests/go.sum
+
+      - name: Install Kind and Task
+        # Through the module proxy, which verifies the downloads against the Go
+        # checksum database.
+        run: |
+          go install sigs.k8s.io/kind@v0.31.0
+          go install github.com/go-task/task/v3/cmd/task@v3.45.4
+
+      # e2e:up fetches the chart's dependencies along with the cluster, so this
+      # job needs no setup-chart. Going through Task is what keeps CI and a
+      # local run the same sequence of commands.
+      - name: Create the test cluster
+        run: task e2e:up
+
+      - name: Run end-to-end tests
+        run: task e2e:test
+
+      # Before the cluster goes away, since nobody can re-run a job and look at
+      # one.
+      - name: Diagnose a failed run
+        if: failure()
+        run: task e2e:diagnose
+
+      - name: Delete the test cluster
+        if: always()
+        run: task e2e:down

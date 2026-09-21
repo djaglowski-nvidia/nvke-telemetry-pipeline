@@ -1,0 +1,80 @@
+# Sizing for a single-node test cluster, applied to every run before any
+# -values file given on the command line.
+#
+# Replica counts, autoscaler floors, and resource requests are capacity rather
+# than behavior. The chart's defaults ask for roughly 3 vCPU and 21Gi of
+# collectors, which no single-node cluster on a hosted runner can schedule
+# alongside kube-system, and how much a collector needs per replica is the scale
+# suite's question, not this one. Everything the suite actually asserts on is
+# left at its default.
+#
+# Two workloads keep their replica counts, because there the count is behavior:
+# cluster_events runs an elected reader and a standby, and large_target_metrics
+# is a shard pool the Target Allocator distributes targets across. Only their
+# requests come down.
+
+watchdog:
+  kubernetes:
+    replicas: 1
+    autoscaler:
+      minReplicas: 1
+    resources:
+      requests:
+        cpu: 50m
+
+gateway_logs:
+  kubernetes:
+    replicas: 1
+    autoscaler:
+      minReplicas: 1
+    resources:
+      requests:
+        cpu: 50m
+
+gateway_metrics:
+  kubernetes:
+    replicas: 1
+    autoscaler:
+      minReplicas: 1
+    resources:
+      requests:
+        cpu: 50m
+
+gateway_traces:
+  kubernetes:
+    replicas: 1
+    autoscaler:
+      minReplicas: 1
+    resources:
+      requests:
+        cpu: 50m
+
+daemonset:
+  kubernetes:
+    resources:
+      requests:
+        cpu: 50m
+
+cluster_events:
+  kubernetes:
+    resources:
+      requests:
+        cpu: 50m
+
+# The only workload whose default request a hosted runner cannot hold at all:
+# 8Gi each, twice over, against a runner with about 7Gi in total.
+large_target_metrics:
+  kubernetes:
+    resources:
+      requests:
+        cpu: 50m
+        memory: 256Mi
+
+# Seven partitions share this default, so at 100m each they ask for more CPU
+# than the rest of the chart put together. Each one watches a handful of
+# resource types on a cluster that holds almost nothing.
+kube-state-metrics:
+  kubernetes:
+    resources:
+      requests:
+        cpu: 25m

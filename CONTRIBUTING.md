@@ -98,6 +98,20 @@ a failing test pass without understanding why the output changed. See
 [nktp/tests/README.md](nktp/tests/README.md) for when to add a snapshot versus
 targeted assertions.
 
+The end-to-end suite installs the chart on a Kind cluster, so it needs a
+container runtime and takes minutes rather than seconds. CI runs it on every
+pull request; run it locally when changing what the chart installs:
+
+```bash
+task e2e:up      # create the cluster and fetch the chart dependencies
+task e2e:test    # run the suite, as often as you like
+task e2e:down    # delete the cluster
+```
+
+See [tests/e2e/README.md](tests/e2e/README.md) for what a run does, for
+pointing the suite at a cluster you brought up yourself, and for running the
+validations against a release that is already installed somewhere.
+
 No specialized hardware or credentials are needed for any of the above. Chart
 publishing to NVCR runs only from `main` and release tags and is described in
 [RELEASING.md](RELEASING.md); pull requests validate without publishing.

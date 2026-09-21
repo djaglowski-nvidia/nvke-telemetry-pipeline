@@ -1,5 +1,12 @@
 version: '3'
 
+vars:
+  # Each suite brings up its own cluster, so this is here to keep the one thing
+  # that must not differ between them in one place: the Kubernetes version they
+  # all run. Without it each caller inherits whatever the installed kind binary
+  # defaults to, and two clusters in the same repository drift apart silently.
+  NODE_IMAGE: kindest/node:v1.35.0@sha256:452d707d4862f52530247495d180205e029056831160e22870e37e3f6c1ac31f
+
 tasks:
   test:scale:
     desc: 'Run a scale test plan (no cluster required for no-op components)'
@@ -17,6 +24,9 @@ tasks:
       - helm unittest {{.CLI_ARGS}} nktp
 
 includes:
+  e2e:
+    taskfile: ./tests/e2e/Taskfile.yml
+    dir: ./tests/e2e
   scale:
     taskfile: ./tests/scale/Taskfile.yml
     dir: ./tests/scale

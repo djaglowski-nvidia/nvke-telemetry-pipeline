@@ -25,7 +25,7 @@
 | `nktp/dashboards/` | Grafana dashboards shipped with the chart | JSON, loaded by templates |
 | `occt/chart/` | OCCT library chart | The transpiler lives in `templates/_transpile.tpl` |
 | `occt/tests/` | Go golden tests for OCCT | `pass/<scenario>/values.yaml` renders to `output.yaml`; `test-chart/` is the fixture chart |
-| `tests/` | Go module scaffolding for integration, e2e, scale, and perf suites | Build-tagged; READMEs state intent; not yet run in CI |
+| `tests/` | Go suites for integration, e2e, scale, and perf | Build-tagged; a suite's `Taskfile.yml` brings up its cluster and fetches dependencies, the Go suite does the rest; only the e2e suite is implemented and run in CI |
 | `dev/` | Local Kind and Tilt loop | Uses only `dev/.kubeconfig` and never other kubectl contexts |
 | `docs/` | Documentation index and design documents | Design proposals go under `docs/designs/` |
 | `.github/` | Workflows, composite action, PR template, CODEOWNERS, issue forms | Changes here need explicit instruction |
@@ -55,6 +55,11 @@ git diff nktp/tests/__snapshot__/
 (cd occt/tests && go test ./...)
 (cd occt/tests && go test ./... -update)
 
+# NKTP chart: end-to-end tests on a Kind cluster, also run by CI
+task e2e:up
+task e2e:test
+task e2e:down
+
 # local cluster
 task dev:up
 task dev:down
@@ -63,8 +68,11 @@ task dev:down
 - Expected results or limitations: `task test` needs network access to add the
   upstream Helm repositories and build dependencies, then runs in a few
   seconds. The OCCT tests download Go modules on first run. The OCCT golden
-  suite is not yet wired into CI. The `tests/` module contains no runnable
-  tests yet.
+  suite is not yet wired into CI. `task e2e:up` additionally needs a running
+  container runtime, Kind, and kubectl; it and the run that follows take
+  minutes, because a cluster has to come up and pull every image the chart
+  installs. The cluster is the caller's to delete, with `task e2e:down`. The integration, scale, and
+  perf suites under `tests/` are still empty.
 
 ## Working rules
 
