@@ -47,8 +47,8 @@ type PlanReport struct {
 // run ID resolved during argument parsing. Callers must not modify a plan or
 // its specs while it is being executed.
 type Executor struct {
-	// Kubeconfig is the absolute path to the file used by every Job generator.
-	// It is required only for plans containing Jobs. Credentials are read in Run.
+	// Kubeconfig is the absolute path to the file used by Kubernetes-backed generators.
+	// It is required only for generators that access a cluster. Credentials are read in Run.
 	Kubeconfig string
 }
 

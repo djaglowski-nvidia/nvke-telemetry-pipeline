@@ -1,0 +1,22 @@
+name: kwok-nodes
+timeout: 20m
+stages:
+  - name: nodes
+    generator:
+      type: kubernetes
+      spec:
+        duration: 10m
+        nodeGroups:
+          - name: workers
+            replicas: 1000
+            nodeTemplate:
+              metadata:
+                labels:
+                  run_id: '{{args.run-id}}'
+              status:
+                capacity:
+                  cpu: "96"
+                  memory: 384Gi
+                  pods: "110"
+    measurement:
+      type: noop

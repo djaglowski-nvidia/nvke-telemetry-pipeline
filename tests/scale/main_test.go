@@ -17,7 +17,7 @@ import (
 // planPath selects a YAML plan relative to tests/scale or by absolute path.
 var planPath = flag.String("plan", "plans/noop.yaml", "scale test plan file")
 
-// kubeconfigPath selects one file for every Job generator in the plan.
+// kubeconfigPath selects one file for every Kubernetes-backed generator in the plan.
 var kubeconfigPath = flag.String("kubeconfig", os.Getenv("KUBECONFIG"), "kubeconfig file (default: tests/scale/.kubeconfig)")
 
 // argumentValues holds the raw repeated flags so each TestRun gets a fresh default.

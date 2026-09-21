@@ -2,7 +2,8 @@
 
 Plan-driven testing of NKTP correctness and capacity under telemetry load.
 The harness runs no-op components without a cluster, or finite binary workloads
-through the Kubernetes Job generator. Measurements support no-op observations and
+through the Kubernetes Job generator. The Kubernetes emulator creates temporary
+KWOK nodes with configured capacity. Measurements support no-op observations and
 Prometheus queries. Query reports collect data without performance pass/fail
 verdicts. Successful Job execution alone does not verify backend delivery or NKTP
 performance.
@@ -32,8 +33,8 @@ Helm charts at version 0.3.0. It waits for the controller and applies the pod
 lifecycle policy. Repeating the command upgrades the releases and reapplies the
 policy. The controller is not pinned to the control plane. It manages nodes
 annotated `kwok.x-k8s.io/node: fake` and simulates node and pod status without
-running containers. Create emulated nodes and pods separately, and taint the
-nodes to keep ordinary workloads off them.
+running containers. The [node generator](#kwok-nodes) creates tainted emulated
+nodes. Pod generation is not implemented yet.
 
 Label emulated pods `scale.nktp.io/lifecycle: complete-30s` to use the
 [30-second completion policy](kwok/stages/pod-complete-30s.yaml). It marks a
@@ -76,8 +77,8 @@ The no-op plans below do not require `scale:up`.
 
 The plan contains configuration, not executable objects. `Executor` validates
 every component specification and constructs fresh runnables before any stage
-starts. Generators support `type: noop` and `type: job`. Measurements support
-`type: noop` and `type: prometheus`. No-op components accept an empty or omitted
+starts. Generators support `type: noop`, `type: job` and `type: kubernetes`.
+Measurements support `type: noop` and `type: prometheus`. No-op components accept an empty or omitted
 `spec`. No-op measurements also accept `spec.queries`, a mapping of names to nonempty query
 strings. These strings are resolved by the plan parser but are not evaluated.
 No-op components return ordinary success and empty measurement reports. This
@@ -307,6 +308,8 @@ The harness can be extended with additional generators and measurements.
 - **Kubernetes Job (`job`)** runs a containerized load generator to completion.
   See the [telemetrygen plan](plans/telemetrygen.yaml) or
   [Avalanche plan](plans/avalanche.yaml) for configuration.
+- **Kubernetes emulator (`kubernetes`)** creates KWOK nodes, holds them while
+  measurements run, then deletes them. See the [node plan](plans/kwok-nodes.yaml).
 
 The telemetrygen plan uses namespace `nktp` and the NKTP services installed by
 `task scale:up`. When using another cluster, adjust the plan namespace and
@@ -319,6 +322,58 @@ rebalanced.
 
 **Jobs and pods are cleaned up before the test returns**, including after failure
 or cancellation. Workload and cleanup errors fail the test.
+
+## KWOK nodes
+
+The Kubernetes emulator creates temporary nodes in named groups, each with its
+own Kubernetes node template. KWOK simulates their capacity without allocating
+real CPUs or memory.
+
+```yaml
+generator:
+  type: kubernetes
+  spec:
+    duration: 10m
+    nodeGroups:
+      - name: workers
+        replicas: 1000
+        nodeTemplate:
+          metadata:
+            labels:
+              run_id: '{{args.run-id}}'
+          status:
+            capacity:
+              cpu: "96"
+              memory: 384Gi
+              pods: "110"
+```
+
+Each group defaults to 1,000 replicas. `nodeTemplate` uses native Kubernetes Node
+fields for labels, annotations, spec and status. Set CPU, memory and pod capacity
+in `status.capacity`. Other resources, such as `nvidia.com/gpu`, are also supported.
+Allocatable resources default to capacity. Add groups with different templates to
+represent different node types or zones.
+
+The generator uses the plan's kubeconfig. It waits for all groups to become Ready,
+keeps them available for `duration`, then removes them. Duration must be positive.
+Cleanup also runs after failure or cancellation. Nodes are removed concurrently,
+with a separate cleanup timeout that grows with the number of nodes. Cleanup
+failures are reported alongside run failures. This generator creates nodes only.
+
+Kubernetes validates the node templates when they are created. Replica counts
+include only generated nodes. The real Kind nodes remain in the cluster, so the
+total node count will be higher.
+
+The [example plan](plans/kwok-nodes.yaml) uses this configuration. From the
+repository root:
+
+```sh
+task scale:up
+task test:scale -- -plan "$PWD/tests/scale/plans/kwok-nodes.yaml" -test.timeout=40m
+```
+
+The test timeout allows for the plan deadline and cleanup. Increase it when
+using larger groups or a longer plan timeout.
 
 ## Avalanche
 
