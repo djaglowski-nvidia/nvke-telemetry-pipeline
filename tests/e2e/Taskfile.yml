@@ -41,6 +41,8 @@ vars:
   # schedule. See the file for why that is not cheating.
   SIZING: '{{.TASKFILE_DIR}}/values.yaml'
 
+  CERT_MANAGER_VERSION: v1.21.2
+
   SUITE_FLAGS: >-
     -nktp.kubeconfig={{.KUBECONFIG_PATH}}
     -nktp.chart={{.CHART}}
@@ -52,7 +54,6 @@ vars:
   KUBECTL: kubectl --kubeconfig {{.KUBECONFIG_PATH}} --namespace {{.NAMESPACE}}
 
 tasks:
-
   up:
     desc: Create the Kind cluster the end-to-end suite runs against, and fetch the chart dependencies
     deps: [check-deps]
@@ -66,6 +67,7 @@ tasks:
       - kind -q export kubeconfig --name {{.CLUSTER}} --kubeconfig {{.CLUSTER_KUBECONFIG}}
       - kubectl wait --kubeconfig {{.CLUSTER_KUBECONFIG}} --context kind-{{.CLUSTER}} --for=condition=Ready nodes --all --timeout=5m
       - task: dependencies
+      - task: install-cert-manager
 
   test:
     desc: 'Run the end-to-end suite against an existing cluster (bring one up with: task e2e:up)'
@@ -104,8 +106,6 @@ tasks:
       - echo "--- warnings ---"
       - '{{.KUBECTL}} get events --field-selector type!=Normal --sort-by=.lastTimestamp || true'
 
-  # --- Internal ---
-
   dependencies:
     internal: true
     desc: Fetch the subcharts the chart under test declares
@@ -116,6 +116,19 @@ tasks:
       # build fetches every dependency in Chart.yaml regardless of condition.
       - helm repo add metrics-server https://kubernetes-sigs.github.io/metrics-server/ --force-update
       - helm dependency build {{.CHART}} --skip-refresh
+
+  install-cert-manager:
+    internal: true
+    desc: Install cert-manager on the cluster, so scenarios that set certManager.enabled can exercise it
+    cmds:
+      - helm repo add jetstack https://charts.jetstack.io --force-update
+      - >-
+        helm upgrade --install cert-manager jetstack/cert-manager
+        --kubeconfig {{.CLUSTER_KUBECONFIG}}
+        --namespace cert-manager --create-namespace
+        --version {{.CERT_MANAGER_VERSION}}
+        --set crds.enabled=true
+        --wait --timeout 5m
 
   check-deps:
     internal: true
