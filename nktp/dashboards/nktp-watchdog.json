@@ -81,7 +81,7 @@
       "id": 7, "type": "stat", "title": "Scrape targets up",
       "gridPos": { "x": 0, "y": 21, "w": 6, "h": 7 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "targets": [{ "expr": "sum by (job) (up{job=~\"nktp-operator|nktp-watchdog-targetallocator\"})", "legendFormat": "{{job}}", "instant": true, "refId": "A" }]
+      "targets": [{ "expr": "sum(up{job=\"nktp-operator\"})", "legendFormat": "Operator", "instant": true, "refId": "A" }]
     },
     {
       "id": 8, "type": "timeseries", "title": "Allocator collectors",

@@ -63,6 +63,7 @@ tests:
           value:
             resource:
               service.name: nktp-cluster-events
+              service.instance.id: ${env:POD_NAME}
             metrics:
               readers:
                 - periodic:
@@ -78,6 +79,7 @@ tests:
                         protocol: http/protobuf
                         endpoint: http://nktp-watchdog-collector:4318
             traces:
+              level: basic
               processors:
                 - batch:
                     exporter:

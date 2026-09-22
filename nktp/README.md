@@ -221,15 +221,10 @@ See [Log classification](#log-classification) for the default audit and
 control plane log sources.
 
 The collector's own metrics, logs and traces go to watchdog.
-Each collector also discovers this DaemonSet's Target Allocator pods on its node
-in the release namespace. It scrapes their HTTP metrics every 30 seconds through
-`metrics/targetallocator` and sends them to watchdog. This pipeline uses its own
-Prometheus receiver and does not depend on Target Allocator assignments.
-The chart adds this pipeline after user configuration, with dedicated processors
-and an exporter. Replacing `daemonset.otelcol.config` does not remove monitoring.
-Its component names are reserved. A conflicting name causes rendering to fail.
-A Target Allocator pod needs a DaemonSet collector on its node to be scraped.
-The collector has read-only pod discovery permissions in the release namespace.
+Target Allocator telemetry is sent to watchdog.
+Each collector also reads Target Allocator stdout and stderr logs on its node
+in the release namespace and sends them to watchdog through `logs/targetallocator`.
+Operator manager container logs go to watchdog through `logs/operator`.
 
 Use `daemonset.otelcol.config` for Collector configuration and
 `daemonset.kubernetes` for Kubernetes workload configuration. The pod-log mount
@@ -281,7 +276,7 @@ discovery supports endpoints without Secret-backed credentials.
 The Target Allocator rejects ServiceMonitor and PodMonitor endpoints that reference
 local bearer-token or TLS files in the Collector container.
 Setting `large_target_metrics.kubernetes.targetAllocator.enabled` to `false`
-will cause Helm rendering to fail. Watchdog scrapes the Target Allocator's metrics.
+will cause Helm rendering to fail. Target Allocator telemetry is sent to watchdog.
 The allocator has its own security contexts and resource budget under
 `large_target_metrics.kubernetes.targetAllocator`. Size its resources for the
 discovered Kubernetes objects and targets.
@@ -402,13 +397,19 @@ NKTP deploys it by default so that telemetry is viewable immediately after insta
 Prometheus is available on port 9090 of the `lgtm` Service, for example
 `http://lgtm.nktp.svc:9090` when installed in namespace `nktp`. Grafana is served on port 3000 of the `lgtm` service, with anonymous admin access (no login).
 
-The default **NKTP DaemonSet** dashboard shows node collector
-throughput, failures, queues, CPU and memory, plus Target Allocator scrape health,
-collector counts and target assignments. Collector panels use self metrics sent
-through watchdog, as do Target Allocator metrics collected by the DaemonSet.
-This does not require the metrics gateway. Target Allocator counts stay separate
-for each replica. Disabling LGTM removes its dashboards. Target Allocator metrics
-continue to flow to the backend configured in watchdog.
+The default **NKTP Health** dashboard shows workload readiness, pipeline faults,
+queues and telemetry flow. It includes component detail, diagnostic logs,
+internal traces and links to the component dashboards. Workload readiness uses
+kube-state-metrics through the metrics gateway. Collector and Target Allocator
+self metrics use watchdog and do not require the metrics gateway. Target
+Allocator counts stay separate for each replica. Disabling LGTM removes its dashboards. Target Allocator metrics
+continue to flow to the backend configured in watchdog, which must support delta metrics.
+
+KSM scrape panels show samples, sample-count growth and duration. Export and
+queue admission delays use internal spans through Tempo's TraceQL metrics support.
+Container resource tables show requests and limits for up to three
+containers per component. The dashboard also
+shows allocator allocation duration, KSM shard coverage and node-exporter diagnostics.
 
 **Note:** This container is intended for kicking the tires only. It will not support substantial scale and MUST be disabled for production use:
 

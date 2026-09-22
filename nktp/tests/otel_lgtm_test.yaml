@@ -25,6 +25,153 @@ tests:
           name: lgtm-dashboard-provider
           any: true
 
+  - it: provisions the combined health dashboard with workload state and diagnostic signals
+    documentSelector:
+      path: metadata.name
+      value: lgtm-dashboards
+    asserts:
+      - matchRegex:
+          path: data["nktp-health.json"]
+          pattern: '"uid": "nktp-health"'
+      - matchRegex:
+          path: data["nktp-health.json"]
+          pattern: 'kube_deployment_spec_replicas.*kube_statefulset_replicas.*kube_daemonset_status_desired_number_scheduled'
+      - matchRegex:
+          path: data["nktp-health.json"]
+          pattern: 'opentelemetry_allocator_targets_per_collector'
+      - matchRegex:
+          path: data["nktp-health.json"]
+          pattern: 'controller_runtime_reconcile_errors_total'
+      - matchRegex:
+          path: data["nktp-health.json"]
+          pattern: 'kube_state_metrics_watch_total'
+      - matchRegex:
+          path: data["nktp-health.json"]
+          pattern: '"type": "logs"'
+      - matchRegex:
+          path: data["nktp-health.json"]
+          pattern: '"queryType": "traceql"'
+
+  - it: searches diagnostic log text without interpreting user input as LogQL or regex
+    documentSelector:
+      path: metadata.name
+      value: lgtm-dashboards
+    asserts:
+      - matchRegex:
+          path: data["nktp-health.json"]
+          pattern: 'contains \(lower \(urldecode \\"\$\{search:percentencode\}\\"\)\) \(lower \(__line__\)\)'
+      - matchRegex:
+          path: data["nktp-health.json"]
+          pattern: '__nktp_search_match=\\"true\\" \| drop __nktp_search_match'
+      - notMatchRegex:
+          path: data["nktp-health.json"]
+          pattern: '\$\{search:regex\}|\| line_format'
+
+  - it: preserves unknown health and bounds per-target health detail
+    documentSelector:
+      path: metadata.name
+      value: lgtm-dashboards
+    asserts:
+      - matchRegex:
+          path: data["nktp-health.json"]
+          pattern: '"noValue": "Unknown"'
+      - matchRegex:
+          path: data["nktp-health.json"]
+          pattern: 'and \(count\('
+      - matchRegex:
+          path: data["nktp-health.json"]
+          pattern: 'max\(100 \* otelcol_exporter_queue_size.* / otelcol_exporter_queue_capacity'
+      - matchRegex:
+          path: data["nktp-health.json"]
+          pattern: '"byField": "target"'
+      - matchRegex:
+          path: data["nktp-health.json"]
+          pattern: 'topk\(20,.*@ end\(\)'
+      - notMatchRegex:
+          path: data["nktp-health.json"]
+          pattern: 'or vector\(0\)|targets_unassigned|timestamp\('
+
+  - it: shows measured export delays and KSM object scrape growth
+    documentSelector:
+      path: metadata.name
+      value: lgtm-dashboards
+    asserts:
+      - matchRegex:
+          path: data["nktp-health.json"]
+          pattern: 'otelcol_exporter_in_flight_requests'
+      - matchRegex:
+          path: data["nktp-health.json"]
+          pattern: '"metricsQueryType": "range"'
+      - matchRegex:
+          path: data["nktp-health.json"]
+          pattern: 'max_over_time\(duration\) by \(resource.service.name, span:name\)'
+      - matchRegex:
+          path: data["nktp-health.json"]
+          pattern: 'exporter/enqueue'
+      - matchRegex:
+          path: data["nktp-health.json"]
+          pattern: 'delta\(\(scrape_samples_scraped.*endpoint=\\"http-metrics\\".*up.*== 1'
+      - notMatchRegex:
+          path: data["nktp-health.json"]
+          pattern: 'rate\(scrape_samples|scrape_body_size_bytes|scrape_timeout_seconds|scrape_sample_limit|"step": "\$__interval"'
+
+  - it: shows collected container budgets without unavailable usage columns
+    documentSelector:
+      path: metadata.name
+      value: lgtm-dashboards
+    asserts:
+      - matchRegex:
+          path: data["nktp-health.json"]
+          pattern: 'kube_pod_container_info'
+      - matchRegex:
+          path: data["nktp-health.json"]
+          pattern: 'Container CPU budgets'
+      - matchRegex:
+          path: data["nktp-health.json"]
+          pattern: 'Container memory budgets'
+      - matchRegex:
+          path: data["nktp-health.json"]
+          pattern: 'kube_pod_container_resource_requests.*kube_pod_container_resource_limits'
+      - matchRegex:
+          path: data["nktp-health.json"]
+          pattern: 'and on \(namespace, pod, container\)'
+      - matchRegex:
+          path: data["nktp-health.json"]
+          pattern: 'topk by \(component\) \(3,'
+      - notMatchRegex:
+          path: data["nktp-health.json"]
+          pattern: 'container_cpu_usage_seconds_total|container_memory_working_set_bytes|0 / 0|"match": "nan"|"Usage"|"Request use"|"Limit use"'
+
+  - it: shows allocation means and measured KSM and node-exporter diagnostics
+    documentSelector:
+      path: metadata.name
+      value: lgtm-dashboards
+    asserts:
+      - matchRegex:
+          path: data["nktp-health.json"]
+          pattern: 'opentelemetry_allocator_time_to_allocate_sum.* / .*opentelemetry_allocator_time_to_allocate_count.* > 0'
+      - notMatchRegex:
+          path: data["nktp-health.json"]
+          pattern: 'opentelemetry_allocator_time_to_allocate_bucket'
+      - notMatchRegex:
+          path: data["nktp-health.json"]
+          pattern: 'kube_state_metrics_list_total'
+      - matchRegex:
+          path: data["nktp-health.json"]
+          pattern: 'count by \(job, shard_ordinal\).*kube_state_metrics_shard_ordinal.*job!=\\"\$namespace/nktp-ksm-pods\\"'
+      - matchRegex:
+          path: data["nktp-health.json"]
+          pattern: 'kube_state_metrics_total_shards'
+      - matchRegex:
+          path: data["nktp-health.json"]
+          pattern: 'node_scrape_collector_success'
+      - matchRegex:
+          path: data["nktp-health.json"]
+          pattern: 'node_scrape_collector_duration_seconds'
+      - notMatchRegex:
+          path: data["nktp-health.json"]
+          pattern: 'rate\(node_scrape_collector_(success|duration)'
+
   - it: provisions the operator dashboard
     documentSelector:
       path: metadata.name
@@ -47,7 +194,10 @@ tests:
           pattern: 'up\{|opentelemetry_allocator'
       - matchRegex:
           path: data["nktp-watchdog.json"]
-          pattern: 'nktp-operator\|nktp-watchdog-targetallocator'
+          pattern: 'sum\(up\{job=\\"nktp-operator\\"\}\)'
+      - notMatchRegex:
+          path: data["nktp-watchdog.json"]
+          pattern: 'timestamp\(|metric age|Reporting Operator / allocator'
       - matchRegex:
           path: data["nktp-watchdog.json"]
           pattern: opentelemetry_allocator_targets_per_collector
@@ -258,6 +408,17 @@ tests:
           content:
             name: GF_AUTH_ANONYMOUS_ORG_ROLE
             value: Admin
+
+  - it: converts delta counters pushed by Target Allocators at the backend
+    documentSelector:
+      path: kind
+      value: Deployment
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: PROMETHEUS_EXTRA_ARGS
+            value: --enable-feature=otlp-deltatocumulative
 
   - it: exposes Prometheus, Grafana and OTLP ports
     documentSelector:

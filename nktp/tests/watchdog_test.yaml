@@ -9,6 +9,9 @@ tests:
   - it: creates a Collector StatefulSet with the default image
     template: templates/watchdog.yaml
     asserts:
+      - equal:
+          path: spec.config.service.telemetry.traces.level
+          value: basic
       - containsDocument:
           apiVersion: opentelemetry.io/v1beta1
           kind: OpenTelemetryCollector
@@ -44,6 +47,24 @@ tests:
             enabled: true
             replicas: 1
             allocationStrategy: consistent-hashing
+            env:
+              - name: OTEL_SERVICE_NAME
+                value: nktp-watchdog-targetallocator
+              - name: POD_NAME
+                valueFrom:
+                  fieldRef:
+                    fieldPath: metadata.name
+              - name: OTEL_RESOURCE_ATTRIBUTES
+                value: service.instance.id=$(POD_NAME)
+            telemetry:
+              metrics:
+                readers:
+                  - periodic:
+                      interval: 30s
+                      exporter:
+                        otlpHttp:
+                          endpoint: http://nktp-watchdog-collector:4318
+                          temporalityPreference: cumulative
             prometheusCR:
               enabled: false
             observability:
@@ -133,7 +154,7 @@ tests:
           path: spec.image
           value: example.com/collector:global
 
-  - it: discovers Operator and large-target allocator pods in its namespace and scrapes its allocator
+  - it: discovers only Operator scrape targets and receives allocator metrics over OTLP
     template: templates/watchdog.yaml
     release:
       namespace: telemetry
@@ -166,25 +187,6 @@ tests:
                   target_label: namespace
                 - source_labels: [__meta_kubernetes_endpointslice_address_target_name]
                   target_label: pod
-            - job_name: nktp-watchdog-targetallocator
-              scrape_interval: 30s
-              static_configs:
-                - targets: [nktp-watchdog-targetallocator:80]
-            - job_name: nktp-large-target-metrics-targetallocator
-              scrape_interval: 30s
-              kubernetes_sd_configs:
-                - role: pod
-                  namespaces:
-                    own_namespace: true
-                  selectors:
-                    - role: pod
-                      label: app.kubernetes.io/name=nktp-large-target-metrics-targetallocator,app.kubernetes.io/component=opentelemetry-targetallocator
-              relabel_configs:
-                - source_labels: [__meta_kubernetes_pod_container_port_name]
-                  regex: http
-                  action: keep
-                - source_labels: [__meta_kubernetes_pod_name]
-                  target_label: instance
       - equal:
           path: spec.config.service.pipelines.metrics.receivers
           value: [otlp, prometheus]
@@ -195,23 +197,31 @@ tests:
           path: spec.targetAllocator.observability.metrics.enableMetrics
           value: false
 
-  - it: retains allocated TA monitoring when large-target processing is replaced
+  - it: pushes its allocator metrics independently of scrape targets and replica counts
     template: templates/watchdog.yaml
     set:
-      large_target_metrics.kubernetes.targetAllocator.replicas: 2
-      large_target_metrics.otelcol.config.receivers.prometheus: null
-      large_target_metrics.otelcol.config.receivers.otlp.protocols.http.endpoint: 0.0.0.0:4318
-      large_target_metrics.otelcol.config.service.pipelines.metrics.receivers: [otlp]
+      watchdog.kubernetes.targetAllocator.replicas: 2
+      watchdog.otelcol.config.receivers.prometheus.config.scrape_configs:
+        - job_name: custom
+          static_configs: [{targets: ["custom:9090"]}]
     asserts:
       - equal:
-          path: spec.targetAllocator.allocationStrategy
-          value: consistent-hashing
+          path: spec.targetAllocator.telemetry.metrics.readers
+          value:
+            - periodic:
+                interval: 30s
+                exporter:
+                  otlpHttp:
+                    endpoint: http://nktp-watchdog-collector:4318
+                    temporalityPreference: cumulative
       - equal:
-          path: spec.config.receivers.prometheus.config.scrape_configs[2].job_name
-          value: nktp-large-target-metrics-targetallocator
+          path: spec.config.receivers.prometheus.config.scrape_configs
+          value:
+            - job_name: custom
+              static_configs: [{targets: ["custom:9090"]}]
       - equal:
-          path: spec.config.receivers.prometheus.config.scrape_configs[2].kubernetes_sd_configs[0].role
-          value: pod
+          path: spec.config.receivers.otlp.protocols.http.endpoint
+          value: 0.0.0.0:4318
       - equal:
           path: spec.config.service.pipelines.metrics
           value:
@@ -356,6 +366,7 @@ tests:
           path: spec.config.service.telemetry.resource
           value:
             service.name: nktp-watchdog
+            service.instance.id: ${env:POD_NAME}
 
   - it: redirects its own metrics to gRPC without changing other telemetry
     template: templates/watchdog.yaml
@@ -372,6 +383,7 @@ tests:
           value:
             resource:
               service.name: nktp-watchdog
+              service.instance.id: ${env:POD_NAME}
             metrics:
               readers:
                 - periodic:
@@ -387,6 +399,7 @@ tests:
                         protocol: http/protobuf
                         endpoint: http://lgtm:4318
             traces:
+              level: basic
               processors:
                 - batch:
                     exporter:
@@ -418,6 +431,7 @@ tests:
           value:
             resource:
               service.name: nktp-watchdog
+              service.instance.id: ${env:POD_NAME}
             metrics:
               readers:
                 - periodic:
@@ -433,6 +447,7 @@ tests:
                         protocol: grpc
                         endpoint: http://logs.example:4317
             traces:
+              level: basic
               processors:
                 - batch:
                     exporter:
@@ -464,6 +479,7 @@ tests:
           value:
             resource:
               service.name: nktp-watchdog
+              service.instance.id: ${env:POD_NAME}
             metrics:
               readers:
                 - periodic:
@@ -479,6 +495,7 @@ tests:
                         protocol: http/protobuf
                         endpoint: http://lgtm:4318
             traces:
+              level: basic
               processors:
                 - batch:
                     exporter:

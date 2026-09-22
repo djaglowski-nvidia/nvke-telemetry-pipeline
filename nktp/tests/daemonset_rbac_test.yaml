@@ -7,7 +7,7 @@ tests:
   - it: grants read-only discovery without credential access
     asserts:
       - hasDocuments:
-          count: 6
+          count: 4
       - equal:
           path: rules
           value:
@@ -64,32 +64,16 @@ tests:
           path: $[?(@.kind == "ClusterRoleBinding")].metadata.name
           value: nktp-daemonset-targetallocator-telemetry
 
-  - it: grants the collector only namespace pod discovery for Target Allocator metrics
+  - it: does not create namespace-scoped Collector RBAC
     asserts:
-      - equal:
-          path: metadata.namespace
-          value: nktp
-        documentSelector:
-          path: kind
-          value: Role
-      - equal:
-          path: rules
-          value:
-            - apiGroups: [""]
-              resources: [pods]
-              verbs: [get, list, watch]
-        documentSelector:
-          path: kind
-          value: Role
-      - equal:
-          path: subjects
-          value:
-            - kind: ServiceAccount
-              name: nktp-daemonset-collector
-              namespace: nktp
-        documentSelector:
-          path: kind
-          value: RoleBinding
+      - containsDocument:
+          kind: Role
+          apiVersion: rbac.authorization.k8s.io/v1
+        not: true
+      - containsDocument:
+          kind: RoleBinding
+          apiVersion: rbac.authorization.k8s.io/v1
+        not: true
 
   - it: grants the collector read-only access to kubelet metrics
     asserts:
@@ -128,30 +112,6 @@ tests:
       daemonset.kubernetes.serviceAccount: existing-collector
     asserts:
       - equal:
-          path: metadata.namespace
-          value: telemetry
-        documentSelector:
-          path: kind
-          value: Role
-      - equal:
-          path: subjects
-          value:
-            - kind: ServiceAccount
-              name: existing-collector
-              namespace: telemetry
-        documentSelector:
-          path: kind
-          value: RoleBinding
-      - equal:
-          path: roleRef
-          value:
-            apiGroup: rbac.authorization.k8s.io
-            kind: Role
-            name: nktp-daemonset-targetallocator-metrics
-        documentSelector:
-          path: kind
-          value: RoleBinding
-      - equal:
           path: subjects
           value:
             - kind: ServiceAccount
@@ -161,19 +121,19 @@ tests:
           path: metadata.name
           value: nktp-daemonset-kubelet-metrics-binding-telemetry
 
-  - it: retains collector discovery permissions with replaced user configuration
+  - it: does not create namespace-scoped Collector RBAC with custom receiver configuration
     set:
       daemonset.otelcol.config.receivers: null
     asserts:
       - hasDocuments:
-          count: 6
+          count: 4
       - containsDocument:
           kind: Role
           apiVersion: rbac.authorization.k8s.io/v1
           name: nktp-daemonset-targetallocator-metrics
-          any: true
+        not: true
       - containsDocument:
           kind: RoleBinding
           apiVersion: rbac.authorization.k8s.io/v1
           name: nktp-daemonset-targetallocator-metrics
-          any: true
+        not: true
