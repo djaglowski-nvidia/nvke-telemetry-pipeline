@@ -389,6 +389,45 @@ matches the snapshot with default values:
             include_file_path: true
             operators:
               - type: container
+              - field: resource["nvidia.telemetry.class"]
+                id: classify-control-plane
+                if: resource["k8s.namespace.name"] == "kube-system" && ((resource["k8s.container.name"] == "kube-apiserver" && resource["k8s.pod.name"] matches "^kube-apiserver-") || (resource["k8s.container.name"] == "kube-controller-manager" && resource["k8s.pod.name"] matches "^kube-controller-manager-") || (resource["k8s.container.name"] == "kube-scheduler" && resource["k8s.pod.name"] matches "^kube-scheduler-") || (resource["k8s.container.name"] == "etcd" && resource["k8s.pod.name"] matches "^etcd-"))
+                type: add
+                value: k8s.control_plane
+            retry_on_failure:
+              enabled: true
+              max_elapsed_time: 0
+            start_at: end
+          filelog/host-audit:
+            include:
+              - /hostfs/var/log/audit/audit.log
+            include_file_path: true
+            resource:
+              nvidia.telemetry.class: system.audit
+              service.name: auditd
+            retry_on_failure:
+              enabled: true
+              max_elapsed_time: 0
+            start_at: end
+          filelog/host-auth:
+            include:
+              - /hostfs/var/log/auth.log
+              - /hostfs/var/log/secure
+            include_file_path: true
+            resource:
+              nvidia.telemetry.class: system.auth
+              service.name: auth
+            retry_on_failure:
+              enabled: true
+              max_elapsed_time: 0
+            start_at: end
+          filelog/kube-api-audit:
+            include:
+              - /hostfs/var/log/kubernetes/audit/audit.log
+            include_file_path: true
+            resource:
+              nvidia.telemetry.class: k8s.api.audit
+              service.name: kube-apiserver
             retry_on_failure:
               enabled: true
               max_elapsed_time: 0
@@ -404,6 +443,16 @@ matches the snapshot with default values:
           journald:
             directory: /var/log/journal
             journalctl_path: /usr/bin/journalctl
+            operators:
+              - field: resource["service.name"]
+                id: identify-journal-producer
+                type: add
+                value: journald
+              - field: resource["nvidia.telemetry.class"]
+                id: classify-host-auth
+                if: body.SYSLOG_IDENTIFIER == "sshd" || body.SYSLOG_IDENTIFIER == "sudo"
+                type: add
+                value: system.auth
             priority: info
             retry_on_failure:
               enabled: true
@@ -490,6 +539,9 @@ matches the snapshot with default values:
                 - filelog
                 - journald
                 - otlp
+                - filelog/host-auth
+                - filelog/host-audit
+                - filelog/kube-api-audit
             metrics:
               exporters:
                 - otlp_http/metrics
@@ -646,8 +698,8 @@ matches the snapshot with default values:
         - mountPath: /hostfs/etc/machine-id
           name: host-machine-id
           readOnly: true
-        - mountPath: /hostfs/var/log/journal
-          name: journal-persistent
+        - mountPath: /hostfs/var/log
+          name: host-logs
           readOnly: true
       volumes:
         - hostPath:
@@ -679,9 +731,9 @@ matches the snapshot with default values:
             type: File
           name: host-machine-id
         - hostPath:
-            path: /var/log/journal
+            path: /var/log
             type: Directory
-          name: journal-persistent
+          name: host-logs
   14: |
     apiVersion: opentelemetry.io/v1beta1
     kind: OpenTelemetryCollector

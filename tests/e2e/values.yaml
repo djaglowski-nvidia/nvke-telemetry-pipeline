@@ -72,6 +72,8 @@ daemonset:
         hostPath: {path: /etc/machine-id, type: File}
       - name: journal-persistent
         hostPath: {path: /run/log/journal, type: Directory}
+      - name: host-logs
+        hostPath: {path: /var/log, type: Directory}
     volumeMounts:
       - {name: pod-logs, mountPath: /var/log/pods, readOnly: true}
       - {name: host-proc, mountPath: /hostfs/proc, readOnly: true}
@@ -82,6 +84,7 @@ daemonset:
       - {name: host-usr-lib, mountPath: /hostfs/usr/lib, readOnly: true}
       - {name: host-machine-id, mountPath: /hostfs/etc/machine-id, readOnly: true}
       - {name: journal-persistent, mountPath: /hostfs/run/log/journal, readOnly: true}
+      - {name: host-logs, mountPath: /hostfs/var/log, readOnly: true}
   otelcol:
     config:
       receivers:

@@ -37,7 +37,7 @@ tests:
       - equal:
           path: spec.config.service.pipelines
           value:
-            logs: {receivers: [filelog, journald, otlp], processors: [memory_limiter, resource/node], exporters: [otlp_http/logs]}
+            logs: {receivers: [filelog, journald, otlp, filelog/host-auth, filelog/host-audit, filelog/kube-api-audit], processors: [memory_limiter, resource/node], exporters: [otlp_http/logs]}
             metrics: {receivers: [prometheus, prometheus/kubelet, hostmetrics, otlp], processors: [memory_limiter, resource/node], exporters: [otlp_http/metrics]}
             traces: {receivers: [otlp], processors: [memory_limiter, resource/node], exporters: [otlp_http/traces]}
             metrics/targetallocator: {receivers: [prometheus/targetallocator], processors: [memory_limiter/targetallocator, resource/targetallocator], exporters: [otlp_http/watchdog]}
@@ -177,7 +177,18 @@ tests:
             start_at: end
             include_file_path: true
             retry_on_failure: {enabled: true, max_elapsed_time: 0}
-            operators: [{type: container}]
+            operators:
+              - type: container
+              - id: classify-control-plane
+                type: add
+                if: >-
+                  resource["k8s.namespace.name"] == "kube-system" &&
+                  ((resource["k8s.container.name"] == "kube-apiserver" && resource["k8s.pod.name"] matches "^kube-apiserver-") ||
+                  (resource["k8s.container.name"] == "kube-controller-manager" && resource["k8s.pod.name"] matches "^kube-controller-manager-") ||
+                  (resource["k8s.container.name"] == "kube-scheduler" && resource["k8s.pod.name"] matches "^kube-scheduler-") ||
+                  (resource["k8s.container.name"] == "etcd" && resource["k8s.pod.name"] matches "^etcd-"))
+                field: resource["nvidia.telemetry.class"]
+                value: k8s.control_plane
       - equal:
           path: spec.volumes
           value:
@@ -195,8 +206,8 @@ tests:
               hostPath: {path: /usr/lib, type: Directory}
             - name: host-machine-id
               hostPath: {path: /etc/machine-id, type: File}
-            - name: journal-persistent
-              hostPath: {path: /var/log/journal, type: Directory}
+            - name: host-logs
+              hostPath: {path: /var/log, type: Directory}
       - equal:
           path: spec.volumeMounts
           value:
@@ -224,8 +235,8 @@ tests:
             - name: host-machine-id
               mountPath: /hostfs/etc/machine-id
               readOnly: true
-            - name: journal-persistent
-              mountPath: /hostfs/var/log/journal
+            - name: host-logs
+              mountPath: /hostfs/var/log
               readOnly: true
       - equal:
           path: spec.securityContext
@@ -492,6 +503,9 @@ tests:
         receivers:
           journald: null
           filelog: null
+          filelog/host-auth: null
+          filelog/host-audit: null
+          filelog/kube-api-audit: null
           prometheus: null
           hostmetrics: null
           otlp:
@@ -623,7 +637,7 @@ tests:
             http: {endpoint: "0.0.0.0:4318"}
       - equal:
           path: spec.config.service.pipelines.logs
-          value: {receivers: [filelog, journald, otlp], processors: [memory_limiter, resource/node], exporters: [otlp_http/logs]}
+          value: {receivers: [filelog, journald, otlp, filelog/host-auth, filelog/host-audit, filelog/kube-api-audit], processors: [memory_limiter, resource/node], exporters: [otlp_http/logs]}
       - equal:
           path: spec.config.service.pipelines.metrics
           value: {receivers: [prometheus, prometheus/kubelet, hostmetrics, otlp], processors: [memory_limiter, resource/node], exporters: [otlp_http/metrics]}
@@ -680,10 +694,20 @@ tests:
             start_at: end
             priority: info
             retry_on_failure: {enabled: true, max_elapsed_time: 0}
+            operators:
+              - id: identify-journal-producer
+                type: add
+                field: resource["service.name"]
+                value: journald
+              - id: classify-host-auth
+                type: add
+                if: 'body.SYSLOG_IDENTIFIER == "sshd" || body.SYSLOG_IDENTIFIER == "sudo"'
+                field: resource["nvidia.telemetry.class"]
+                value: system.auth
       - equal:
           path: spec.config.service.pipelines.logs
           value:
-            receivers: [filelog, journald, otlp]
+            receivers: [filelog, journald, otlp, filelog/host-auth, filelog/host-audit, filelog/kube-api-audit]
             processors: [memory_limiter, resource/node]
             exporters: [otlp_http/logs]
 
@@ -704,10 +728,10 @@ tests:
           content: {name: journal-persistent, mountPath: /hostfs/run/log/journal, readOnly: true}
       - lengthEqual:
           path: spec.volumes
-          count: 8
+          count: 9
       - lengthEqual:
           path: spec.volumeMounts
-          count: 9
+          count: 10
       - contains:
           path: spec.volumeMounts
           content: {name: pod-logs, mountPath: /var/log/pods, readOnly: true}
@@ -717,9 +741,17 @@ tests:
       - contains:
           path: spec.volumeMounts
           content: {name: host-lib64, mountPath: /hostfs/usr/lib64, readOnly: true}
+      - contains:
+          path: spec.volumes
+          content:
+            name: host-logs
+            hostPath: {path: /var/log, type: Directory}
+      - contains:
+          path: spec.volumeMounts
+          content: {name: host-logs, mountPath: /hostfs/var/log, readOnly: true}
       - equal:
           path: spec.config.service.pipelines.logs
           value:
-            receivers: [filelog, journald, otlp]
+            receivers: [filelog, journald, otlp, filelog/host-auth, filelog/host-audit, filelog/kube-api-audit]
             processors: [memory_limiter, resource/node]
             exporters: [otlp_http/logs]

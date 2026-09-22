@@ -208,16 +208,17 @@ and `/etc/machine-id`, with journals in `/var/log/journal`. The Collector uses
 selective read-only host mounts and
 the `SYS_CHROOT` capability to run the host executable. The `/lib64` host volume
 is also mounted at `/hostfs/usr/lib64` for Red Hat library paths. Collection
-starts with new entries; journal cursors are not persisted across Collector restarts.
+starts with new entries. Journal cursors are not persisted across Collector restarts.
 
 Override `root_path`, `journalctl_path`, and `directory` under
 `daemonset.otelcol.config.receivers.journald` for a different host layout.
 Update `daemonset.kubernetes.volumes` and `volumeMounts` to match, retaining
-the other mounts when replacing either list. For runtime journals, change the
-journal host path to `/run/log/journal`, its mount path to
-`/hostfs/run/log/journal`, and the receiver directory to `/run/log/journal`.
+the other mounts when replacing either list. For runtime journals, add a
+`/run/log/journal` host volume mounted at `/hostfs/run/log/journal` and set the
+receiver directory to `/run/log/journal`.
 
-TODO. Add control-plane log collection.
+See [Log classification](#log-classification) for the default audit and
+control plane log sources.
 
 The collector's own metrics, logs and traces go to watchdog.
 Each collector also discovers this DaemonSet's Target Allocator pods on its node
@@ -247,6 +248,25 @@ remain unassigned.
 
 The Target Allocator rejects ServiceMonitor and PodMonitor endpoints that reference
 local bearer-token or TLS files in the Collector container.
+
+### Log classification
+
+NKTP classifies logs by source using the `nvidia.telemetry.class` resource
+attribute. All records from a classified source receive the same class,
+regardless of their content. The class is forwarded to the logs gateway for
+use in routing rules.
+
+| Source | Classification | `service.name` | Recognition |
+| --- | --- | --- | --- |
+| sudo and SSH journal entries | `system.auth` | `journald` | Journal producer identifier is `sudo` or `sshd`. |
+| Linux authentication files | `system.auth` | `auth` | All records from `/var/log/auth.log` or `/var/log/secure`. |
+| Linux auditd | `system.audit` | `auditd` | All records from `/var/log/audit/audit.log`, including authentication records. |
+| Kubernetes control plane logs | `k8s.control_plane` | Not set by NKTP | Pods in `kube-system` with matching pod-name prefixes and container names for `kube-apiserver`, `kube-controller-manager`, `kube-scheduler`, or `etcd`. |
+| Kubernetes API audit logs | `k8s.api.audit` | `kube-apiserver` | Records from `/var/log/kubernetes/audit/audit.log`. API audit logging must be enabled on the API server. |
+
+Other locally collected logs remain unclassified. All journal records use
+`journald` as `service.name`. Shared authentication files use `auth`. Service
+names reach the logs gateway alongside the classification.
 
 ### Large-target metrics
 

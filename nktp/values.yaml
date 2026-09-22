@@ -653,9 +653,10 @@ daemonset:
         hostPath:
           path: /etc/machine-id
           type: File
-      - name: journal-persistent
+      # Mount the parent directory because audit files may be absent on workers.
+      - name: host-logs
         hostPath:
-          path: /var/log/journal
+          path: /var/log
           type: Directory
     volumeMounts:
       - name: pod-logs
@@ -682,8 +683,8 @@ daemonset:
       - name: host-machine-id
         mountPath: /hostfs/etc/machine-id
         readOnly: true
-      - name: journal-persistent
-        mountPath: /hostfs/var/log/journal
+      - name: host-logs
+        mountPath: /hostfs/var/log
         readOnly: true
   otelcol:
     # Set a custom image for this workload only.
@@ -711,6 +712,16 @@ daemonset:
           retry_on_failure:
             enabled: true
             max_elapsed_time: 0
+          operators:
+            - id: identify-journal-producer
+              type: add
+              field: resource["service.name"]
+              value: journald
+            - id: classify-host-auth
+              type: add
+              if: 'body.SYSLOG_IDENTIFIER == "sshd" || body.SYSLOG_IDENTIFIER == "sudo"'
+              field: resource["nvidia.telemetry.class"]
+              value: system.auth
         filelog:
           include: [/var/log/pods/*/*/*.log]
           # NKTP Collectors already send their own logs through watchdog.
@@ -722,6 +733,43 @@ daemonset:
             max_elapsed_time: 0 # Retry downstream transient failures until recovery. Permanent errors are dropped.
           operators:
             - type: container
+            # Classify the existing reader's entries instead of reading the same
+            # control plane files a second time.
+            - id: classify-control-plane
+              type: add
+              if: >-
+                resource["k8s.namespace.name"] == "kube-system" &&
+                ((resource["k8s.container.name"] == "kube-apiserver" && resource["k8s.pod.name"] matches "^kube-apiserver-") ||
+                (resource["k8s.container.name"] == "kube-controller-manager" && resource["k8s.pod.name"] matches "^kube-controller-manager-") ||
+                (resource["k8s.container.name"] == "kube-scheduler" && resource["k8s.pod.name"] matches "^kube-scheduler-") ||
+                (resource["k8s.container.name"] == "etcd" && resource["k8s.pod.name"] matches "^etcd-"))
+              field: resource["nvidia.telemetry.class"]
+              value: k8s.control_plane
+        filelog/host-auth:
+          include: [/hostfs/var/log/auth.log, /hostfs/var/log/secure]
+          start_at: end
+          include_file_path: true
+          retry_on_failure: {enabled: true, max_elapsed_time: 0}
+          resource:
+            nvidia.telemetry.class: system.auth
+            service.name: auth
+        filelog/host-audit:
+          include: [/hostfs/var/log/audit/audit.log]
+          start_at: end
+          include_file_path: true
+          retry_on_failure: {enabled: true, max_elapsed_time: 0}
+          resource:
+            nvidia.telemetry.class: system.audit
+            service.name: auditd
+        filelog/kube-api-audit:
+          # Must match the API server's audit-log-path on the node.
+          include: [/hostfs/var/log/kubernetes/audit/audit.log]
+          start_at: end
+          include_file_path: true
+          retry_on_failure: {enabled: true, max_elapsed_time: 0}
+          resource:
+            nvidia.telemetry.class: k8s.api.audit
+            service.name: kube-apiserver
         prometheus:
           config:
             # The Target Allocator supplies scrape jobs and targets from the local node.
@@ -848,7 +896,7 @@ daemonset:
                       endpoint: http://nktp-watchdog-collector:4318
         pipelines:
           logs:
-            receivers: [filelog, journald, otlp]
+            receivers: [filelog, journald, otlp, filelog/host-auth, filelog/host-audit, filelog/kube-api-audit]
             processors: [memory_limiter, resource/node]
             exporters: [otlp_http/logs]
           metrics:
