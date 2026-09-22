@@ -116,6 +116,73 @@ No specialized hardware or credentials are needed for any of the above. Chart
 publishing to NVCR runs only from `main` and release tags and is described in
 [RELEASING.md](RELEASING.md); pull requests validate without publishing.
 
+## Developer Certificate of Origin
+
+Every commit must carry a `Signed-off-by` line. The sign-off certifies that you
+wrote the change, or otherwise have the right to submit it under this project's
+license. It is a statement about where the code came from, not a claim that it
+is correct. There is no separate contributor license agreement to sign.
+
+`git commit -s` adds the line for you from your configured identity:
+
+```bash
+git config user.name "Your Name"
+git config user.email "you@example.com"
+git commit -s
+```
+
+The line it appends looks like this, and has to be a real name rather than a
+pseudonym:
+
+```text
+Signed-off-by: Joe Smith <joe.smith@email.com>
+```
+
+If you forget, `git commit --amend -s` fixes the last commit and
+`git rebase --signoff main` fixes an entire branch.
+
+Signing off certifies the Developer Certificate of Origin 1.1, reproduced in
+full below from [developercertificate.org](https://developercertificate.org/):
+
+```text
+Developer Certificate of Origin
+Version 1.1
+
+Copyright (C) 2004, 2006 The Linux Foundation and its contributors.
+1 Letterman Drive
+Suite D4700
+San Francisco, CA, 94129
+
+Everyone is permitted to copy and distribute verbatim copies of this
+license document, but changing it is not allowed.
+
+Developer's Certificate of Origin 1.1
+
+By making a contribution to this project, I certify that:
+
+(a) The contribution was created in whole or in part by me and I
+    have the right to submit it under the open source license
+    indicated in the file; or
+
+(b) The contribution is based upon previous work that, to the best
+    of my knowledge, is covered under an appropriate open source
+    license and I have the right under that license to submit that
+    work with modifications, whether created in whole or in part
+    by me, under the same open source license (unless I am
+    permitted to submit under a different license), as indicated
+    in the file; or
+
+(c) The contribution was provided directly to me by some other
+    person who certified (a), (b) or (c) and I have not modified
+    it.
+
+(d) I understand and agree that this project and the contribution
+    are public and that a record of the contribution (including all
+    personal information I submit with it, including my sign-off) is
+    maintained indefinitely and may be redistributed consistent with
+    this project or the open source license(s) involved.
+```
+
 ## Pull request process
 
 1. Branch from `main` in this repository. The convention in use is
@@ -168,6 +235,9 @@ other change.
   before submitting them. "The AI wrote it" does not explain a bug.
 - **Verify correctness:** AI-generated changes may contain bugs or security
   issues. Run the applicable tests and review the diff carefully.
+- **You sign off, not the tool:** Whatever produced the diff, the
+  `Signed-off-by` line is your certification that you have the right to submit
+  the work. An AI cannot make that certification for you.
 - **No AI-generated sensitive content:** Do not use AI to generate security
   policies, legal, or license text.
 
