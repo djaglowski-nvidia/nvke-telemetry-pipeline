@@ -1,3 +1,6 @@
 # Run all workloads on the contrib collector distribution.
 # Start it with: task dev:up -- contrib
-otelcol_image: otel/opentelemetry-collector-contrib:0.159.0
+otelcol_image:
+  registry: ""
+  repository: otel/opentelemetry-collector-contrib
+  tag: 0.159.0

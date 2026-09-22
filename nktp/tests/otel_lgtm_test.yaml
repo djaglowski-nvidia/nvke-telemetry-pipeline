@@ -234,7 +234,7 @@ tests:
   - it: sets a custom image
     set:
       otel-lgtm:
-        image: grafana/otel-lgtm:0.31.0
+        image: {registry: "", repository: grafana/otel-lgtm, tag: 0.31.0}
     documentSelector:
       path: kind
       value: Deployment

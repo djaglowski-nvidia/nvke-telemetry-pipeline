@@ -293,7 +293,7 @@ tests:
     release:
       namespace: telemetry
     set:
-      otelcol_image: example.com/collector:global
+      otelcol_image: {registry: example.com, repository: collector, tag: global}
       opentelemetry-kube-stack.opentelemetry-operator.enabled: false
     asserts:
       - equal:
@@ -308,7 +308,7 @@ tests:
 
   - it: passes workload overrides through while resolving Collector configuration separately
     set:
-      daemonset.otelcol.image: example.com/collector:node
+      daemonset.otelcol.image: {registry: example.com, repository: collector, tag: node}
       daemonset.kubernetes:
         image: example.com/collector:ignored
         config: {ignored: true}

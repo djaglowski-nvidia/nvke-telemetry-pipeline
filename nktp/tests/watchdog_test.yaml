@@ -127,7 +127,7 @@ tests:
   - it: uses the global Collector image override
     template: templates/watchdog.yaml
     set:
-      otelcol_image: example.com/collector:global
+      otelcol_image: {registry: example.com, repository: collector, tag: global}
     asserts:
       - equal:
           path: spec.image
@@ -222,9 +222,9 @@ tests:
   - it: prefers the watchdog image override
     template: templates/watchdog.yaml
     set:
-      otelcol_image: example.com/collector:global
+      otelcol_image: {registry: example.com, repository: collector, tag: global}
       watchdog.kubernetes.image: example.com/collector:kubernetes
-      watchdog.otelcol.image: example.com/collector:watchdog
+      watchdog.otelcol.image: {registry: example.com, repository: collector, tag: watchdog}
     asserts:
       - equal:
           path: spec.image

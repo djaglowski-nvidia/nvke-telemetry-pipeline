@@ -6,13 +6,15 @@ namespace:
   name: nktp
   create: true
 
-# Collector image used by all OTel workloads, in the same form as
-# OpenTelemetryCollector spec.image (repo:tag or repo@digest).
-otelcol_image: otel/opentelemetry-collector-k8s:0.159.0
+# Collector image used by all OTel workloads.
+otelcol_image:
+  registry: "" # Empty pulls from the image's default registry (Docker Hub for this repository).
+  repository: otel/opentelemetry-collector-k8s
+  tag: 0.159.0
 
 # OTel workloads. Each workload uses the same structure:
 #   kubernetes:     Standard Kubernetes settings (resources, affinity, selectors, labels, ...).
-#   otelcol.image:  Set a custom image for this workload only.
+#   otelcol.image:  Set a custom image for this workload only, as a {registry, repository, tag} map.
 #   otelcol.config: Native OTel collector configuration as a YAML map.
 
 # Receives internal telemetry from all NKTP collectors.
@@ -74,7 +76,10 @@ watchdog:
         drop: [ALL]
   otelcol:
     # Set a custom image for this workload only.
-    # image: otel/opentelemetry-collector-k8s:0.159.0
+    # image:
+    #   registry: ""
+    #   repository: otel/opentelemetry-collector-k8s
+    #   tag: 0.159.0
     config:
       extensions:
         health_check:
@@ -240,7 +245,10 @@ gateway_logs:
         drop: [ALL]
   otelcol:
     # Set a custom image for this workload only.
-    # image: otel/opentelemetry-collector-k8s:0.159.0
+    # image:
+    #   registry: ""
+    #   repository: otel/opentelemetry-collector-k8s
+    #   tag: 0.159.0
     config:
       extensions:
         health_check:
@@ -353,7 +361,10 @@ gateway_metrics:
         drop: [ALL]
   otelcol:
     # Set a custom image for this workload only.
-    # image: otel/opentelemetry-collector-k8s:0.159.0
+    # image:
+    #   registry: ""
+    #   repository: otel/opentelemetry-collector-k8s
+    #   tag: 0.159.0
     config:
       extensions:
         health_check:
@@ -466,7 +477,10 @@ gateway_traces:
         drop: [ALL]
   otelcol:
     # Set a custom image for this workload only.
-    # image: otel/opentelemetry-collector-k8s:0.159.0
+    # image:
+    #   registry: ""
+    #   repository: otel/opentelemetry-collector-k8s
+    #   tag: 0.159.0
     config:
       extensions:
         health_check:
@@ -673,7 +687,10 @@ daemonset:
         readOnly: true
   otelcol:
     # Set a custom image for this workload only.
-    # image: otel/opentelemetry-collector-k8s:0.159.0
+    # image:
+    #   registry: ""
+    #   repository: otel/opentelemetry-collector-k8s
+    #   tag: 0.159.0
     config:
       extensions:
         health_check:
@@ -940,7 +957,10 @@ large_target_metrics:
         drop: [ALL]
   otelcol:
     # Set a custom image for this workload only.
-    # image: otel/opentelemetry-collector-k8s:0.159.0
+    # image:
+    #   registry: ""
+    #   repository: otel/opentelemetry-collector-k8s
+    #   tag: 0.159.0
     config:
       extensions:
         health_check:
@@ -1059,7 +1079,10 @@ cluster_events:
         drop: [ALL]
   otelcol:
     # Set a custom image for this workload only.
-    # image: otel/opentelemetry-collector-k8s:0.159.0
+    # image:
+    #   registry: ""
+    #   repository: otel/opentelemetry-collector-k8s
+    #   tag: 0.159.0
     config:
       extensions:
         health_check:
@@ -1128,12 +1151,18 @@ cluster_events:
 # Default in-cluster backend. MUST be disabled for production use.
 otel-lgtm:
   enabled: true
-  image: grafana/otel-lgtm:0.32.0
+  image:
+    registry: "" # Empty pulls from the image's default registry (Docker Hub for this repository).
+    repository: grafana/otel-lgtm
+    tag: 0.32.0
 
 # Kubernetes object state metrics, partitioned by resource type.
 kube-state-metrics:
   enabled: true
-  image: registry.k8s.io/kube-state-metrics/kube-state-metrics:v2.20.0
+  image:
+    registry: registry.k8s.io
+    repository: kube-state-metrics/kube-state-metrics
+    tag: v2.20.0
   namespaces: [] # All namespaces. Each workload can override this list.
   # Shared Kubernetes defaults. Each workload can override these fields.
   kubernetes:

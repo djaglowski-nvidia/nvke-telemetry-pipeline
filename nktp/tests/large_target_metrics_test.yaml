@@ -96,8 +96,8 @@ tests:
             capabilities: {drop: [ALL]}
   - it: preserves native config and workload map overrides for large_target_metrics
     set:
-      otelcol_image: "example.com/collector:global"
-      large_target_metrics.otelcol.image: "example.com/collector:custom"
+      otelcol_image: {registry: "example.com", repository: "collector", tag: "global"}
+      large_target_metrics.otelcol.image: {registry: "example.com", repository: "collector", tag: "custom"}
       large_target_metrics.kubernetes.image: "ignored:latest"
       large_target_metrics.kubernetes.config: {"ignored": true}
       large_target_metrics.kubernetes.nodeSelector: {"telemetry": "large"}
@@ -138,7 +138,7 @@ tests:
         documentIndex: 0
   - it: uses the global image for large_target_metrics
     set:
-      otelcol_image: "example.com/collector:global"
+      otelcol_image: {registry: "example.com", repository: "collector", tag: "global"}
     asserts:
       - equal:
           path: "spec.image"
