@@ -14,20 +14,26 @@ tasks:
     silent: true
     cmds:
       - task: stop-tilt
+      - echo "Starting Tilt..."
       - sh -c 'KUBECONFIG=$(pwd)/.kubeconfig tilt up --context kind-nktp {{if .CLI_ARGS}}-- --config {{.CLI_ARGS}}{{end}} > .tilt.log 2>&1 & echo $! > .tilt.pid'
       - |
+        status=0
+        bash wait-ready.sh || status=$?
         echo ""
         echo "  Config:     Kind host paths{{if .CLI_ARGS}} + dev/configs/{{.CLI_ARGS}}{{end}}"
-        echo "  Tilt UI:    http://localhost:10350"
-        echo "  Grafana UI: http://localhost:3000 (when otel-lgtm is enabled)"
-        echo ""
         echo "  kubectl access: export KUBECONFIG=$(pwd)/.kubeconfig"
-        echo ""
         echo "  Logs: dev/.tilt.log   Stop: task dev:down"
         echo ""
+        if [ "$status" -ne 0 ]; then
+          echo "  Startup incomplete. UIs may not be available yet."
+        fi
+        echo "  Tilt UI:    http://localhost:10350"
+        echo ""
+        exit "$status"
 
   down:
     desc: Stop the dev loop and delete the local Kind cluster
+    silent: true
     cmds:
       - task: stop-tilt
       - task: cluster:down
@@ -55,7 +61,7 @@ tasks:
             exit 1
           fi
         '
-      - rm -f .tilt.pid .tilt.log
+      - rm -f .tilt.pid .tilt.log .grafana-forward.log
 
   cluster:up:
     internal: true
@@ -69,15 +75,46 @@ tasks:
       # NODE_IMAGE comes from the root Taskfile, so every cluster in the
       # repository runs one Kubernetes version rather than whichever one the
       # installed kind binary happens to default to.
-      - kind get clusters | grep -qx nktp || kind create cluster --name nktp --image {{.NODE_IMAGE}} --kubeconfig .kubeconfig
+      - echo "Preparing the local Kind cluster..."
+      - |
+        if ! kind get clusters | grep -qx nktp; then
+          kind create cluster --name nktp --image {{.NODE_IMAGE}} --kubeconfig .kubeconfig --config kind.yaml
+          if test -f .images.tar; then
+            echo "Restoring cached images into Kind..."
+            if ! kind load image-archive --name nktp .images.tar; then
+              echo "Could not restore the image cache. Continuing startup with normal image pulls." >&2
+            fi
+          fi
+        fi
       - kind -q export kubeconfig --name nktp --kubeconfig .kubeconfig
+      - echo "Waiting for Kind nodes to become ready..."
       - kubectl wait --kubeconfig .kubeconfig --context kind-nktp --for=condition=Ready nodes --all --timeout=5m
 
   cluster:down:
     internal: true
     desc: Delete the local Kind cluster
+    silent: true
     cmds:
-      - kind delete cluster --name nktp --kubeconfig .kubeconfig
+      - |
+        if kind get clusters | grep -qx nktp; then
+          echo "Saving Kind images for the next startup..."
+          if docker exec nktp-control-plane sh -ec '
+            cached_images=$(ctr -n k8s.io images list -q)
+            # Keep only the node platform so Kind can load the complete archive.
+            for image in $cached_images; do
+              ctr -n k8s.io images convert "$image" "$image" >/dev/null
+            done
+            ctr -n k8s.io images export --local - $cached_images
+          ' > .images.tar.tmp; then
+            mv .images.tar.tmp .images.tar
+          else
+            rm -f .images.tar.tmp
+            echo "Could not refresh the image cache. Continuing shutdown with the previous cache." >&2
+          fi
+          kind delete cluster --name nktp --kubeconfig .kubeconfig
+        else
+          echo "Kind cluster is already stopped."
+        fi
       - rm -f .kubeconfig
 
   check-local-deps:
@@ -87,7 +124,7 @@ tasks:
     cmds:
       - |
         missing=0
-        for tool in docker kind kubectl helm tilt; do
+        for tool in docker kind kubectl helm tilt curl; do
           command -v "$tool" >/dev/null || { echo "missing: $tool (see dev/README.md)"; missing=1; }
         done
         exit $missing

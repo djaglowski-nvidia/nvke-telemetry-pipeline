@@ -2,6 +2,7 @@ occt/tests/test-chart/charts/
 dev/.kubeconfig
 dev/.tilt.log
 dev/.tilt.pid
+dev/.grafana-forward.log
 nktp/charts/*.tgz
 tests/scale/.kubeconfig
 tests/scale/.prometheus-port-forward.pid
@@ -11,3 +12,5 @@ tests/scale/.grafana-port-forward.log
 tests/e2e/.kubeconfig
 
 .idea/
+dev/.images.tar
+dev/.images.tar.tmp

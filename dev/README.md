@@ -7,6 +7,12 @@ task dev:down     # remove the workloads and delete the cluster
 ```
 
 The dev loop runs in the background (logs in `dev/.tilt.log`). Edits to the chart or the active config redeploy automatically.
+`dev:up` returns when Grafana is available, or after Helm applies the chart when
+LGTM is disabled. Other workloads may still be starting. Follow their status in
+Tilt. Images for the node's platform are cached between cluster recreations and
+restored with `kind load image-archive`. Cache preparation changes multi-platform
+index digests while preserving native image contents and references. Cache restore
+failures do not block startup.
 
 The tooling never touches kubectl contexts or clusters other than its own. To
 point kubectl at the dev cluster, run the `export KUBECONFIG=...` line that

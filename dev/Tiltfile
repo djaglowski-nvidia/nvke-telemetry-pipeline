@@ -3,7 +3,6 @@
 # Or from dev/: KUBECONFIG=.kubeconfig tilt up [-- --config <name>]
 
 load('ext://helm_resource', 'helm_resource', 'helm_repo')
-load('ext://k8s_attach', 'k8s_attach')
 
 config.define_string('config')
 cfg = config.parse()
@@ -13,10 +12,9 @@ kube_context = 'kind-nktp'
 namespace = 'nktp'
 
 allow_k8s_contexts(kube_context)
+# Allow Helm to build dependencies during a fresh install.
+update_settings(k8s_upsert_timeout_secs = 660)
 watch_settings(ignore = ['../nktp/charts', '../nktp/tmpcharts-*'])
-
-helm_repo('open-telemetry', 'https://open-telemetry.github.io/opentelemetry-helm-charts')
-helm_repo('prometheus-community', 'https://prometheus-community.github.io/helm-charts', resource_deps = ['open-telemetry'])
 
 # Kind uses runtime journals. Named configs layer on top of these host paths.
 value_files = ['values.yaml']
@@ -33,6 +31,10 @@ local(
     % (kube_context, namespace, kube_context)
 )
 
+helm_repo('open-telemetry', 'https://open-telemetry.github.io/opentelemetry-helm-charts')
+helm_repo('prometheus-community', 'https://prometheus-community.github.io/helm-charts', resource_deps = ['open-telemetry'])
+helm_repo('metrics-server', 'https://kubernetes-sigs.github.io/metrics-server/', resource_deps = ['prometheus-community'])
+
 # NKTP Helm release with the selected dev config overlay.
 helm_resource(
     'nktp',
@@ -41,15 +43,27 @@ helm_resource(
     deps = ['../nktp'],
     flags = ['--values=' + f for f in value_files],
     build_dependencies = True,
-    resource_deps = ['open-telemetry', 'prometheus-community'],
+    resource_deps = ['metrics-server'],
     labels = ['nktp'],
 )
 
-k8s_attach(
+# Forward when LGTM exists and reconnect when its pod is replaced.
+local_resource(
     'grafana',
-    'deployment/lgtm',
-    namespace = namespace,
-    port_forwards = ['3000:3000'],
-    resource_deps = ['nktp'],
+    serve_cmd = ['bash', '-c', '''
+trap 'rm -f .grafana-forward.log' EXIT
+while :; do
+    rm -f .grafana-forward.log
+    if kubectl --kubeconfig .kubeconfig --context %s -n %s get deployment/lgtm --ignore-not-found --request-timeout=10s -o name | grep -q .; then
+        kubectl --kubeconfig .kubeconfig --context %s -n %s port-forward deployment/lgtm 3000:3000 --address=127.0.0.1 --pod-running-timeout=10s 2>&1 | tee .grafana-forward.log
+        if grep -q 'unable to listen on any of the requested ports' .grafana-forward.log; then
+            exit 1
+        fi
+        rm -f .grafana-forward.log
+    fi
+    sleep 2
+done
+''' % (kube_context, namespace, kube_context, namespace)],
+    allow_parallel = True,
     labels = ['nktp'],
 )
