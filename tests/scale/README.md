@@ -34,7 +34,7 @@ lifecycle policy. Repeating the command upgrades the releases and reapplies the
 policy. The controller is not pinned to the control plane. It manages nodes
 annotated `kwok.x-k8s.io/node: fake` and simulates node and pod status without
 running containers. The [node generator](#kwok-nodes) creates tainted emulated
-nodes. Pod generation is not implemented yet.
+nodes. The [Pod generator](#pods) runs workloads on those nodes.
 
 Label emulated pods `scale.nktp.io/lifecycle: complete-30s` to use the
 [30-second completion policy](kwok/stages/pod-complete-30s.yaml). It marks a
@@ -77,7 +77,8 @@ The no-op plans below do not require `scale:up`.
 
 The plan contains configuration, not executable objects. `Executor` validates
 every component specification and constructs fresh runnables before any stage
-starts. Generators support `type: noop`, `type: job` and `type: kubernetes`.
+starts. Generators support `type: noop`, `type: job`, `type: pod` and
+`type: kubernetes`.
 Measurements support `type: noop` and `type: prometheus`. No-op components accept an empty or omitted
 `spec`. No-op measurements also accept `spec.queries`, a mapping of names to nonempty query
 strings. These strings are resolved by the plan parser but are not evaluated.
@@ -305,6 +306,8 @@ The harness can be extended with additional generators and measurements.
 
 - **No-op (`noop`)** exercises the harness without generating load or requiring a
   cluster. See the [no-op plan](plans/noop.yaml).
+- **Kubernetes Pod (`pod`)** runs a batch of native Pod templates on real or
+  emulated nodes. See the [KWOK Pod plan](plans/kwok-pods.yaml).
 - **Kubernetes Job (`job`)** runs a containerized load generator to completion.
   See the [telemetrygen plan](plans/telemetrygen.yaml) or
   [Avalanche plan](plans/avalanche.yaml) for configuration.
@@ -374,6 +377,62 @@ task test:scale -- -plan "$PWD/tests/scale/plans/kwok-nodes.yaml" -test.timeout=
 
 The test timeout allows for the plan deadline and cleanup. Increase it when
 using larger groups or a longer plan timeout.
+
+## Pods
+
+The Pod generator runs a finite batch from a native Kubernetes Pod template.
+The [KWOK example](plans/kwok-pods.yaml) simulates 1,000 Pods that complete after
+30 seconds of Running time.
+
+```yaml
+generator:
+  type: pod
+  spec:
+    replicas: 1000
+    podTemplate:
+      metadata:
+        labels:
+          run_id: '{{args.run-id}}'
+          scale.nktp.io/lifecycle: complete-30s
+      spec:
+        restartPolicy: Never
+        nodeSelector:
+          run_id: '{{args.run-id}}'
+        tolerations:
+        - key: kwok.x-k8s.io/node
+          operator: Equal
+          value: fake
+          effect: NoSchedule
+        containers:
+        - name: load
+          image: registry.k8s.io/pause:3.10
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+```
+
+`task scale:up` installs KWOK and the completion policy. Target KWOK nodes must
+have the matching `run_id` label and enough capacity for the requested Pods.
+Use the same kubeconfig and run ID for the node and Pod generators:
+
+```sh
+task test:scale -- -plan "$PWD/tests/scale/plans/kwok-pods.yaml" -arg run-id=example-run -test.timeout=30m
+```
+
+The test timeout allows for the plan's 20-minute deadline and cleanup.
+
+Replicas default to one, and zero creates no Pods. The namespace comes from
+`podTemplate.metadata.namespace`, defaults to `default`, and must already exist.
+Pods start as scheduling permits, including when nodes become available later.
+The run succeeds when all Pods succeed. Failure, disappearance or plan timeout
+fails the run. Pods are created once and are not replaced. Names and the
+`scale.nktp.io/generator` label are assigned for cleanup.
+
+KWOK simulates the lifecycle without executing the image. To run a real load
+binary, remove the KWOK lifecycle label, selector and toleration, then set the
+container image, command and arguments. The binary must exit successfully within
+the plan timeout. All other native template settings are preserved.
 
 ## Avalanche
 

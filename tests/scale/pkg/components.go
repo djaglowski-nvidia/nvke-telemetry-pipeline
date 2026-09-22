@@ -14,6 +14,8 @@ func newGenerator(config ComponentSpec, kubeconfig string) (generator, error) {
 		return generators.NewNoop(config.Spec)
 	case "kubernetes":
 		return generators.NewKubernetesGenerator(config.Spec, kubeconfig)
+	case "pod":
+		return generators.NewPodGenerator(config.Spec, kubeconfig)
 	case "job":
 		return generators.NewJobGenerator(config.Spec, kubeconfig)
 	default:
