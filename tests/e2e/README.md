@@ -102,10 +102,10 @@ Every input is a flag: `-nktp.chart`, `-nktp.release`, `-nktp.namespace`,
 `-nktp.stable-reapply`. The suite refuses to run without a kubeconfig, so a
 bare `go test` here cannot reach the cluster you are working on.
 
-`task e2e:test VALUES=dev/configs/contrib/values.yaml` layers a values file on
-the defaults. `VALUES` is relative to the repository root and is applied after
-[values.yaml](values.yaml), which cuts replica counts and resource requests
-down to what a single node can schedule.
+`task e2e:test VALUES=path/to/values.yaml` layers a values file on
+top. `VALUES` is relative to the repository root and is applied after
+[values.yaml](values.yaml), which sets Kind journal paths and cuts replica
+counts and resource requests down to what a single node can schedule.
 
 `task e2e:diagnose` reports the pods and warning events of a failed run. CI
 runs it before deleting the cluster, since nobody can re-run a job and look at

@@ -14,7 +14,8 @@ point kubectl at the dev cluster, run the `export KUBECONFIG=...` line that
 
 ## Configs
 
-By default NKTP installs with its default values. A dev config is a directory
+The dev loop applies [Kind host paths](values.yaml) to collect
+runtime journals from `/run/log/journal`. A dev config is a directory
 under `dev/configs/` holding a `values.yaml` that Tilt layers on top, the same
 as passing `-f` to helm. Use one to try a different configuration locally,
 such as pointing a workload at another backend, without touching
@@ -22,7 +23,7 @@ such as pointing a workload at another backend, without touching
 
 ```sh
 task dev:up -- <name>             # start or reconfigure with dev/configs/<name>/
-task dev:up                       # back to the chart defaults
+task dev:up                       # chart defaults with Kind host paths
 ```
 
 Tilt watches the active config, so edits to it also redeploy the chart.

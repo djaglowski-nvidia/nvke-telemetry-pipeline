@@ -18,13 +18,14 @@ watch_settings(ignore = ['../nktp/charts', '../nktp/tmpcharts-*'])
 helm_repo('open-telemetry', 'https://open-telemetry.github.io/opentelemetry-helm-charts')
 helm_repo('prometheus-community', 'https://prometheus-community.github.io/helm-charts', resource_deps = ['open-telemetry'])
 
-# Without a config, the chart installs with its default values.
-value_files = []
+# Kind uses runtime journals. Named configs layer on top of these host paths.
+value_files = ['values.yaml']
+watch_file('values.yaml')
 if dev_config:
     config_dir = 'configs/%s' % dev_config
     local('test -f "%s/values.yaml" || { echo "error: config not found: %s/values.yaml" >&2; exit 1; }' % (config_dir, config_dir))
     watch_file(config_dir)
-    value_files = ['%s/values.yaml' % config_dir]
+    value_files += ['%s/values.yaml' % config_dir]
     value_files += sorted([f for f in listdir(config_dir) if f.endswith('.yaml') and not f.endswith('/values.yaml')])
 
 local(

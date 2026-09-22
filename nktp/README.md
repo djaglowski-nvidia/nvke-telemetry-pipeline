@@ -133,7 +133,7 @@ The `hostmetrics` receiver reads host `/proc` through a read-only mount at
 CPU time, physical and virtual memory, and disk I/O every minute, and sends them
 through the metrics gateway. Full process command lines are not exported.
 Restricted processes can have missing metrics or attributes and produce scrape
-errors. The collector does not gain additional Linux capabilities.
+errors.
 Node exporter remains responsible for other host metrics.
 
 Each DaemonSet collector also scrapes the kubelet `/metrics` endpoint on its own
@@ -202,7 +202,20 @@ ServiceMonitors with the conventional
 managed kubelet scrape. ServiceMonitor names and labels are configurable, so
 this fallback is not guaranteed to identify every kubelet ServiceMonitor.
 
-TODO. Add node and journal log collection.
+The DaemonSet also collects systemd journal entries at info priority and above
+and forwards them to the logs gateway. Nodes must provide `/usr/bin/journalctl`
+and `/etc/machine-id`, with journals in `/var/log/journal`. The Collector uses
+selective read-only host mounts and
+the `SYS_CHROOT` capability to run the host executable. The `/lib64` host volume
+is also mounted at `/hostfs/usr/lib64` for Red Hat library paths. Collection
+starts with new entries; journal cursors are not persisted across Collector restarts.
+
+Override `root_path`, `journalctl_path`, and `directory` under
+`daemonset.otelcol.config.receivers.journald` for a different host layout.
+Update `daemonset.kubernetes.volumes` and `volumeMounts` to match, retaining
+the other mounts when replacing either list. For runtime journals, change the
+journal host path to `/run/log/journal`, its mount path to
+`/hostfs/run/log/journal`, and the receiver directory to `/run/log/journal`.
 
 TODO. Add control-plane log collection.
 

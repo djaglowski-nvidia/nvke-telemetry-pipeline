@@ -401,6 +401,15 @@ matches the snapshot with default values:
                 resource_attributes:
                   process.command_line:
                     enabled: false
+          journald:
+            directory: /var/log/journal
+            journalctl_path: /usr/bin/journalctl
+            priority: info
+            retry_on_failure:
+              enabled: true
+              max_elapsed_time: 0
+            root_path: /hostfs
+            start_at: end
           otlp:
             protocols:
               grpc:
@@ -479,6 +488,7 @@ matches the snapshot with default values:
                 - resource/node
               receivers:
                 - filelog
+                - journald
                 - otlp
             metrics:
               exporters:
@@ -565,6 +575,8 @@ matches the snapshot with default values:
       securityContext:
         allowPrivilegeEscalation: false
         capabilities:
+          add:
+            - SYS_CHROOT
           drop:
             - ALL
         readOnlyRootFilesystem: true
@@ -616,6 +628,27 @@ matches the snapshot with default values:
         - mountPath: /hostfs/proc
           name: host-proc
           readOnly: true
+        - mountPath: /hostfs/usr/bin/journalctl
+          name: journalctl
+          readOnly: true
+        - mountPath: /hostfs/lib
+          name: host-lib
+          readOnly: true
+        - mountPath: /hostfs/lib64
+          name: host-lib64
+          readOnly: true
+        - mountPath: /hostfs/usr/lib64
+          name: host-lib64
+          readOnly: true
+        - mountPath: /hostfs/usr/lib
+          name: host-usr-lib
+          readOnly: true
+        - mountPath: /hostfs/etc/machine-id
+          name: host-machine-id
+          readOnly: true
+        - mountPath: /hostfs/var/log/journal
+          name: journal-persistent
+          readOnly: true
       volumes:
         - hostPath:
             path: /var/log/pods
@@ -625,6 +658,30 @@ matches the snapshot with default values:
             path: /proc
             type: Directory
           name: host-proc
+        - hostPath:
+            path: /usr/bin/journalctl
+            type: File
+          name: journalctl
+        - hostPath:
+            path: /lib
+            type: Directory
+          name: host-lib
+        - hostPath:
+            path: /lib64
+            type: DirectoryOrCreate
+          name: host-lib64
+        - hostPath:
+            path: /usr/lib
+            type: Directory
+          name: host-usr-lib
+        - hostPath:
+            path: /etc/machine-id
+            type: File
+          name: host-machine-id
+        - hostPath:
+            path: /var/log/journal
+            type: Directory
+          name: journal-persistent
   14: |
     apiVersion: opentelemetry.io/v1beta1
     kind: OpenTelemetryCollector
