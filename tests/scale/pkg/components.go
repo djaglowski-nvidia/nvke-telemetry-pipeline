@@ -16,6 +16,8 @@ func newGenerator(config ComponentSpec, kubeconfig string) (generator, error) {
 		return generators.NewKubernetesGenerator(config.Spec, kubeconfig)
 	case "pod":
 		return generators.NewPodGenerator(config.Spec, kubeconfig)
+	case "statefulset":
+		return generators.NewStatefulSetGenerator(config.Spec, kubeconfig)
 	case "job":
 		return generators.NewJobGenerator(config.Spec, kubeconfig)
 	default:

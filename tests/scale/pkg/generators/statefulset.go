@@ -1,0 +1,237 @@
+package generators
+
+import (
+	"context"
+	"crypto/rand"
+	"errors"
+	"fmt"
+	"strings"
+	"time"
+
+	"go.yaml.in/yaml/v3"
+	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/wait"
+	appsclient "k8s.io/client-go/kubernetes/typed/apps/v1"
+	coreclient "k8s.io/client-go/kubernetes/typed/core/v1"
+	"k8s.io/client-go/tools/clientcmd"
+	k8syaml "sigs.k8s.io/yaml"
+)
+
+const (
+	// statefulSetOwnerLabel isolates each run's controller and Pods.
+	statefulSetOwnerLabel = "scale.nktp.io/generator"
+	// statefulSetPollInterval spaces readiness and deletion observations.
+	statefulSetPollInterval = time.Second
+	// statefulSetCleanupTimeout bounds cleanup after the run context expires.
+	statefulSetCleanupTimeout = 5 * time.Minute
+)
+
+// StatefulSetGenerator runs long-lived Pods with stable replica names.
+// Construct it with NewStatefulSetGenerator.
+type StatefulSetGenerator struct {
+	// kubeconfig selects the credential file shared by the plan.
+	kubeconfig string
+	// config holds the native Pod template and workload lifetime.
+	config statefulSetConfig
+}
+
+// statefulSetConfig describes one StatefulSet and its run duration.
+type statefulSetConfig struct {
+	// Replicas is the number of Pods maintained by the StatefulSet.
+	Replicas int32 `json:"replicas"`
+	// Duration starts when every replica first becomes Ready.
+	Duration metav1.Duration `json:"duration"`
+	// PodTemplate supplies native container, metadata and scheduling settings.
+	PodTemplate corev1.PodTemplateSpec `json:"podTemplate"`
+}
+
+// NewStatefulSetGenerator parses a native Pod template without accessing a cluster.
+// Replicas default to one and namespace to default. Zero replicas creates nothing.
+// Duration must be positive. Kubernetes validates submitted Pod fields.
+func NewStatefulSetGenerator(spec yaml.Node, kubeconfig string) (*StatefulSetGenerator, error) {
+	// data bridges plan YAML nodes and Kubernetes JSON field names.
+	data, err := yaml.Marshal(&spec)
+	if err != nil {
+		return nil, fmt.Errorf("encode statefulset spec: %w", err)
+	}
+	// cfg supplies only generator defaults, leaving Pod defaults to Kubernetes.
+	cfg := statefulSetConfig{Replicas: 1}
+	err = k8syaml.UnmarshalStrict(data, &cfg)
+	if err != nil {
+		return nil, fmt.Errorf("decode statefulset spec: %w", err)
+	}
+	if cfg.Replicas < 0 {
+		return nil, errors.New("replicas must not be negative")
+	}
+	if cfg.Duration.Duration <= 0 {
+		return nil, errors.New("duration must be positive")
+	}
+	if cfg.PodTemplate.Namespace == "" {
+		cfg.PodTemplate.Namespace = "default"
+	}
+	return &StatefulSetGenerator{kubeconfig: kubeconfig, config: cfg}, nil
+}
+
+// Run creates a StatefulSet and headless Service, then observes its replicas.
+// Duration starts once all replicas are Ready. A run succeeds after that duration
+// when all replicas are Ready again, allowing replacement during the run.
+// Cancellation and API failures stop the run. Cleanup removes owned resources
+// and has its own five-minute timeout. Run returns both run and cleanup errors.
+func (g *StatefulSetGenerator) Run(ctx context.Context) (err error) {
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+	if g.config.Replicas == 0 {
+		return nil
+	}
+	// credentials selects the supplied file's current context.
+	credentials, err := clientcmd.LoadFromFile(g.kubeconfig)
+	if err != nil {
+		return fmt.Errorf("load kubeconfig: %w", err)
+	}
+	// config bounds API requests independently of the overall plan deadline.
+	config, err := clientcmd.NewNonInteractiveClientConfig(*credentials, "", &clientcmd.ConfigOverrides{}, nil).ClientConfig()
+	if err != nil {
+		return fmt.Errorf("configure Kubernetes client: %w", err)
+	}
+	config.Timeout = 10 * time.Second
+	config.QPS, config.Burst = -1, -1
+	// apps uses the real typed client for controller operations.
+	apps, err := appsclient.NewForConfig(config)
+	if err != nil {
+		return fmt.Errorf("create StatefulSet client: %w", err)
+	}
+	// core creates the governing Service in the same namespace.
+	core, err := coreclient.NewForConfig(config)
+	if err != nil {
+		return fmt.Errorf("create Service client: %w", err)
+	}
+	// workload carries ownership before Create so a lost response can be cleaned up.
+	workload := newStatefulSet(g.config)
+	// sets confines controller operations to the template's namespace.
+	sets := apps.StatefulSets(workload.Namespace)
+	defer func() {
+		// cleanupCtx remains usable after cancellation of the plan.
+		cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), statefulSetCleanupTimeout)
+		defer cancel()
+		err = errors.Join(err, cleanupStatefulSet(cleanupCtx, sets, workload), ctx.Err())
+	}()
+	// created supplies the UID for deletion preconditions and dependent ownership.
+	created, err := sets.Create(ctx, workload, metav1.CreateOptions{})
+	if err != nil {
+		return fmt.Errorf("create StatefulSet %s/%s: %w", workload.Namespace, workload.Name, err)
+	}
+	workload = created
+	// service gives each replica DNS identity and is deleted with its controller.
+	service := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: workload.Name, Namespace: workload.Namespace,
+			OwnerReferences: []metav1.OwnerReference{*metav1.NewControllerRef(workload, appsv1.SchemeGroupVersion.WithKind("StatefulSet"))},
+		},
+		Spec: corev1.ServiceSpec{
+			ClusterIP: corev1.ClusterIPNone,
+			Selector:  map[string]string{statefulSetOwnerLabel: workload.Name},
+		},
+	}
+	_, err = core.Services(workload.Namespace).Create(ctx, service, metav1.CreateOptions{})
+	if err != nil {
+		return fmt.Errorf("create StatefulSet Service %s/%s: %w", service.Namespace, service.Name, err)
+	}
+	return waitForStatefulSet(ctx, sets, workload, g.config.Duration.Duration)
+}
+
+// newStatefulSet isolates the template and assigns a unique controller identity.
+// Parallel management lets replicas start independently as resources permit.
+func newStatefulSet(cfg statefulSetConfig) *appsv1.StatefulSet {
+	// template protects the configuration from per-run metadata changes.
+	template := cfg.PodTemplate.DeepCopy()
+	// name separates concurrent runs, even when their user labels match.
+	name := "scale-" + strings.ToLower(rand.Text())
+	if template.Labels == nil {
+		template.Labels = make(map[string]string)
+	}
+	template.Labels[statefulSetOwnerLabel] = name
+	return &appsv1.StatefulSet{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: name, Namespace: template.Namespace,
+			Labels: map[string]string{statefulSetOwnerLabel: name},
+		},
+		Spec: appsv1.StatefulSetSpec{
+			Replicas: &cfg.Replicas, ServiceName: name,
+			PodManagementPolicy: appsv1.ParallelPodManagement,
+			Selector:            &metav1.LabelSelector{MatchLabels: map[string]string{statefulSetOwnerLabel: name}},
+			Template:            *template,
+		},
+	}
+}
+
+// waitForStatefulSet starts duration at readiness and permits controller recovery.
+// The caller's context bounds startup, duration and any remaining recovery time.
+func waitForStatefulSet(ctx context.Context, sets appsclient.StatefulSetInterface, owned *appsv1.StatefulSet, duration time.Duration) error {
+	// readyAt records first readiness without resetting on Pod replacement.
+	var readyAt time.Time
+	// err retains lookup failures and the caller's cancellation cause.
+	err := wait.PollUntilContextCancel(ctx, statefulSetPollInterval, true, func(ctx context.Context) (bool, error) {
+		// current must still be the controller created by this run.
+		current, err := sets.Get(ctx, owned.Name, metav1.GetOptions{})
+		if err != nil {
+			return false, err
+		}
+		if current.UID != owned.UID || current.DeletionTimestamp != nil {
+			return false, errors.New("StatefulSet was replaced or is being deleted")
+		}
+		if current.Status.ObservedGeneration < current.Generation || current.Status.ReadyReplicas != *owned.Spec.Replicas {
+			return false, nil
+		}
+		if readyAt.IsZero() {
+			readyAt = time.Now()
+		}
+		return time.Since(readyAt) >= duration, nil
+	})
+	if err != nil {
+		return fmt.Errorf("wait for StatefulSet %s/%s: %w", owned.Namespace, owned.Name, err)
+	}
+	return nil
+}
+
+// cleanupStatefulSet verifies ownership and waits for foreground deletion.
+// A lost Create response is recoverable through the generated ownership label.
+func cleanupStatefulSet(ctx context.Context, sets appsclient.StatefulSetInterface, owned *appsv1.StatefulSet) error {
+	// current supplies an API UID even when the original Create response was lost.
+	current, err := sets.Get(ctx, owned.Name, metav1.GetOptions{})
+	if apierrors.IsNotFound(err) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("find StatefulSet %s/%s for cleanup: %w", owned.Namespace, owned.Name, err)
+	}
+	if current.Labels[statefulSetOwnerLabel] != owned.Name || (owned.UID != "" && current.UID != owned.UID) {
+		return fmt.Errorf("refuse to delete unowned StatefulSet %s/%s", owned.Namespace, owned.Name)
+	}
+	// propagation keeps the controller present until its Pods and Service are gone.
+	propagation := metav1.DeletePropagationForeground
+	err = sets.Delete(ctx, current.Name, metav1.DeleteOptions{
+		Preconditions: &metav1.Preconditions{UID: &current.UID}, PropagationPolicy: &propagation,
+	})
+	if err != nil && !apierrors.IsNotFound(err) {
+		return fmt.Errorf("delete StatefulSet %s/%s: %w", owned.Namespace, owned.Name, err)
+	}
+	err = wait.PollUntilContextCancel(ctx, statefulSetPollInterval, true, func(ctx context.Context) (bool, error) {
+		// remaining can be absent or replaced once the owned controller is removed.
+		remaining, err := sets.Get(ctx, owned.Name, metav1.GetOptions{})
+		if apierrors.IsNotFound(err) {
+			return true, nil
+		}
+		if err != nil {
+			return false, err
+		}
+		return remaining.UID != current.UID, nil
+	})
+	if err != nil {
+		return fmt.Errorf("wait for StatefulSet %s/%s cleanup: %w", owned.Namespace, owned.Name, err)
+	}
+	return nil
+}

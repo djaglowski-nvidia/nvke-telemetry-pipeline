@@ -77,8 +77,8 @@ The no-op plans below do not require `scale:up`.
 
 The plan contains configuration, not executable objects. `Executor` validates
 every component specification and constructs fresh runnables before any stage
-starts. Generators support `type: noop`, `type: job`, `type: pod` and
-`type: kubernetes`.
+starts. Generators support `type: noop`, `type: job`, `type: pod`,
+`type: statefulset` and `type: kubernetes`.
 Measurements support `type: noop` and `type: prometheus`. No-op components accept an empty or omitted
 `spec`. No-op measurements also accept `spec.queries`, a mapping of names to nonempty query
 strings. These strings are resolved by the plan parser but are not evaluated.
@@ -309,8 +309,9 @@ The harness can be extended with additional generators and measurements.
 - **Kubernetes Pod (`pod`)** runs a batch of native Pod templates on real or
   emulated nodes. See the [KWOK Pod plan](plans/kwok-pods.yaml).
 - **Kubernetes Job (`job`)** runs a containerized load generator to completion.
-  See the [telemetrygen plan](plans/telemetrygen.yaml) or
-  [Avalanche plan](plans/avalanche.yaml) for configuration.
+  See the [telemetrygen plan](plans/telemetrygen.yaml).
+- **Kubernetes StatefulSet (`statefulset`)** runs long-lived replicas with stable
+  Pod names. See the [Avalanche plan](plans/avalanche.yaml).
 - **Kubernetes emulator (`kubernetes`)** creates KWOK nodes, holds them while
   measurements run, then deletes them. See the [node plan](plans/kwok-nodes.yaml).
 
@@ -434,14 +435,50 @@ binary, remove the KWOK lifecycle label, selector and toleration, then set the
 container image, command and arguments. The binary must exit successfully within
 the plan timeout. All other native template settings are preserved.
 
+## StatefulSets
+
+The StatefulSet generator runs long-lived replicas from a native Kubernetes Pod
+template. It keeps each replica's name when Kubernetes replaces its Pod.
+
+```yaml
+generator:
+  type: statefulset
+  spec:
+    replicas: 3
+    duration: 3m
+    podTemplate:
+      metadata:
+        namespace: nktp
+        labels:
+          run_id: '{{args.run-id}}'
+      spec:
+        containers:
+        - name: load
+          image: registry.k8s.io/pause:3.10
+```
+
+Replicas default to one, and zero creates no resources. The namespace comes from
+`podTemplate.metadata.namespace`, defaults to `default`, and must already exist.
+`duration` must be positive and starts when all replicas first become Ready.
+Replicas start independently as scheduling permits. The run succeeds after the
+duration when all replicas are Ready. Replacement does not restart the timer.
+The plan timeout bounds startup and recovery as well as the configured duration.
+
+Kubernetes restarts containers and replaces deleted Pods. Use long-lived binaries
+with the StatefulSet's required `Always` restart policy. Native Pod settings,
+including readiness probes, resource requests and scheduling, come from the
+template. Names and the `scale.nktp.io/generator` label are assigned per run.
+The StatefulSet, its Pods and its headless Service are cleaned up on completion,
+failure or cancellation. Stable replica names apply within a run.
+
 ## Avalanche
 
 [Avalanche](https://github.com/prometheus-community/avalanche) generates
 Prometheus metrics for NKTP to scrape. The [example plan](plans/avalanche.yaml)
-runs three independent pods for three minutes. Each pod serves 10,000 gauge
-series. The [scrape profile](scale-test-values.yaml) routes Avalanche targets
-through NKTP's two large-target collectors and the metrics gateway to the
-blackhole collectors.
+runs three StatefulSet replicas for three minutes after readiness. Each replica
+serves 10,000 gauge series. The [scrape profile](scale-test-values.yaml) routes
+Avalanche targets through NKTP's large-target collectors and metrics gateway to
+the blackhole collectors.
 
 From the repository root:
 
@@ -453,22 +490,11 @@ task test:scale -- -plan "$PWD/tests/scale/plans/avalanche.yaml"
 Pass the values file on subsequent `scale:up` runs to keep the scrape profile.
 The plan and profile use namespace `nktp`. Adjust both when using another namespace.
 
-Job `parallelism` defaults to `1` and must be a positive integer. It requests
-concurrent pods and requires that many successful completions. Pods start
-independently as resources become available. `pod_labels` supplies labels for
-scrape discovery. Job controller and harness ownership labels are reserved.
-
-Adjust the plan's parallelism or Avalanche arguments to change the load.
-The measurement is currently no-op, so successful completion confirms workload
-execution and cleanup without verifying backend delivery.
-
-**Limitation:** Avalanche runs as a Kubernetes Job and does not preserve
-time-series identity across pod replacement. If a pod is replaced during a test,
-its new labels create distinct series that may overlap with the previous pod's
-series in backend queries. This can inflate the observed series count or mask
-missing data, so the count alone does not prove that the expected number of
-series is being received simultaneously. StatefulSet support with stable replica
-identities and label mapping is planned.
+Adjust `replicas`, `duration` or the container arguments to change the load.
+The Pod name supplies Avalanche's `generator_instance` label, so that label
+survives replacement of a replica. Other scrape labels can still change.
+The measurement is no-op, so success confirms workload readiness and cleanup
+without verifying backend delivery or complete time-series identity.
 
 ## Continuous metrics load
 

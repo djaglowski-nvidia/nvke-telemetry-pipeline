@@ -4,44 +4,35 @@ timeout: 4m
 stages:
   - name: metrics
     generator:
-      type: job
+      type: statefulset
       spec:
-        namespace: nktp
-        parallelism: 3
-        pod_labels:
-          scale.nktp.io/workload: avalanche
-        image: quay.io/prometheuscommunity/avalanche:v0.7.0@sha256:ea02e9599fcbb59a6fc7396656434faf200db7f1c259802e3dbb38cec81bd12a
-        cmd: [/bin/sh, -c]
-        args:
-          - |
-            "$@" --const-label="generator_instance=$(hostname)" &
-            generator=$!
-            # cleanup stops and reaps Avalanche on every exit path.
-            cleanup() {
-              kill "$generator" 2>/dev/null || true
-              wait "$generator" 2>/dev/null || true
-            }
-            trap cleanup EXIT
-            trap 'exit 143' TERM
-            trap 'exit 130' INT
-            for second in $(seq 180)
-            do
-              sleep 1
-              if ! kill -0 "$generator" 2>/dev/null
-              then
-                wait "$generator" || exit "$?"
-                echo "Avalanche exited before the duration elapsed" >&2
-                exit 1
-              fi
-            done
-            # A live workload reaching the duration is the only successful exit.
-            exit 0
-          - avalanche
-          - /bin/avalanche
-          - --port=9001
-          - --gauge-metric-count=100
-          - --series-count=100
-          - --series-interval=0
-          - --metric-interval=0
+        replicas: 3
+        duration: 3m
+        podTemplate:
+          metadata:
+            namespace: nktp
+            labels:
+              scale.nktp.io/workload: avalanche
+          spec:
+            containers:
+              - name: avalanche
+                image: quay.io/prometheuscommunity/avalanche:v0.7.0@sha256:ea02e9599fcbb59a6fc7396656434faf200db7f1c259802e3dbb38cec81bd12a
+                command: [/bin/avalanche]
+                args:
+                  - --port=9001
+                  - --gauge-metric-count=100
+                  - --series-count=100
+                  - --series-interval=0
+                  - --metric-interval=0
+                  - --const-label=generator_instance=$(POD_NAME)
+                env:
+                  - name: POD_NAME
+                    valueFrom:
+                      fieldRef:
+                        fieldPath: metadata.name
+                readinessProbe:
+                  httpGet:
+                    path: /metrics
+                    port: 9001
     measurement:
       type: noop
