@@ -393,6 +393,17 @@ tests:
           path: spec.template.spec.containers[0].image
           value: grafana/otel-lgtm:0.31.0
 
+  - it: mirrors the backend image through global.imageRegistry
+    set:
+      global.imageRegistry: mirror.example.com
+    documentSelector:
+      path: kind
+      value: Deployment
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: mirror.example.com/grafana/otel-lgtm:0.32.0
+
   - it: enables anonymous admin access to Grafana
     documentSelector:
       path: kind

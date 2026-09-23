@@ -1,12 +1,28 @@
 # Default values for the NKTP Helm chart.
 
+global:
+  # Override image registry for every image this chart and its dependencies pull.
+  #
+  # NOTE: metrics-server (disabled by default) and the opentelemetry-operator chart
+  # nested in opentelemetry-kube-stack do NOT read global.imageRegistry.
+  # Point them at a mirror explicitly instead:
+  #   metrics-server:
+  #     image:
+  #       repository: <mirror>/metrics-server/metrics-server
+  #   opentelemetry-kube-stack:
+  #     opentelemetry-operator:
+  #       manager:
+  #         image:
+  #           repository: <mirror>/open-telemetry/opentelemetry-operator/opentelemetry-operator
+  imageRegistry: ""
+
 # Namespace for all namespaced NKTP resources. Created by the chart when
 # create is true. CRDs and other cluster-scoped resources are unaffected.
 namespace:
   name: nktp
   create: true
 
-# Collector image used by all OTel workloads.
+# Collector image used by all OTel workloads. global.imageRegistry replaces registry.
 otelcol_image:
   registry: "" # Empty pulls from the image's default registry (Docker Hub for this repository).
   repository: otel/opentelemetry-collector-k8s

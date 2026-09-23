@@ -1,12 +1,18 @@
 {{/*
 Resolve an image map ({registry, repository, tag}) into an
-OpenTelemetryCollector spec.image / container image string. Used by
-otelcol_image, otel-lgtm.image, and kube-state-metrics.image.
+OpenTelemetryCollector spec.image / container image string, honoring
+global.imageRegistry.
+
+When global.imageRegistry is set, it replaces the image's own registry.
 */}}
 {{- define "nktp.image" -}}
-{{- if .registry -}}
-{{- printf "%s/%s:%s" .registry .repository .tag -}}
+{{- $registry := .image.registry -}}
+{{- if .imageRegistry -}}
+{{- $registry = .imageRegistry -}}
+{{- end -}}
+{{- if $registry -}}
+{{- printf "%s/%s:%s" $registry .image.repository .image.tag -}}
 {{- else -}}
-{{- printf "%s:%s" .repository .tag -}}
+{{- printf "%s:%s" .image.repository .image.tag -}}
 {{- end -}}
 {{- end -}}

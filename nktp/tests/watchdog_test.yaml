@@ -229,6 +229,25 @@ tests:
             processors: [memory_limiter]
             exporters: [otlp_http]
 
+  - it: fills in the empty default registry with global.imageRegistry
+    template: templates/watchdog.yaml
+    set:
+      global.imageRegistry: mirror.example.com
+    asserts:
+      - equal:
+          path: spec.image
+          value: mirror.example.com/otel/opentelemetry-collector-k8s:0.159.0
+
+  - it: replaces an image's own registry with global.imageRegistry
+    template: templates/watchdog.yaml
+    set:
+      otelcol_image: {registry: registry.k8s.io, repository: example/collector, tag: 1.0.0}
+      global.imageRegistry: mirror.example.com
+    asserts:
+      - equal:
+          path: spec.image
+          value: mirror.example.com/example/collector:1.0.0
+
   - it: prefers the watchdog image override
     template: templates/watchdog.yaml
     set:

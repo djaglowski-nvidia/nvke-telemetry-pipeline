@@ -85,6 +85,14 @@ tests:
           path: spec.image
           value: example.com/collector:global
 
+  - it: mirrors the Collector image through global.imageRegistry
+    set:
+      global.imageRegistry: mirror.example.com
+    asserts:
+      - equal:
+          path: spec.image
+          value: mirror.example.com/otel/opentelemetry-collector-k8s:0.159.0
+
   - it: passes workload overrides through and resolves the Collector image separately
     set:
       otelcol_image: {registry: example.com, repository: collector, tag: global}

@@ -162,6 +162,17 @@ tests:
       - hasDocuments:
           count: 0
 
+  - it: replaces the image's registry.k8s.io host with global.imageRegistry
+    set:
+      global.imageRegistry: mirror.example.com
+    documentSelector:
+      path: metadata.name
+      value: nktp-ksm-pods
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: mirror.example.com/kube-state-metrics/kube-state-metrics:v2.20.0
+
   - it: collects all Pods centrally with independent hash shards
     set:
       kube-state-metrics.daemonset.enabled: false
