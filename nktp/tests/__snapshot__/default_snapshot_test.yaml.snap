@@ -2377,6 +2377,29 @@ matches the snapshot with default values:
         name: nktp-large-target-metrics-targetallocator
         namespace: NAMESPACE
   56: |
+    apiVersion: rbac.authorization.k8s.io/v1
+    kind: ClusterRole
+    metadata:
+      name: nktp-large-target-metrics-scrape-NAMESPACE
+    rules:
+      - nonResourceURLs:
+          - /metrics
+        verbs:
+          - get
+  57: |
+    apiVersion: rbac.authorization.k8s.io/v1
+    kind: ClusterRoleBinding
+    metadata:
+      name: nktp-large-target-metrics-scrape-NAMESPACE
+    roleRef:
+      apiGroup: rbac.authorization.k8s.io
+      kind: ClusterRole
+      name: nktp-large-target-metrics-scrape-NAMESPACE
+    subjects:
+      - kind: ServiceAccount
+        name: nktp-large-target-metrics-collector
+        namespace: NAMESPACE
+  58: |
     apiVersion: opentelemetry.io/v1beta1
     kind: OpenTelemetryCollector
     metadata:
@@ -2511,7 +2534,7 @@ matches the snapshot with default values:
           seccompProfile:
             type: RuntimeDefault
         prometheusCR:
-          denyFSAccessThroughSMs: true
+          denyFSAccessThroughSMs: false
           enabled: true
           podMonitorSelector:
             matchExpressions:
@@ -2575,7 +2598,7 @@ matches the snapshot with default values:
           topologyKey: kubernetes.io/hostname
           whenUnsatisfiable: ScheduleAnyway
       upgradeStrategy: automatic
-  57: |
+  59: |
     apiVersion: v1
     data:
       nktp.yaml: |
@@ -2592,7 +2615,7 @@ matches the snapshot with default values:
     kind: ConfigMap
     metadata:
       name: lgtm-dashboard-provider
-  58: |
+  60: |
     apiVersion: v1
     data:
       nktp-cluster-events.json: |
@@ -8937,7 +8960,7 @@ matches the snapshot with default values:
     kind: ConfigMap
     metadata:
       name: lgtm-dashboards
-  59: |
+  61: |
     apiVersion: v1
     kind: Service
     metadata:
@@ -8962,7 +8985,7 @@ matches the snapshot with default values:
           targetPort: 4318
       selector:
         app: lgtm
-  60: |
+  62: |
     apiVersion: apps/v1
     kind: Deployment
     metadata:
@@ -9038,7 +9061,7 @@ matches the snapshot with default values:
               name: p8s-storage
             - emptyDir: {}
               name: pyroscope-storage
-  61: |
+  63: |
     apiVersion: rbac.authorization.k8s.io/v1
     kind: ClusterRoleBinding
     metadata:
@@ -9051,7 +9074,7 @@ matches the snapshot with default values:
       - kind: ServiceAccount
         name: nktp-watchdog-collector
         namespace: NAMESPACE
-  62: |
+  64: |
     apiVersion: rbac.authorization.k8s.io/v1
     kind: Role
     metadata:
@@ -9075,7 +9098,7 @@ matches the snapshot with default values:
           - get
           - list
           - watch
-  63: |
+  65: |
     apiVersion: rbac.authorization.k8s.io/v1
     kind: RoleBinding
     metadata:
@@ -9089,7 +9112,7 @@ matches the snapshot with default values:
       - kind: ServiceAccount
         name: nktp-watchdog-targetallocator
         namespace: NAMESPACE
-  64: |
+  66: |
     apiVersion: opentelemetry.io/v1beta1
     kind: OpenTelemetryCollector
     metadata:

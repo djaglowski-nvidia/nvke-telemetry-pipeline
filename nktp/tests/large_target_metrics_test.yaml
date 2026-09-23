@@ -54,7 +54,7 @@ tests:
         documentIndex: 0
       - equal:
           path: "spec.targetAllocator.prometheusCR.denyFSAccessThroughSMs"
-          value: true
+          value: false
         documentIndex: 0
       - equal:
           path: "spec.targetAllocator.prometheusCR.serviceMonitorSelector"

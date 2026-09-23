@@ -1,0 +1,92 @@
+suite: Kubernetes component ServiceMonitors
+release:
+  name: test
+templates:
+  - charts/opentelemetry-kube-stack/templates/exporters/core-dns/servicemonitor.yaml
+  - charts/opentelemetry-kube-stack/templates/exporters/kube-api-server/servicemonitor.yaml
+  - charts/opentelemetry-kube-stack/templates/exporters/kube-controller-manager/servicemonitor.yaml
+  - charts/opentelemetry-kube-stack/templates/exporters/kube-dns/servicemonitor.yaml
+  - charts/opentelemetry-kube-stack/templates/exporters/kube-etcd/servicemonitor.yaml
+  - charts/opentelemetry-kube-stack/templates/exporters/kube-proxy/servicemonitor.yaml
+  - charts/opentelemetry-kube-stack/templates/exporters/kube-scheduler/servicemonitor.yaml
+tests:
+  - it: declares the API server as a scrape target
+    template: charts/opentelemetry-kube-stack/templates/exporters/kube-api-server/servicemonitor.yaml
+    asserts:
+      - containsDocument:
+          apiVersion: monitoring.coreos.com/v1
+          kind: ServiceMonitor
+          name: test-apiserver
+      - equal:
+          path: metadata.labels["nktp.nvidia.io/large-target"]
+          value: "true"
+      - equal:
+          path: spec.endpoints[0].bearerTokenFile
+          value: /var/run/secrets/kubernetes.io/serviceaccount/token
+      - equal:
+          path: spec.endpoints[0].tlsConfig.caFile
+          value: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+
+  - it: declares the controller manager as a scrape target
+    template: charts/opentelemetry-kube-stack/templates/exporters/kube-controller-manager/servicemonitor.yaml
+    asserts:
+      - containsDocument:
+          apiVersion: monitoring.coreos.com/v1
+          kind: ServiceMonitor
+          name: test-kube-controller-manager
+      - equal:
+          path: metadata.labels["nktp.nvidia.io/large-target"]
+          value: "true"
+
+  - it: declares the scheduler as a scrape target
+    template: charts/opentelemetry-kube-stack/templates/exporters/kube-scheduler/servicemonitor.yaml
+    asserts:
+      - containsDocument:
+          apiVersion: monitoring.coreos.com/v1
+          kind: ServiceMonitor
+          name: test-kube-scheduler
+      - equal:
+          path: metadata.labels["nktp.nvidia.io/large-target"]
+          value: "true"
+
+  - it: declares etcd as a scrape target
+    template: charts/opentelemetry-kube-stack/templates/exporters/kube-etcd/servicemonitor.yaml
+    asserts:
+      - containsDocument:
+          apiVersion: monitoring.coreos.com/v1
+          kind: ServiceMonitor
+          name: test-kube-etcd
+      - equal:
+          path: metadata.labels["nktp.nvidia.io/large-target"]
+          value: "true"
+
+  - it: declares CoreDNS as a scrape target
+    template: charts/opentelemetry-kube-stack/templates/exporters/core-dns/servicemonitor.yaml
+    asserts:
+      - containsDocument:
+          apiVersion: monitoring.coreos.com/v1
+          kind: ServiceMonitor
+          name: test-coredns
+      - equal:
+          path: metadata.labels["nktp.nvidia.io/large-target"]
+          value: "true"
+
+  - it: declares kube-proxy as a scrape target
+    template: charts/opentelemetry-kube-stack/templates/exporters/kube-proxy/servicemonitor.yaml
+    asserts:
+      - containsDocument:
+          apiVersion: monitoring.coreos.com/v1
+          kind: ServiceMonitor
+          name: test-kube-proxy
+      - equal:
+          path: metadata.labels["nktp.nvidia.io/large-target"]
+          value: "true"
+
+  - it: does not declare kube-dns as a scrape target
+    template: charts/opentelemetry-kube-stack/templates/exporters/kube-dns/servicemonitor.yaml
+    asserts:
+      - containsDocument:
+          apiVersion: monitoring.coreos.com/v1
+          kind: ServiceMonitor
+          name: test-kube-dns
+        not: true

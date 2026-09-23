@@ -7,7 +7,7 @@ tests:
   - it: grants discovery access to the allocator without Secret access
     asserts:
       - hasDocuments:
-          count: 2
+          count: 4
       - equal:
           path: "kind"
           value: "ClusterRole"
@@ -28,11 +28,24 @@ tests:
           path: "subjects"
           value: [{"kind": "ServiceAccount", "name": "nktp-large-target-metrics-targetallocator", "namespace": "nktp"}]
         documentIndex: 1
+      - equal:
+          path: "metadata.name"
+          value: "nktp-large-target-metrics-scrape-nktp"
+        documentIndex: 2
+      - equal:
+          path: "rules"
+          value: [{"nonResourceURLs": ["/metrics"], "verbs": ["get"]}]
+        documentIndex: 2
+      - equal:
+          path: "subjects"
+          value: [{"kind": "ServiceAccount", "name": "nktp-large-target-metrics-collector", "namespace": "nktp"}]
+        documentIndex: 3
   - it: binds custom accounts in the release namespace
     release:
       namespace: "telemetry"
     set:
       large_target_metrics.kubernetes.targetAllocator.serviceAccount: "labeled-discovery"
+      large_target_metrics.kubernetes.serviceAccount: "component-scraper"
     asserts:
       - equal:
           path: "subjects"
@@ -42,3 +55,11 @@ tests:
           path: "roleRef.name"
           value: "nktp-large-target-metrics-targetallocator-telemetry"
         documentIndex: 1
+      - equal:
+          path: "subjects"
+          value: [{"kind": "ServiceAccount", "name": "component-scraper", "namespace": "telemetry"}]
+        documentIndex: 3
+      - equal:
+          path: "roleRef.name"
+          value: "nktp-large-target-metrics-scrape-telemetry"
+        documentIndex: 3

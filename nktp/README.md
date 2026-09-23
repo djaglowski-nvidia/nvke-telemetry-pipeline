@@ -336,6 +336,22 @@ Helm installs missing OpenTelemetry CRDs (OpenTelemetryCollector, Instrumentatio
 TargetAllocator, OpAMPBridge) and Prometheus CRDs (ServiceMonitor, PodMonitor, Probe,
 ScrapeConfig) before the chart's resources.
 
+### Kubernetes component metrics
+
+NKTP enables the kube-stack ServiceMonitors for kube-apiserver,
+kube-controller-manager, kube-scheduler, etcd, CoreDNS, and kube-proxy. They are
+labeled `nktp.nvidia.io/large-target: "true"` and selected by the large-target
+metrics Target Allocator. Component availability, labels, ports, and network
+exposure vary between Kubernetes distributions, so a rendered ServiceMonitor
+does not by itself guarantee a reachable target. The large-target Collector's
+service account has read-only authorization for the `/metrics` non-resource URL.
+
+The ServiceMonitors from opentelemetry-kube-stack 0.22.0 reference bearer-token
+and, for secure endpoints, CA files in the Collector container. The large-target
+Target Allocator therefore sets `denyFSAccessThroughSMs: false`. Setting it to
+`true` causes these ServiceMonitor endpoints to be dropped, as described in
+[opentelemetry-helm-charts issue #2408](https://github.com/open-telemetry/opentelemetry-helm-charts/issues/2408).
+
 The minimum supported API version for `OpenTelemetryCollector` resources is `opentelemetry.io/v1beta1`.
 
 Use these independent settings when another mechanism manages the Operator or CRDs.
