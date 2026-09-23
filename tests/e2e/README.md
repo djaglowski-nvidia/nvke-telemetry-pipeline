@@ -30,42 +30,12 @@ across several attempts. `task e2e:down` is the only thing that deletes it, and
 it deletes only what `task e2e:up` created: a cluster you brought yourself is
 yours to remove, along with the kubeconfig that reaches it.
 
-The suite installs the chart itself, because the install is the behaviour under
+The suite installs the chart itself, because installation is behaviour under
 test. The Taskfile gives it only what a test cannot provide for itself: a Kind
 cluster on the node image the root Taskfile pins, so that every suite in the
 repository runs the same Kubernetes version, and the subcharts fetched from the
-upstream Helm repositories.
-
-`TestChartLifecycle` is the test, and its subtests are the loop:
-
-1. install the chart, and wait for the workloads the operator builds after Helm
-   returns
-2. validate the release
-3. reapply it, and check that nothing changed
-4. validate it again
-5. uninstall it, and check what is left behind
-
-The loop is the unit the wider test matrix repeats, so a scenario is added by
-varying its inputs rather than by adding a stage. Step 3 reapplies the current
-release rather than upgrading from a published one, so it proves that
-reinstalling changes nothing, not that an upgrade from an earlier version
-works.
-
-It refuses to start if the release name is already taken, since it would
-otherwise adopt a release it did not create and delete it at the end.
-
-"Nothing changed" is measured as the generation of every workload, since a name
-only moves when a workload appears or disappears, while a template that
-rendered differently would roll every pod under unchanged names. It is enforced
-only for the workloads Helm applies itself, the ones carrying no owner
-reference. Reapplying a Collector CR that Helm renders byte-identically still
-makes the operator rewrite the workload derived from it, rolling every
-collector pod, so that half is reported on each run rather than failing it.
-
-A chart that generated something at install time, a hook writing unique
-configuration for instance, would move the Helm-managed half for a reason of
-its own. Nothing in the chart does today. `-nktp.stable-reapply=false` reports
-that half rather than failing on it, for when something does.
+upstream Helm repositories. Individual scenarios document their setup,
+assertions, and cleanup in their Go test comments.
 
 Not covered yet:
 
@@ -81,9 +51,9 @@ Not covered yet:
 ## Pointing the suite somewhere else
 
 `task e2e:test KUBECONFIG=<path>` runs against a cluster these tasks never
-created. The lifecycle test installs and then removes a release, so it holds
-the namespace to being empty at the end and expects the namespace to be the
-release's.
+created. In its default mode the suite installs and then removes releases, so it
+holds the namespace to being empty at the end and expects the namespace to be
+the release's.
 
 To validate an NKTP installation without touching it, which is what qualifying
 a release amounts to:
@@ -93,9 +63,8 @@ go test -tags e2e -count=1 -v -timeout 30m . -args \
   -nktp.install=false -nktp.kubeconfig=$KUBECONFIG -nktp.namespace=nktp
 ```
 
-`-nktp.install=false` skips `TestChartLifecycle`, which owns a release from
-install to uninstall, and runs `TestInstalled` instead. The suite only reads
-the cluster in that mode.
+`-nktp.install=false` disables scenarios that own a release and validates the
+existing installation in place. The suite only reads the cluster in that mode.
 
 Every input is a flag: `-nktp.chart`, `-nktp.release`, `-nktp.namespace`,
 `-nktp.values` (repeatable, layered in order), `-nktp.timeout`, and
@@ -111,6 +80,7 @@ counts and resource requests down to what a single node can schedule.
 runs it before deleting the cluster, since nobody can re-run a job and look at
 one afterwards.
 
-Reusable infrastructure lives in [../internal](../internal), not here: the
-Kubernetes API helpers in [../internal/kube](../internal/kube) and the Helm
-helper in [../internal/helm](../internal/helm).
+Reusable infrastructure lives in [../internal](../internal), not here: chart
+installation and readiness in [../internal/framework](../internal/framework),
+Kubernetes API helpers in [../internal/kube](../internal/kube), and the Helm
+command wrapper in [../internal/helm](../internal/helm).

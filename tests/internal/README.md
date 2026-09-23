@@ -1,6 +1,8 @@
 # Shared Test Framework
 
-Reusable test infrastructure shared by NKTP test suites, including cluster lifecycle, deployment, Kubernetes API helpers, load generation, validation, diagnostics, and reporting.
+Reusable test infrastructure shared by NKTP test suites, including chart
+installation and readiness under `framework/`, Kubernetes API and Helm helpers,
+load generation, validation, diagnostics, and reporting.
 
 ## Goals
 

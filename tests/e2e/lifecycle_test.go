@@ -3,7 +3,6 @@
 package e2e
 
 import (
-	"context"
 	"fmt"
 	"slices"
 	"testing"
@@ -21,34 +20,34 @@ import (
 //
 // It owns the release from end to end, which is why the steps are subtests of
 // one test rather than tests in their own right: nothing here is meaningful
-// out of order, and Go orders subtests but not tests.
+// out of order, and Go orders subtests but not tests. It refuses to adopt an
+// existing release because cleanup would otherwise delete something it did not
+// create.
+//
+// Reapply checks generations of Helm-managed workloads, where any change means
+// the same inputs rendered differently. Operator-derived workloads are only
+// reported because the Operator currently rewrites them even when their
+// Collector resource is unchanged. This verifies a stable reapply of the local
+// chart; it is not an upgrade test against a previously published release.
 func TestChartLifecycle(t *testing.T) {
 	if !*install {
 		t.Skip("-nktp.install is unset, so this suite does not own a release to install or remove")
 	}
 
 	k := newKube(t)
-	rel := releaseRef()
+	deployed := newChart(t, k)
+	owner := t
 
 	installed := t.Run("the chart installs", func(t *testing.T) {
 		ctx, cancel := deadline(t)
 		defer cancel()
 
-		// This test removes the release at the end, and Install upgrades one
-		// that already exists rather than refusing it. Between them they would
-		// take over a release the suite did not create and then delete it, so
-		// the name has to be free before any of that starts.
-		existing, err := newHelm(t).Installed(ctx, rel)
-		require.NoError(t, err)
-		require.False(t, existing,
-			"release %s already exists in namespace %s, and this test would take it over and then remove it; validate it where it stands with -nktp.install=false",
-			rel.Name, rel.Namespace)
-
-		require.NoError(t, newHelm(t).Install(ctx, rel, *chart, valueFiles, *timeout), "installing the chart")
-
-		waitCtx, cancelWait := deadline(t)
-		defer cancelWait()
-		require.NoError(t, settle(waitCtx, k), "waiting for the release to come up")
+		owned, err := deployed.InstallFresh(ctx)
+		if owned {
+			registerChartCleanup(owner, deployed, k)
+		}
+		require.NoError(t, err,
+			"installing a fresh release; validate an existing release with -nktp.install=false")
 	})
 	// A release that failed to install says nothing about the chart's
 	// behaviour once installed, and an uninstall check run against one would
@@ -63,11 +62,8 @@ func TestChartLifecycle(t *testing.T) {
 
 		ctx, cancel := deadline(t)
 		defer cancel()
-		require.NoError(t, newHelm(t).Install(ctx, rel, *chart, valueFiles, *timeout), "reapplying the chart")
-
-		waitCtx, cancelWait := deadline(t)
-		defer cancelWait()
-		require.NoError(t, settle(waitCtx, k), "waiting for the reapplied release")
+		_, err = deployed.Apply(ctx)
+		require.NoError(t, err, "reapplying the chart")
 
 		after, err := k.Workloads(t.Context(), *namespace)
 		require.NoError(t, err)
@@ -103,16 +99,11 @@ func TestChartLifecycle(t *testing.T) {
 	t.Run("uninstalling takes the workloads with it", func(t *testing.T) {
 		ctx, cancel := deadline(t)
 		defer cancel()
-		require.NoError(t, newHelm(t).Uninstall(ctx, rel, *timeout), "uninstalling the release")
+		require.NoError(t, deployed.Uninstall(ctx), "uninstalling the release")
 
 		// Kubernetes' garbage collector removes the workloads the operator
-		// derives, once the Collector they reference is gone. `helm uninstall
-		// --wait` waits only for the objects Helm applied itself, so it
-		// returns while that is still in progress.
-		//
-		// This holds the namespace to being empty rather than to holding none
-		// of the release's own objects, so it assumes the namespace is the
-		// release's.
+		// derives, once the Collector they reference is gone. Helm waits only
+		// for the objects it applied itself.
 		waitCtx, cancelWait := deadline(t)
 		defer cancelWait()
 		assert.NoError(t, k.WaitWorkloadsGone(waitCtx, *namespace), "uninstall should leave no workloads behind")
@@ -133,33 +124,8 @@ func TestChartLifecycle(t *testing.T) {
 	})
 }
 
-// settle waits for the workloads the operator builds once Helm has applied the
-// Collector CRs it builds them from.
-//
-// `helm --wait` covers only the objects Helm applies itself, so it returns
-// before those exist. Waiting for whatever is in the namespace at that moment
-// would pass by looking at a namespace the operator has not finished filling.
-func settle(ctx context.Context, k *kube.Client) error {
-	crs, err := k.CustomResources(ctx, *namespace, collectors)
-	if err != nil {
-		return err
-	}
-	expected, err := collectorWorkloads(crs)
-	if err != nil {
-		return err
-	}
-	if err := k.WaitWorkloadsExist(ctx, *namespace, expected); err != nil {
-		return err
-	}
-	return k.WaitWorkloadsReady(ctx, *namespace)
-}
-
 // generations renders the workloads one side owns, so that comparing two
 // rounds reports which of them moved rather than only that something did.
-//
-// Generation is what separates a reapply from a rollout: names alone would
-// catch a workload appearing or disappearing, while a template that renders
-// differently on each pass rolls every pod under unchanged names.
 func generations(workloads []kube.Workload, derived bool) []string {
 	var out []string
 	for _, w := range workloads {

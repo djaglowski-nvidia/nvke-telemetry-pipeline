@@ -177,15 +177,23 @@ to `false`.
 
 Each kubelet certificate must cover the node IP used by the collector.
 
-By default, this job does not scrape `/metrics/cadvisor`, `/metrics/probes`, or
-`/metrics/resource`. Enable them independently:
+By default, each collector also scrapes `/metrics/cadvisor`. It applies default
+[metric relabelings copied from kube-prometheus-stack to drop less useful,
+always-zero, overlapping, host-network-interface, and podless-cgroup
+samples](https://github.com/prometheus-community/helm-charts/blob/4713c624771a48e99f16dec9eb55ec8204f06830/charts/kube-prometheus-stack/values.yaml#L1952).
+Set `daemonset.kubelet.cadvisor.metricRelabelings` to replace these filters.
+Disable cAdvisor or enable `/metrics/probes` and `/metrics/resource`
+independently:
 
 ```yaml
 daemonset:
   kubelet:
-    cadvisor: true
-    probes: true
-    resource: true
+    cadvisor:
+      enabled: false
+    probes:
+      enabled: true
+    resource:
+      enabled: true
 ```
 
 Each optional job inherits the `/metrics` job's connection, authentication, and

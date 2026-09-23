@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
+	"github.com/NVIDIA-dev/nktp/tests/internal/framework"
 	"github.com/NVIDIA-dev/nktp/tests/internal/kube"
 )
 
@@ -21,8 +22,9 @@ var serviceMonitors = schema.GroupVersionResource{
 }
 
 // TestInstalled validates a release this suite did not install, which is what
-// qualifying an NKTP installation on a real cluster amounts to. The lifecycle
-// test runs the same checks around an install it owns.
+// qualifying an NKTP installation on a real cluster amounts to. It checks the
+// node exporter, backend, Collector workloads, monitors, and required CRDs.
+// TestChartLifecycle runs the same checks around an install it owns.
 func TestInstalled(t *testing.T) {
 	if *install {
 		t.Skip("the lifecycle test owns the release; pass -nktp.install=false to validate one already installed")
@@ -95,7 +97,7 @@ func verifyInstalled(t *testing.T, k *kube.Client) {
 		ctx, cancel := deadline(t)
 		defer cancel()
 
-		deployed, err := k.CustomResources(ctx, *namespace, collectors)
+		deployed, err := k.CustomResources(ctx, *namespace, framework.Collectors)
 		require.NoError(t, err)
 
 		var want []string
@@ -121,9 +123,9 @@ func verifyInstalled(t *testing.T, k *kube.Client) {
 		// builds the workload behind it, and a CR it has not acted on, or one
 		// whose pods cannot schedule, leaves the subtest above passing over an
 		// installation that collects nothing.
-		deployed, err := k.CustomResources(ctx, *namespace, collectors)
+		deployed, err := k.CustomResources(ctx, *namespace, framework.Collectors)
 		require.NoError(t, err)
-		expected, err := collectorWorkloads(deployed)
+		expected, err := framework.CollectorWorkloads(deployed)
 		require.NoError(t, err)
 
 		workloads, err := k.Workloads(ctx, *namespace)

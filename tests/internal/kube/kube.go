@@ -269,6 +269,12 @@ func (c *Client) ServiceEndpoint(ctx context.Context, namespace, service, port, 
 	return c.CoreV1().Services(namespace).ProxyGet("http", service, port, path, nil).DoRaw(ctx)
 }
 
+// ServiceEndpointQuery fetches a path with query parameters from a service's
+// port through the API server's proxy.
+func (c *Client) ServiceEndpointQuery(ctx context.Context, namespace, service, port, path string, query map[string]string) ([]byte, error) {
+	return c.CoreV1().Services(namespace).ProxyGet("http", service, port, path, query).DoRaw(ctx)
+}
+
 // ServesResource reports whether the API server serves a resource in an API
 // group, in any version. For a custom resource that means its definition is
 // installed and established.

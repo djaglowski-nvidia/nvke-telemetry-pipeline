@@ -18,10 +18,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 
+	"github.com/NVIDIA-dev/nktp/tests/internal/framework"
 	"github.com/NVIDIA-dev/nktp/tests/internal/helm"
 	"github.com/NVIDIA-dev/nktp/tests/internal/kube"
 )
@@ -60,10 +61,6 @@ func init() {
 	flag.Var(&valueFiles, "nktp.values", "values file to layer on the chart defaults (repeatable)")
 }
 
-var collectors = schema.GroupVersionResource{
-	Group: "opentelemetry.io", Version: "v1beta1", Resource: "opentelemetrycollectors",
-}
-
 func TestMain(m *testing.M) {
 	flag.Parse()
 	if *kubeconfig == "" {
@@ -91,6 +88,19 @@ func newHelm(t *testing.T) *helm.Client {
 	return &helm.Client{Kubeconfig: *kubeconfig, Log: logWriter{t}}
 }
 
+// newChart returns the reusable installer for the release this suite owns.
+func newChart(t *testing.T, k *kube.Client) *framework.Chart {
+	t.Helper()
+	return &framework.Chart{
+		Helm:       newHelm(t),
+		Kube:       k,
+		Release:    releaseRef(),
+		Path:       *chart,
+		ValueFiles: valueFiles,
+		Timeout:    *timeout,
+	}
+}
+
 // releaseRef names the release the suite operates on.
 func releaseRef() helm.Release {
 	return helm.Release{Name: *release, Namespace: *namespace}
@@ -104,6 +114,22 @@ func deadline(t *testing.T) (context.Context, context.CancelFunc) {
 	return context.WithTimeout(t.Context(), *timeout+30*time.Second)
 }
 
+// registerChartCleanup records ownership before a readiness assertion can
+// stop its caller. Cleanup uses independent contexts because a test's context
+// is canceled before its cleanup functions run.
+func registerChartCleanup(t *testing.T, deployed *framework.Chart, k *kube.Client) {
+	t.Helper()
+	t.Cleanup(func() {
+		uninstallCtx, cancelUninstall := context.WithTimeout(context.Background(), *timeout+30*time.Second)
+		assert.NoError(t, deployed.Uninstall(uninstallCtx), "uninstalling the test release")
+		cancelUninstall()
+
+		waitCtx, cancelWait := context.WithTimeout(context.Background(), *timeout+30*time.Second)
+		defer cancelWait()
+		assert.NoError(t, k.WaitWorkloadsGone(waitCtx, *namespace), "waiting for the test workloads to be removed")
+	})
+}
+
 // names lists what a set of custom resources is called.
 func names(resources []unstructured.Unstructured) []string {
 	out := make([]string, 0, len(resources))
@@ -111,27 +137,6 @@ func names(resources []unstructured.Unstructured) []string {
 		out = append(out, resource.GetName())
 	}
 	return out
-}
-
-// collectorWorkloads names the workloads the operator builds from a set of
-// Collector CRs: one named <collector>-collector, and a second named
-// <collector>-targetallocator where the Collector asks for an allocator.
-//
-// Naming them rather than deriving a kind keeps callers out of the business of
-// mapping a Collector's mode onto a workload kind.
-func collectorWorkloads(crs []unstructured.Unstructured) ([]string, error) {
-	var expected []string
-	for _, cr := range crs {
-		expected = append(expected, cr.GetName()+"-collector")
-		allocator, _, err := unstructured.NestedBool(cr.Object, "spec", "targetAllocator", "enabled")
-		if err != nil {
-			return nil, fmt.Errorf("reading the target allocator of %s: %w", cr.GetName(), err)
-		}
-		if allocator {
-			expected = append(expected, cr.GetName()+"-targetallocator")
-		}
-	}
-	return expected, nil
 }
 
 // logWriter sends a command's output to the test log, which keeps it with the
