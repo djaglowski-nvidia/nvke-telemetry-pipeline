@@ -6,8 +6,51 @@ vars:
   # all run. Without it each caller inherits whatever the installed kind binary
   # defaults to, and two clusters in the same repository drift apart silently.
   NODE_IMAGE: kindest/node:v1.35.0@sha256:452d707d4862f52530247495d180205e029056831160e22870e37e3f6c1ac31f
+  CERT_MANAGER_VERSION: v1.21.2
 
 tasks:
+  install:
+    desc: Install or update NKTP from the local chart with explicit cluster inputs
+    vars:
+      # Callers set HELM_VALUES_DIR to their own directory. Direct invocations
+      # resolve relative paths from the repository root.
+      RESOLVED_HELM_VALUES_FILE: '{{if .HELM_VALUES_FILE}}{{if isAbs .HELM_VALUES_FILE}}{{.HELM_VALUES_FILE}}{{else}}{{.HELM_VALUES_DIR | default .ROOT_DIR}}/{{.HELM_VALUES_FILE}}{{end}}{{end}}'
+    preconditions:
+      - sh: 'test -r {{.KUBECONFIG_FILE | shellQuote}}'
+        msg: 'NKTP kubeconfig is not readable: {{.KUBECONFIG_FILE}}'
+      - sh: '{{if .BASE_HELM_VALUES_FILE}}test -f {{.BASE_HELM_VALUES_FILE | shellQuote}}{{else}}true{{end}}'
+        msg: 'Base Helm values file not found: {{.BASE_HELM_VALUES_FILE}}'
+      - sh: '{{if .RESOLVED_HELM_VALUES_FILE}}test -f {{.RESOLVED_HELM_VALUES_FILE | shellQuote}}{{else}}true{{end}}'
+        msg: 'Helm values file not found: {{.RESOLVED_HELM_VALUES_FILE}}'
+    cmds:
+      - >-
+        helm upgrade --install {{.RELEASE | default "nktp" | shellQuote}}
+        {{.CHART_PATH | default (printf "%s/nktp" .ROOT_DIR) | shellQuote}}
+        --reset-values
+        --namespace {{.NAMESPACE | default "nktp" | shellQuote}} --create-namespace
+        --kubeconfig {{.KUBECONFIG_FILE | shellQuote}}
+        {{if .KUBE_CONTEXT}}--kube-context {{.KUBE_CONTEXT | shellQuote}}{{end}}
+        --wait --timeout {{.HELM_TIMEOUT | default "5m" | shellQuote}}
+        {{if .BASE_HELM_VALUES_FILE}}--values {{.BASE_HELM_VALUES_FILE | shellQuote}}{{end}}
+        {{if .RESOLVED_HELM_VALUES_FILE}}--values {{.RESOLVED_HELM_VALUES_FILE | shellQuote}}{{end}}
+
+  cert-manager:install:
+    internal: true
+    desc: Install cert-manager and its CRDs on an explicitly selected cluster
+    preconditions:
+      - sh: 'test -r {{.KUBECONFIG_FILE | shellQuote}}'
+        msg: 'cert-manager kubeconfig is not readable: {{.KUBECONFIG_FILE}}'
+    cmds:
+      - helm repo add jetstack https://charts.jetstack.io --force-update
+      - >-
+        helm upgrade --install cert-manager jetstack/cert-manager
+        --kubeconfig {{.KUBECONFIG_FILE | shellQuote}}
+        {{if .KUBE_CONTEXT}}--kube-context {{.KUBE_CONTEXT | shellQuote}}{{end}}
+        --namespace cert-manager --create-namespace
+        --version {{.CERT_MANAGER_VERSION | shellQuote}}
+        --set crds.enabled=true
+        --wait --timeout 5m
+
   test:scale:
     desc: 'Run a scale test plan (no cluster required for no-op components)'
     dir: tests

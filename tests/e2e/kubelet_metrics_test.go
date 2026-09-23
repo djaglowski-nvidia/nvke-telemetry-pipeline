@@ -30,28 +30,13 @@ const (
 	kubeletMetricsFixtureImage = "ghcr.io/nvidia/topograph:v0.4.0@sha256:f227bf161464da4a23273a535914c98b33d26e5bf24bdf7f50159ab4b875b717"
 )
 
-// TestKubeletMetrics installs a fresh release and proves that every node sends
+// TestKubeletMetrics uses the configured release mode and proves that every node sends
 // both kubelet and cAdvisor metrics to Prometheus. It runs one passive,
 // digest-pinned NVIDIA container on every node so cAdvisor has a real workload
 // to observe, requires that workload's memory metric to be non-zero, and then
-// removes both the fixture and the release.
+// removes the fixture and, in install mode, the release.
 func TestKubeletMetrics(t *testing.T) {
-	if !*install {
-		t.Skip("-nktp.install is unset, so validating the existing release remains read-only")
-	}
-
-	k := newKube(t)
-	deployed := newChart(t, k)
-
-	ctx, cancel := deadline(t)
-	defer cancel()
-	owned, err := deployed.InstallFresh(ctx)
-	if owned {
-		registerChartCleanup(t, deployed, k)
-	}
-	require.NoError(t, err, "installing a fresh release for the kubelet metrics test")
-
-	verifyKubeletMetrics(t, k)
+	withRelease(t, verifyKubeletMetrics)
 }
 
 // verifyKubeletMetrics runs one passive container on every node, then waits

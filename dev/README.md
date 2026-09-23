@@ -2,11 +2,13 @@
 
 Requires a Docker-compatible container runtime ([Docker Desktop](https://docs.docker.com/get-docker/), [Colima](https://github.com/abiosoft/colima), ...), [Task](https://taskfile.dev/installation/), [Kind](https://kind.sigs.k8s.io/docs/user/quick-start/#installation), [kubectl](https://kubernetes.io/docs/tasks/tools/), [Helm](https://helm.sh/docs/intro/install/), and [Tilt](https://docs.tilt.dev/install.html).
 ```sh
-task dev:up       # Kind cluster + NKTP chart + Tilt dev loop
+task dev:up       # Kind cluster + cert-manager + NKTP chart + Tilt dev loop
 task dev:down     # remove the workloads and delete the cluster
 ```
 
-The dev loop runs in the background (logs in `dev/.tilt.log`). Edits to the chart or the active config redeploy automatically.
+The dev cluster includes cert-manager and its CRDs. The dev loop runs in the
+background (logs in `dev/.tilt.log`). Edits to the chart or the active config
+redeploy automatically.
 `dev:up` returns when Grafana is available, or after Helm applies the chart when
 LGTM is disabled. Other workloads may still be starting. Follow their status in
 Tilt. Images for the node's platform are cached between cluster recreations and

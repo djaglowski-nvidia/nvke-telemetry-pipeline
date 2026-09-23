@@ -227,6 +227,18 @@ func (c *Client) CustomResources(ctx context.Context, namespace string, resource
 	return items, nil
 }
 
+// CreateCustomResource submits one unstructured object to the API server.
+// Admission errors are returned unchanged so callers can distinguish a
+// webhook denial from schema validation or an unreachable webhook.
+func (c *Client) CreateCustomResource(ctx context.Context, namespace string, resource schema.GroupVersionResource, object *unstructured.Unstructured) (*unstructured.Unstructured, error) {
+	return c.dynamic.Resource(resource).Namespace(namespace).Create(ctx, object, metav1.CreateOptions{})
+}
+
+// DeleteeCustomResource deletes one unstructured object from the API server.
+func (c *Client) DeleteCustomResource(ctx context.Context, namespace string, resource schema.GroupVersionResource, name string) error {
+	return c.dynamic.Resource(resource).Namespace(namespace).Delete(ctx, name, metav1.DeleteOptions{})
+}
+
 // DaemonSets returns the DaemonSets matching a label selector.
 func (c *Client) DaemonSets(ctx context.Context, namespace, selector string) ([]appsv1.DaemonSet, error) {
 	list, err := c.AppsV1().DaemonSets(namespace).List(ctx, metav1.ListOptions{LabelSelector: selector})

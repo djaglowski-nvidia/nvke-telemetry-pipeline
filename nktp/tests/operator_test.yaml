@@ -41,38 +41,30 @@ tests:
           name: nktp-operator
         not: true
 
-  - it: generates a webhook certificate without cert-manager by default
+  - it: uses cert-manager for webhook certificates by default
     asserts:
-      - isNotEmpty:
-          path: data["tls.crt"]
-        documentSelector:
-          path: kind
-          value: Secret
-        template: charts/opentelemetry-kube-stack/charts/opentelemetry-operator/templates/admission-webhooks/operator-webhook.yaml
-      - isNotEmpty:
-          path: data["tls.key"]
-        documentSelector:
-          path: kind
-          value: Secret
-        template: charts/opentelemetry-kube-stack/charts/opentelemetry-operator/templates/admission-webhooks/operator-webhook.yaml
-      - containsDocument:
-          apiVersion: admissionregistration.k8s.io/v1
-          kind: MutatingWebhookConfiguration
-          name: nktp-operator-mutation
-          any: true
-        template: charts/opentelemetry-kube-stack/charts/opentelemetry-operator/templates/admission-webhooks/operator-webhook.yaml
-      - containsDocument:
-          apiVersion: admissionregistration.k8s.io/v1
-          kind: ValidatingWebhookConfiguration
-          name: nktp-operator-validation
-          any: true
-        template: charts/opentelemetry-kube-stack/charts/opentelemetry-operator/templates/admission-webhooks/operator-webhook.yaml
       - containsDocument:
           apiVersion: cert-manager.io/v1
           kind: Certificate
+          name: nktp-operator-serving-cert
+          any: true
+        template: charts/opentelemetry-kube-stack/charts/opentelemetry-operator/templates/certmanager.yaml
+      - containsDocument:
+          apiVersion: cert-manager.io/v1
+          kind: Issuer
+          name: nktp-operator-selfsigned-issuer
+          any: true
+        template: charts/opentelemetry-kube-stack/charts/opentelemetry-operator/templates/certmanager.yaml
+      - containsDocument:
+          apiVersion: v1
+          kind: Secret
         not: true
 
   - it: reuses an existing webhook certificate on upgrade
+    set:
+      opentelemetry-kube-stack.opentelemetry-operator.admissionWebhooks.certManager.enabled: false
+      opentelemetry-kube-stack.opentelemetry-operator.admissionWebhooks.autoGenerateCert.enabled: true
+      opentelemetry-kube-stack.opentelemetry-operator.admissionWebhooks.autoGenerateCert.recreate: false
     release:
       namespace: nktp
       upgrade: true
@@ -117,29 +109,31 @@ tests:
           path: kind
           value: ValidatingWebhookConfiguration
 
-  - it: supports cert-manager for webhook certificates
+  - it: supports a Helm-generated self-signed webhook certificate
     set:
-      opentelemetry-kube-stack.opentelemetry-operator.admissionWebhooks.certManager.enabled: true
+      opentelemetry-kube-stack.opentelemetry-operator.admissionWebhooks.certManager.enabled: false
+      opentelemetry-kube-stack.opentelemetry-operator.admissionWebhooks.autoGenerateCert.enabled: true
+      opentelemetry-kube-stack.opentelemetry-operator.admissionWebhooks.autoGenerateCert.recreate: false
     asserts:
+      - isNotEmpty:
+          path: data["tls.crt"]
+        documentSelector:
+          path: kind
+          value: Secret
+        template: charts/opentelemetry-kube-stack/charts/opentelemetry-operator/templates/admission-webhooks/operator-webhook.yaml
+      - isNotEmpty:
+          path: data["tls.key"]
+        documentSelector:
+          path: kind
+          value: Secret
+        template: charts/opentelemetry-kube-stack/charts/opentelemetry-operator/templates/admission-webhooks/operator-webhook.yaml
       - containsDocument:
           apiVersion: cert-manager.io/v1
           kind: Certificate
-          name: nktp-operator-serving-cert
-          any: true
-        template: charts/opentelemetry-kube-stack/charts/opentelemetry-operator/templates/certmanager.yaml
-      - containsDocument:
-          apiVersion: cert-manager.io/v1
-          kind: Issuer
-          name: nktp-operator-selfsigned-issuer
-          any: true
-        template: charts/opentelemetry-kube-stack/charts/opentelemetry-operator/templates/certmanager.yaml
-      - containsDocument:
-          apiVersion: v1
-          kind: Secret
         not: true
 
   - it: allows admission while the operator starts
-    template: charts/opentelemetry-kube-stack/charts/opentelemetry-operator/templates/admission-webhooks/operator-webhook.yaml
+    template: charts/opentelemetry-kube-stack/charts/opentelemetry-operator/templates/admission-webhooks/operator-webhook-with-cert-manager.yaml
     asserts:
       - equal:
           path: webhooks[*].failurePolicy

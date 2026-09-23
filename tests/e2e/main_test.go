@@ -1,12 +1,8 @@
 //go:build e2e
 
-// Package e2e installs the NKTP chart on a cluster and asserts what a user can
-// observe of the result.
-//
-// The suite is handed a cluster and installs the chart itself, because the
-// install is the thing under test. `task e2e:test` creates a throwaway cluster
-// and fetches the chart's dependencies first; pointing the suite at any other
-// cluster is a matter of the flags below.
+// Package e2e asserts user-visible NKTP behavior on a Kubernetes cluster.
+// With -nktp.install=true each test installs the chart before its assertions;
+// with -nktp.install=false each test requires the configured release to exist.
 package e2e
 
 import (
@@ -39,7 +35,7 @@ var (
 	timeout = flag.Duration("nktp.timeout", 15*time.Minute,
 		"how long any one install, rollout, or removal may take")
 	install = flag.Bool("nktp.install", true,
-		"install the chart and remove it again; unset to validate a release already on the cluster")
+		"true installs and removes a fresh release for each test; false requires and reuses the named existing release without modifying it")
 	stableReapply = flag.Bool("nktp.stable-reapply", true,
 		"fail when reapplying the release moves a workload Helm manages; unset once the chart generates anything at install time, which moves them for a reason of its own")
 
@@ -88,7 +84,7 @@ func newHelm(t *testing.T) *helm.Client {
 	return &helm.Client{Kubeconfig: *kubeconfig, Log: logWriter{t}}
 }
 
-// newChart returns the reusable installer for the release this suite owns.
+// newChart returns an installer for the configured release.
 func newChart(t *testing.T, k *kube.Client) *framework.Chart {
 	t.Helper()
 	return &framework.Chart{
@@ -99,6 +95,57 @@ func newChart(t *testing.T, k *kube.Client) *framework.Chart {
 		ValueFiles: valueFiles,
 		Timeout:    *timeout,
 	}
+}
+
+// prepareRelease gives a test a ready installation and reports whether it
+// created that installation. Reuse mode verifies the exact configured Helm
+// release exists rather than accepting unrelated workloads in the namespace.
+func prepareRelease(t *testing.T, k *kube.Client) (*framework.Chart, bool) {
+	t.Helper()
+	deployed := newChart(t, k)
+
+	ctx, cancel := deadline(t)
+	defer cancel()
+
+	if *install {
+		t.Logf("installing a fresh release %v for %s, all OpenTelemetryCollectors must be Ready", deployed.Release, t.Name())
+		owned, err := deployed.InstallFresh(ctx)
+		if owned {
+			registerChartCleanup(t, deployed, k)
+		}
+		require.NoError(t, err, "installing a fresh release %v for %s", deployed.Release, t.Name())
+	} else {
+		t.Logf("waiting for the existing release %v used by %s, all OpenTelemetryCollectors must be Ready", deployed.Release, t.Name())
+		exists, err := deployed.Helm.Installed(ctx, deployed.Release)
+		require.NoError(t, err, "checking for the existing release used by %s", t.Name())
+		require.True(t, exists,
+			"release %s must already exist in namespace %s when -nktp.install=false",
+			deployed.Release.Name, deployed.Release.Namespace)
+		require.NoError(t, deployed.WaitReady(ctx), "waiting for the existing release %v used by %s", deployed.Release, t.Name())
+	}
+	return deployed, false
+}
+
+// withRelease gives a functional test a ready installation. It removes the
+// release afterward only when -nktp.install=true caused the test to create it.
+func withRelease(t *testing.T, test func(*testing.T, *kube.Client)) {
+	t.Helper()
+	k := newKube(t)
+	deployed, created := prepareRelease(t, k)
+
+	if created {
+		defer func() {
+			uninstallCtx, cancelUninstall := deadline(t)
+			assert.NoError(t, deployed.Uninstall(uninstallCtx), "uninstalling the release for %s", t.Name())
+			cancelUninstall()
+
+			waitCtx, cancelWait := deadline(t)
+			defer cancelWait()
+			assert.NoError(t, k.WaitWorkloadsGone(waitCtx, *namespace), "waiting for the workloads from %s to be removed", t.Name())
+		}()
+	}
+
+	test(t, k)
 }
 
 // releaseRef names the release the suite operates on.

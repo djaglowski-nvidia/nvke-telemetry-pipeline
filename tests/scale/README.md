@@ -18,8 +18,8 @@ task scale:down
 ```
 
 `scale:up` creates `nktp-scale` with the [dedicated Kind config](kind-config.yaml)
-if needed, installs KWOK, then installs or upgrades the NKTP Helm release in
-namespace `nktp` from the local chart. It prepares chart dependencies and waits
+if needed, installs cert-manager and its CRDs, installs KWOK, then installs or
+upgrades the NKTP Helm release in namespace `nktp` from the local chart. It prepares chart dependencies and waits
 for nodes and NKTP workloads, including workloads created by the Operator. Each readiness wait has a
 five-minute timeout. Workload readiness does not verify telemetry delivery.
 Chart dependencies are downloaded only when missing or invalid. Once workloads

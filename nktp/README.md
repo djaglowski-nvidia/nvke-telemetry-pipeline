@@ -365,16 +365,24 @@ opentelemetry-kube-stack:
     installPrometheus: false
 ```
 
-Helm generates a self-signed webhook certificate and reuses it on upgrades. The
-certificate expires after 365 days by default and is not renewed automatically.
-Enable cert-manager when it is already installed to manage certificate renewal.
+NKTP uses an existing cert-manager installation to issue and renew the
+Operator's admission webhook certificate by default. The upstream Operator
+chart documents the available approaches under
+[TLS Certificate Requirement](https://github.com/open-telemetry/opentelemetry-helm-charts/blob/opentelemetry-operator-0.123.0/charts/opentelemetry-operator/README.md#tls-certificate-requirement).
+
+As an alternative, disable cert-manager integration and let Helm generate a
+self-signed certificate. This configuration reuses that certificate on
+upgrades; it expires after 365 days by default and is not renewed automatically.
 
 ```yaml
 opentelemetry-kube-stack:
   opentelemetry-operator:
     admissionWebhooks:
       certManager:
+        enabled: false
+      autoGenerateCert:
         enabled: true
+        recreate: false
 ```
 
 Override the Operator image with

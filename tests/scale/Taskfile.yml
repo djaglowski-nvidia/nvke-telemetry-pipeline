@@ -1,8 +1,5 @@
 version: '3'
 
-vars:
-  HELM_VALUES_FILE: '{{.HELM_VALUES_FILE | default ""}}'
-
 tasks:
   up:
     desc: Create or reuse the scale test Kind cluster and deploy KWOK and NKTP
@@ -10,8 +7,6 @@ tasks:
     preconditions:
       - sh: test -f kind-config.yaml
         msg: 'Kind config file not found: tests/scale/kind-config.yaml'
-      - sh: '{{if .HELM_VALUES_FILE}}test -f {{.HELM_VALUES_FILE | shellQuote}}{{else}}true{{end}}'
-        msg: 'Helm values file not found (paths are relative to tests/scale/)'
       - sh: docker info >/dev/null 2>&1
         msg: 'Docker daemon is not running. Start it and retry.'
       - sh: test -z {{.CLI_ARGS | shellQuote}}
@@ -36,8 +31,16 @@ tasks:
         nodes=$(kind get nodes --name nktp-scale) || exit $?
         test -n "$nodes" || { echo "No Kind nodes found." >&2; exit 1; }
         kubectl --kubeconfig .kubeconfig --context kind-nktp-scale wait --for=condition=Ready nodes $nodes --timeout=5m
+      - task: :cert-manager:install
+        vars:
+          KUBECONFIG_FILE: '{{.TASKFILE_DIR}}/.kubeconfig'
+          KUBE_CONTEXT: kind-nktp-scale
       - task: kwok:install
-      - helm upgrade --install nktp ../../nktp --reset-values --namespace nktp --create-namespace --kubeconfig .kubeconfig --kube-context kind-nktp-scale --wait --timeout 5m {{if .HELM_VALUES_FILE}}--values {{.HELM_VALUES_FILE | shellQuote}}{{end}}
+      - task: :install
+        vars:
+          KUBECONFIG_FILE: '{{.TASKFILE_DIR}}/.kubeconfig'
+          KUBE_CONTEXT: kind-nktp-scale
+          HELM_VALUES_DIR: '{{.TASKFILE_DIR}}'
       - task: wait-ready
       - task: prometheus:up
       - task: grafana:up

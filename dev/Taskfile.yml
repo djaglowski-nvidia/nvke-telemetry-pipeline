@@ -89,6 +89,10 @@ tasks:
       - kind -q export kubeconfig --name nktp --kubeconfig .kubeconfig
       - echo "Waiting for Kind nodes to become ready..."
       - kubectl wait --kubeconfig .kubeconfig --context kind-nktp --for=condition=Ready nodes --all --timeout=5m
+      - task: :cert-manager:install
+        vars:
+          KUBECONFIG_FILE: '{{.TASKFILE_DIR}}/.kubeconfig'
+          KUBE_CONTEXT: kind-nktp
 
   cluster:down:
     internal: true

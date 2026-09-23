@@ -30,12 +30,12 @@ across several attempts. `task e2e:down` is the only thing that deletes it, and
 it deletes only what `task e2e:up` created: a cluster you brought yourself is
 yours to remove, along with the kubeconfig that reaches it.
 
-The suite installs the chart itself, because installation is behaviour under
-test. The Taskfile gives it only what a test cannot provide for itself: a Kind
-cluster on the node image the root Taskfile pins, so that every suite in the
-repository runs the same Kubernetes version, and the subcharts fetched from the
-upstream Helm repositories. Individual scenarios document their setup,
-assertions, and cleanup in their Go test comments.
+By default, each test installs a fresh Helm release before making its
+assertions and removes that release afterward. The lifecycle test additionally
+reapplies the release and verifies its removal. The Taskfile provides the Kind
+cluster, cert-manager, and the chart dependencies needed before Go runs the
+tests. Individual scenarios document their setup, assertions, and cleanup in
+their Go test comments.
 
 Not covered yet:
 
@@ -55,21 +55,68 @@ created. In its default mode the suite installs and then removes releases, so it
 holds the namespace to being empty at the end and expects the namespace to be
 the release's.
 
-To validate an NKTP installation without touching it, which is what qualifying
-a release amounts to:
+To reuse an NKTP release instead of reinstalling it, which is what qualifying
+an existing release amounts to:
 
 ```sh
-go test -tags e2e -count=1 -v -timeout 30m . -args \
-  -nktp.install=false -nktp.kubeconfig=$KUBECONFIG -nktp.namespace=nktp
+task e2e:up
+task e2e:install
+task e2e:test INSTALL=false
 ```
 
-`-nktp.install=false` disables scenarios that own a release and validates the
-existing installation in place. The suite only reads the cluster in that mode.
+`task e2e:install` is an idempotent `helm upgrade --install` of the local chart.
+It uses the E2E sizing values and the cluster created by `task e2e:up`. To point
+both installation and testing at another cluster, pass the same kubeconfig to
+both commands:
+
+```sh
+task e2e:install KUBECONFIG=<path>
+task e2e:test KUBECONFIG=<path> INSTALL=false
+```
+
+The target cluster must already have cert-manager. Add one install-time values
+file when needed:
+
+```sh
+task e2e:install KUBECONFIG=<path> HELM_VALUES_FILE=path/to/values.yaml
+```
+
+Absolute `HELM_VALUES_FILE` paths are used as-is. Relative paths are resolved
+from `tests/e2e/`.
+
+The shared install task applies the E2E sizing file first and
+`HELM_VALUES_FILE` second. It uses `--reset-values`, so every invocation is
+based on the chart defaults and those files rather than values retained by an
+earlier Helm upgrade.
+
+The equivalent direct Go invocation is:
+
+```sh
+(cd tests/e2e && go test -tags e2e -count=1 -v -timeout 30m . -args \
+  -nktp.install=false -nktp.kubeconfig=.kubeconfig -nktp.namespace=nktp)
+```
+
+`-nktp.install` controls how every test obtains the NKTP installation it needs:
+
+- `true` (the default) makes each test install a fresh release before running
+  its assertions and remove it afterward.
+- `false` makes every test require the release named by `-nktp.release` in
+  `-nktp.namespace`. Each test fails if that exact Helm release does not exist,
+  waits for its Operator-derived workloads to be ready, and then runs its
+  assertions without installing, upgrading, or uninstalling the release. The
+  lifecycle test verifies the existing installation but omits its reapply and
+  removal stages.
+
+Chart and values-file arguments affect only install mode; reuse mode tests the
+configuration already stored in the cluster. Functional tests may still create
+and clean up their own disposable fixtures, but they leave the Helm release
+untouched.
 
 Every input is a flag: `-nktp.chart`, `-nktp.release`, `-nktp.namespace`,
-`-nktp.values` (repeatable, layered in order), `-nktp.timeout`, and
-`-nktp.stable-reapply`. The suite refuses to run without a kubeconfig, so a
-bare `go test` here cannot reach the cluster you are working on.
+`-nktp.values` (repeatable, layered in order), `-nktp.timeout`,
+`-nktp.install`, and `-nktp.stable-reapply`. The suite refuses to run without a
+kubeconfig, so a bare `go test` here cannot reach the cluster you are working
+on.
 
 `task e2e:test VALUES=path/to/values.yaml` layers a values file on
 top. `VALUES` is relative to the repository root and is applied after

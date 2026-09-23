@@ -1502,10 +1502,8 @@ opentelemetry-kube-stack:
         enabled: false # Watchdog owns the explicit Operator scrape job.
     admissionWebhooks:
       certManager:
-        # Enable this to use an existing cert-manager installation.
-        enabled: false
-      autoGenerateCert:
-        recreate: false
+        # Use the cluster's cert-manager installation for webhook certificates.
+        enabled: true
 
 # Host-level metrics from each node. Runs as a DaemonSet with host networking,
 # so it binds port 9100 on every node.
