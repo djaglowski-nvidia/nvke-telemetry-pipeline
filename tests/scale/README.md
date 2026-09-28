@@ -8,6 +8,9 @@ Prometheus queries. Query reports collect data without performance pass/fail
 verdicts. Successful Job execution alone does not verify backend delivery or NKTP
 performance.
 
+For the mixed 100M Avalanche workload with node-local and large-target scraping,
+see the [Avalanche 100M guide](avalanche-100m.md).
+
 ## Local cluster
 
 Requires Docker, Kind, kubectl, Helm 3 or 4, and Task. From the repository root:
