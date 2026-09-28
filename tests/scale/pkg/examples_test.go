@@ -18,7 +18,7 @@ func TestExamplePlans(t *testing.T) {
 		t.Run(filepath.Base(path), func(t *testing.T) {
 			data, err := os.ReadFile(path)
 			require.NoError(t, err)
-			plan, err := Parse(data, map[string]string{"run-id": "example-run"})
+			plan, err := Parse(data, map[string]string{runIDArgument: "example-run"})
 			require.NoError(t, err, "Parse()")
 			if filepath.Base(path) == "telemetrygen.yaml" {
 				for _, stage := range plan.Stages {
@@ -35,7 +35,7 @@ func TestExamplePlans(t *testing.T) {
 					require.NoError(t, stage.Measurement.Spec.Decode(&measurementSpec), "Decode measurement spec")
 					assert.NotEmpty(t, measurementSpec.Queries, "stage %q has no example queries", stage.Name)
 					for name, query := range measurementSpec.Queries {
-						assert.NotContains(t, query, "{{args.", "stage %q query %q contains unresolved arguments: %q", stage.Name, name, query)
+						assert.NotContains(t, query, "{{ .Args.", "stage %q query %q contains unresolved arguments: %q", stage.Name, name, query)
 						if stage.Name == "metrics" && name != "active_series" {
 							continue
 						}

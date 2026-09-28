@@ -15,27 +15,27 @@ func TestParseArguments(t *testing.T) {
 	}{
 		{
 			name:   "supplied run ID",
-			values: []string{"run-id=ci-123", "rate=100", "gateway=http://example.test?a=b"},
+			values: []string{"run-id=ci-123", "sample-rate=100", "gateway=http://example.test?a=b"},
 			want: map[string]string{
-				"run-id": "ci-123", "rate": "100", "gateway": "http://example.test?a=b",
+				"runId": "ci-123", "sampleRate": "100", "gateway": "http://example.test?a=b",
 			},
 		},
 		{
 			name:   "literal values",
-			values: []string{"run-id=ci.123_test", "empty=", "text= {{args.other}}\n: ${ENV}"},
+			values: []string{"run-id=ci.123_test", "empty=", "text= {{ .Args.other }}\n: ${ENV}"},
 			want: map[string]string{
-				"run-id": "ci.123_test", "empty": "", "text": " {{args.other}}\n: ${ENV}",
+				"runId": "ci.123_test", "empty": "", "text": " {{ .Args.other }}\n: ${ENV}",
 			},
 		},
 		{
 			name:   "maximum run ID length",
 			values: []string{"run-id=" + strings.Repeat("a", 63)},
-			want:   map[string]string{"run-id": strings.Repeat("a", 63)},
+			want:   map[string]string{"runId": strings.Repeat("a", 63)},
 		},
 		{
 			name:   "single character ID",
 			values: []string{"run-id=1"},
-			want:   map[string]string{"run-id": "1"},
+			want:   map[string]string{"runId": "1"},
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -63,7 +63,7 @@ func TestParseArgumentsGeneratesFreshRunID(t *testing.T) {
 		if err != nil {
 			t.Fatalf("ParseArguments() error = %v", err)
 		}
-		id := args["run-id"]
+		id := args[runIDArgument]
 		if !runIDPattern.MatchString(id) || seen[id] {
 			t.Errorf("ParseArguments() run-id = %q, want a fresh valid ID", id)
 		}
@@ -89,9 +89,12 @@ func TestParseArgumentsRejectsInvalidFlags(t *testing.T) {
 		{name: "empty name", values: []string{"=100"}, want: "valid name"},
 		{name: "leading digit", values: []string{"1rate=100"}, want: "valid name"},
 		{name: "dot in name", values: []string{"rate.value=100"}, want: "valid name"},
+		{name: "trailing hyphen", values: []string{"sample-rate-=100"}, want: "valid name"},
+		{name: "repeated hyphen", values: []string{"sample--rate=100"}, want: "valid name"},
 		{name: "whitespace in name", values: []string{" rate=100"}, want: "valid name"},
 		{name: "duplicate argument", values: []string{"rate=10", "rate=20"}, want: "duplicate argument"},
-		{name: "duplicate run ID", values: []string{"run-id=first", "run-id=second"}, want: "duplicate argument"},
+		{name: "duplicate normalized argument", values: []string{"sample-rate=10", "sampleRate=20"}, want: "duplicate argument"},
+		{name: "duplicate run ID", values: []string{"run-id=first", "runId=second"}, want: "duplicate argument"},
 		{name: "empty run ID", values: []string{"run-id="}, want: "run-id must"},
 		{name: "oversize run ID", values: []string{"run-id=" + strings.Repeat("a", 64)}, want: "run-id must"},
 		{name: "leading punctuation", values: []string{"run-id=-test"}, want: "run-id must"},

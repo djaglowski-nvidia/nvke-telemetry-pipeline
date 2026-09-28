@@ -113,11 +113,11 @@ func TestExecuteNoopPlan(t *testing.T) {
 				if err != nil {
 					t.Fatalf("ParseArguments() error = %v", err)
 				}
-				report, err := (Executor{}).Execute(t.Context(), plan, args["run-id"])
+				report, err := (Executor{}).Execute(t.Context(), plan, args[runIDArgument])
 				if err != nil {
 					t.Fatalf("Execute() error = %v", err)
 				}
-				if report.RunID != args["run-id"] || report.RunID == previousID || report.Plan != "smoke" {
+				if report.RunID != args[runIDArgument] || report.RunID == previousID || report.Plan != "smoke" {
 					t.Errorf("Execute() identity = (%q, %q), previous ID = %q", report.Plan, report.RunID, previousID)
 				}
 				previousID = report.RunID
@@ -159,7 +159,7 @@ func TestExecuteUsesSuppliedRunID(t *testing.T) {
 		t.Fatalf("Parse() error = %v", err)
 	}
 	for range 2 {
-		report, err := (Executor{}).Execute(t.Context(), plan, args["run-id"])
+		report, err := (Executor{}).Execute(t.Context(), plan, args[runIDArgument])
 		if err != nil {
 			t.Fatalf("Execute() error = %v", err)
 		}
@@ -186,7 +186,7 @@ func TestExecuteRejectsInvalidRunID(t *testing.T) {
 func TestParseRejectsInvalidRunID(t *testing.T) {
 	for _, id := range []string{"", "bad id"} {
 		t.Run("run-id="+id, func(t *testing.T) {
-			if _, err := Parse([]byte(planYAML), map[string]string{"run-id": id}); err == nil || !strings.Contains(err.Error(), "run-id") {
+			if _, err := Parse([]byte(planYAML), map[string]string{runIDArgument: id}); err == nil || !strings.Contains(err.Error(), "run-id") {
 				t.Errorf("Parse(run-id=%q) error = %v, want run-id validation error", id, err)
 			}
 		})
@@ -195,13 +195,13 @@ func TestParseRejectsInvalidRunID(t *testing.T) {
 
 // TestExecuteRejectsMismatchedRunID checks parsing binds a snapshot of the run ID.
 func TestExecuteRejectsMismatchedRunID(t *testing.T) {
-	args := map[string]string{"run-id": "run-a"}
+	args := map[string]string{runIDArgument: "run-a"}
 	plan, err := Parse([]byte(planYAML), args)
 	if err != nil {
 		t.Fatalf("Parse() error = %v", err)
 	}
-	args["run-id"] = "run-b"
-	report, err := (Executor{}).Execute(t.Context(), plan, args["run-id"])
+	args[runIDArgument] = "run-b"
+	report, err := (Executor{}).Execute(t.Context(), plan, args[runIDArgument])
 	if err == nil || !strings.Contains(err.Error(), "does not match") {
 		t.Errorf("Execute() error = %v, want a run ID mismatch", err)
 	}

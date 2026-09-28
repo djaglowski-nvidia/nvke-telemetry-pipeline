@@ -48,15 +48,15 @@ type ComponentSpec struct {
 	Spec yaml.Node `yaml:"spec"`
 }
 
-// Parse substitutes {{args.name}} in raw text, then decodes exactly one YAML
-// document with strict envelope fields. References in keys and comments are also
-// replaced. Argument values must fit the surrounding YAML syntax and quoting.
-// Parse validates and retains run-id when supplied so Executor.Execute can
+// Parse executes raw text as a Go template with arguments under .Args, then
+// decodes exactly one YAML document with strict envelope fields. Template output
+// must fit the surrounding YAML syntax and quoting.
+// Parse validates and retains runId when supplied so Executor.Execute can
 // reject mismatched attribution. It does not generate argument defaults or change
 // args or data. It defaults execution to Parallel and validates the plan structure.
 // Executor.Execute validates component specs before execution.
 func Parse(data []byte, args map[string]string) (Plan, error) {
-	if runID, supplied := args["run-id"]; supplied {
+	if runID, supplied := args[runIDArgument]; supplied {
 		if err := validateRunID(runID); err != nil {
 			return Plan{}, err
 		}
@@ -65,7 +65,7 @@ func Parse(data []byte, args map[string]string) (Plan, error) {
 	if err != nil {
 		return Plan{}, err
 	}
-	plan := Plan{runID: args["run-id"]}
+	plan := Plan{runID: args[runIDArgument]}
 	decoder := yaml.NewDecoder(strings.NewReader(resolved))
 	decoder.KnownFields(true)
 	if err := decoder.Decode(&plan); err != nil {

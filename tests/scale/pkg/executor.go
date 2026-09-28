@@ -57,7 +57,7 @@ type Executor struct {
 // Cancellation stops unstarted stages and waits for started runnables to return.
 // Reports, including partial findings, accompany execution errors. Invalid plans
 // return an empty PlanReport. Completion uses the default slog logger.
-// runID must match the ID retained by Parse when args contained run-id.
+// runID must match the ID retained by Parse when args contained runId.
 // A mismatch returns an empty report before any component is constructed.
 // No cluster is required by the no-op implementations.
 func (e Executor) Execute(ctx context.Context, plan Plan, runID string) (PlanReport, error) {

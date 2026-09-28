@@ -12,7 +12,7 @@ stages:
             nodeTemplate:
               metadata:
                 labels:
-                  run_id: '{{args.run-id}}'
+                  run_id: '{{ .Args.runId }}'
               status:
                 capacity:
                   cpu: "96"

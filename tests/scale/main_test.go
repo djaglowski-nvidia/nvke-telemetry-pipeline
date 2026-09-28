@@ -50,7 +50,7 @@ func TestRun(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse plan %q: %v", *planPath, err)
 	}
-	report, err := (runner.Executor{Kubeconfig: kubeconfig}).Execute(t.Context(), plan, args["run-id"])
+	report, err := (runner.Executor{Kubeconfig: kubeconfig}).Execute(t.Context(), plan, args["runId"])
 	t.Logf("\nplan=%s run=%s stages=%d", report.Plan, report.RunID, len(report.Stages))
 	for _, stage := range report.Stages {
 		t.Logf("\nstage=%s measurement=%s\ngenerator_error=%v measurement_error=%v\n\n%s",

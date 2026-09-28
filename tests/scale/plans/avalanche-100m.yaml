@@ -14,7 +14,7 @@ stages:
           labels:
             scale.nktp.io/workload: avalanche-100m
             scale.nktp.io/bucket: 1k
-            scale.nktp.io/run-id: '{{args.run-id}}'
+            scale.nktp.io/run-id: '{{ .Args.runId }}'
           namespace: nktp
         spec:
           nodeSelector:
@@ -36,7 +36,7 @@ stages:
               matchLabels:
                 scale.nktp.io/workload: avalanche-100m
                 scale.nktp.io/bucket: 1k
-                scale.nktp.io/run-id: '{{args.run-id}}'
+                scale.nktp.io/run-id: '{{ .Args.runId }}'
           containers:
           - name: avalanche-1k
             image: quay.io/prometheuscommunity/avalanche:v0.7.0@sha256:ea02e9599fcbb59a6fc7396656434faf200db7f1c259802e3dbb38cec81bd12a
@@ -103,7 +103,7 @@ stages:
           labels:
             scale.nktp.io/workload: avalanche-100m
             scale.nktp.io/bucket: 10k
-            scale.nktp.io/run-id: '{{args.run-id}}'
+            scale.nktp.io/run-id: '{{ .Args.runId }}'
           namespace: nktp
         spec:
           nodeSelector:
@@ -125,7 +125,7 @@ stages:
               matchLabels:
                 scale.nktp.io/workload: avalanche-100m
                 scale.nktp.io/bucket: 10k
-                scale.nktp.io/run-id: '{{args.run-id}}'
+                scale.nktp.io/run-id: '{{ .Args.runId }}'
           containers:
           - name: avalanche-10k
             image: quay.io/prometheuscommunity/avalanche:v0.7.0@sha256:ea02e9599fcbb59a6fc7396656434faf200db7f1c259802e3dbb38cec81bd12a
@@ -192,7 +192,7 @@ stages:
           labels:
             scale.nktp.io/workload: avalanche-100m
             scale.nktp.io/bucket: 40k
-            scale.nktp.io/run-id: '{{args.run-id}}'
+            scale.nktp.io/run-id: '{{ .Args.runId }}'
           namespace: nktp
         spec:
           nodeSelector:
@@ -214,7 +214,7 @@ stages:
               matchLabels:
                 scale.nktp.io/workload: avalanche-100m
                 scale.nktp.io/bucket: 40k
-                scale.nktp.io/run-id: '{{args.run-id}}'
+                scale.nktp.io/run-id: '{{ .Args.runId }}'
           containers:
           - name: avalanche-40k
             image: quay.io/prometheuscommunity/avalanche:v0.7.0@sha256:ea02e9599fcbb59a6fc7396656434faf200db7f1c259802e3dbb38cec81bd12a
@@ -281,7 +281,7 @@ stages:
           labels:
             scale.nktp.io/workload: avalanche-100m
             scale.nktp.io/bucket: 150k
-            scale.nktp.io/run-id: '{{args.run-id}}'
+            scale.nktp.io/run-id: '{{ .Args.runId }}'
           namespace: nktp
         spec:
           nodeSelector:
@@ -303,7 +303,7 @@ stages:
               matchLabels:
                 scale.nktp.io/workload: avalanche-100m
                 scale.nktp.io/bucket: 150k
-                scale.nktp.io/run-id: '{{args.run-id}}'
+                scale.nktp.io/run-id: '{{ .Args.runId }}'
           containers:
           - name: avalanche-150k
             image: quay.io/prometheuscommunity/avalanche:v0.7.0@sha256:ea02e9599fcbb59a6fc7396656434faf200db7f1c259802e3dbb38cec81bd12a
@@ -370,7 +370,7 @@ stages:
           labels:
             scale.nktp.io/workload: avalanche-100m
             scale.nktp.io/bucket: 300k
-            scale.nktp.io/run-id: '{{args.run-id}}'
+            scale.nktp.io/run-id: '{{ .Args.runId }}'
           namespace: nktp
         spec:
           nodeSelector:
@@ -392,7 +392,7 @@ stages:
               matchLabels:
                 scale.nktp.io/workload: avalanche-100m
                 scale.nktp.io/bucket: 300k
-                scale.nktp.io/run-id: '{{args.run-id}}'
+                scale.nktp.io/run-id: '{{ .Args.runId }}'
           containers:
           - name: avalanche-300k
             image: quay.io/prometheuscommunity/avalanche:v0.7.0@sha256:ea02e9599fcbb59a6fc7396656434faf200db7f1c259802e3dbb38cec81bd12a
@@ -459,7 +459,7 @@ stages:
           labels:
             scale.nktp.io/workload: avalanche-100m
             scale.nktp.io/bucket: 600k
-            scale.nktp.io/run-id: '{{args.run-id}}'
+            scale.nktp.io/run-id: '{{ .Args.runId }}'
           namespace: nktp
         spec:
           nodeSelector:
@@ -481,7 +481,7 @@ stages:
               matchLabels:
                 scale.nktp.io/workload: avalanche-100m
                 scale.nktp.io/bucket: 600k
-                scale.nktp.io/run-id: '{{args.run-id}}'
+                scale.nktp.io/run-id: '{{ .Args.runId }}'
           containers:
           - name: avalanche-600k
             image: quay.io/prometheuscommunity/avalanche:v0.7.0@sha256:ea02e9599fcbb59a6fc7396656434faf200db7f1c259802e3dbb38cec81bd12a
@@ -599,103 +599,103 @@ stages:
         fresh_targets_by_bucket: |-
           count by (scale_bucket, scale_scraper_pool) (
             max by (scale_bucket, scale_scraper_pool, generator_instance) (
-              (up{test_run_id="{{args.run-id}}"}
-              and (time() - timestamp(up{test_run_id="{{args.run-id}}"}) < 120)) == 1
+              (up{test_run_id="{{ .Args.runId }}"}
+              and (time() - timestamp(up{test_run_id="{{ .Args.runId }}"}) < 120)) == 1
             )
           )
         fresh_scraped_targets_by_bucket: |-
           count by (scale_bucket, scale_scraper_pool) (
             group by (scale_bucket, scale_scraper_pool, generator_instance) (
-              scrape_samples_scraped{test_run_id="{{args.run-id}}"}
-              and (time() - timestamp(scrape_samples_scraped{test_run_id="{{args.run-id}}"}) < 120)
+              scrape_samples_scraped{test_run_id="{{ .Args.runId }}"}
+              and (time() - timestamp(scrape_samples_scraped{test_run_id="{{ .Args.runId }}"}) < 120)
             )
           )
         minimum_scraped_samples_by_bucket: |-
           min by (scale_bucket, scale_scraper_pool) (
-            scrape_samples_scraped{test_run_id="{{args.run-id}}"}
-            and (time() - timestamp(scrape_samples_scraped{test_run_id="{{args.run-id}}"}) < 120)
+            scrape_samples_scraped{test_run_id="{{ .Args.runId }}"}
+            and (time() - timestamp(scrape_samples_scraped{test_run_id="{{ .Args.runId }}"}) < 120)
           )
         maximum_scraped_samples_by_bucket: |-
           max by (scale_bucket, scale_scraper_pool) (
-            scrape_samples_scraped{test_run_id="{{args.run-id}}"}
-            and (time() - timestamp(scrape_samples_scraped{test_run_id="{{args.run-id}}"}) < 120)
+            scrape_samples_scraped{test_run_id="{{ .Args.runId }}"}
+            and (time() - timestamp(scrape_samples_scraped{test_run_id="{{ .Args.runId }}"}) < 120)
           )
         scraped_sample_extremes_by_target: |-
           topk by (scale_bucket, scale_scraper_pool) (1,
-            scrape_samples_scraped{test_run_id="{{args.run-id}}"}
-            and (time() - timestamp(scrape_samples_scraped{test_run_id="{{args.run-id}}"}) < 120)
+            scrape_samples_scraped{test_run_id="{{ .Args.runId }}"}
+            and (time() - timestamp(scrape_samples_scraped{test_run_id="{{ .Args.runId }}"}) < 120)
           )
           or
           bottomk by (scale_bucket, scale_scraper_pool) (1,
-            scrape_samples_scraped{test_run_id="{{args.run-id}}"}
-            and (time() - timestamp(scrape_samples_scraped{test_run_id="{{args.run-id}}"}) < 120)
+            scrape_samples_scraped{test_run_id="{{ .Args.runId }}"}
+            and (time() - timestamp(scrape_samples_scraped{test_run_id="{{ .Args.runId }}"}) < 120)
           )
         fresh_retained_targets_by_bucket: |-
           count by (scale_bucket, scale_scraper_pool) (
             group by (scale_bucket, scale_scraper_pool, generator_instance) (
-              scrape_samples_post_metric_relabeling{test_run_id="{{args.run-id}}"}
-              and (time() - timestamp(scrape_samples_post_metric_relabeling{test_run_id="{{args.run-id}}"}) < 120)
+              scrape_samples_post_metric_relabeling{test_run_id="{{ .Args.runId }}"}
+              and (time() - timestamp(scrape_samples_post_metric_relabeling{test_run_id="{{ .Args.runId }}"}) < 120)
             )
           )
         minimum_retained_samples_by_bucket: |-
           min by (scale_bucket, scale_scraper_pool) (
-            scrape_samples_post_metric_relabeling{test_run_id="{{args.run-id}}"}
-            and (time() - timestamp(scrape_samples_post_metric_relabeling{test_run_id="{{args.run-id}}"}) < 120)
+            scrape_samples_post_metric_relabeling{test_run_id="{{ .Args.runId }}"}
+            and (time() - timestamp(scrape_samples_post_metric_relabeling{test_run_id="{{ .Args.runId }}"}) < 120)
           )
         maximum_retained_samples_by_bucket: |-
           max by (scale_bucket, scale_scraper_pool) (
-            scrape_samples_post_metric_relabeling{test_run_id="{{args.run-id}}"}
-            and (time() - timestamp(scrape_samples_post_metric_relabeling{test_run_id="{{args.run-id}}"}) < 120)
+            scrape_samples_post_metric_relabeling{test_run_id="{{ .Args.runId }}"}
+            and (time() - timestamp(scrape_samples_post_metric_relabeling{test_run_id="{{ .Args.runId }}"}) < 120)
           )
         retained_sample_extremes_by_target: |-
           topk by (scale_bucket, scale_scraper_pool) (1,
-            scrape_samples_post_metric_relabeling{test_run_id="{{args.run-id}}"}
-            and (time() - timestamp(scrape_samples_post_metric_relabeling{test_run_id="{{args.run-id}}"}) < 120)
+            scrape_samples_post_metric_relabeling{test_run_id="{{ .Args.runId }}"}
+            and (time() - timestamp(scrape_samples_post_metric_relabeling{test_run_id="{{ .Args.runId }}"}) < 120)
           )
           or
           bottomk by (scale_bucket, scale_scraper_pool) (1,
-            scrape_samples_post_metric_relabeling{test_run_id="{{args.run-id}}"}
-            and (time() - timestamp(scrape_samples_post_metric_relabeling{test_run_id="{{args.run-id}}"}) < 120)
+            scrape_samples_post_metric_relabeling{test_run_id="{{ .Args.runId }}"}
+            and (time() - timestamp(scrape_samples_post_metric_relabeling{test_run_id="{{ .Args.runId }}"}) < 120)
           )
         scrape_duration_by_bucket: |-
           max by (scale_bucket, scale_scraper_pool) (
-            scrape_duration_seconds{test_run_id="{{args.run-id}}"}
-            and (time() - timestamp(scrape_duration_seconds{test_run_id="{{args.run-id}}"}) < 120)
+            scrape_duration_seconds{test_run_id="{{ .Args.runId }}"}
+            and (time() - timestamp(scrape_duration_seconds{test_run_id="{{ .Args.runId }}"}) < 120)
           )
         observed_targets_by_node: |-
           count by (scale_node, scale_bucket, scale_scraper_pool) (
             group by (scale_node, scale_bucket, scale_scraper_pool, generator_instance) (
-              up{test_run_id="{{args.run-id}}"}
-              and (time() - timestamp(up{test_run_id="{{args.run-id}}"}) < 120)
+              up{test_run_id="{{ .Args.runId }}"}
+              and (time() - timestamp(up{test_run_id="{{ .Args.runId }}"}) < 120)
             )
           )
         successful_targets_30m_by_bucket: |-
           count by (scale_bucket, scale_scraper_pool) (
             max by (scale_bucket, scale_scraper_pool, generator_instance) (
-              (min_over_time(up{test_run_id="{{args.run-id}}"}[30m]) == 1)
-              and (count_over_time(up{test_run_id="{{args.run-id}}"}[30m]) >= 30)
-              and (time() - timestamp(up{test_run_id="{{args.run-id}}"}) < 120)
+              (min_over_time(up{test_run_id="{{ .Args.runId }}"}[30m]) == 1)
+              and (count_over_time(up{test_run_id="{{ .Args.runId }}"}[30m]) >= 30)
+              and (time() - timestamp(up{test_run_id="{{ .Args.runId }}"}) < 120)
               and on (scale_bucket, scale_scraper_pool, generator_instance)
-              (count_over_time(scrape_samples_post_metric_relabeling{test_run_id="{{args.run-id}}"}[30m]) >= 30)
+              (count_over_time(scrape_samples_post_metric_relabeling{test_run_id="{{ .Args.runId }}"}[30m]) >= 30)
               and on (scale_bucket, scale_scraper_pool, generator_instance)
-              (time() - timestamp(scrape_samples_post_metric_relabeling{test_run_id="{{args.run-id}}"}) < 120)
+              (time() - timestamp(scrape_samples_post_metric_relabeling{test_run_id="{{ .Args.runId }}"}) < 120)
             )
           )
         minimum_scrape_observations_30m_by_bucket: |-
           min by (scale_bucket, scale_scraper_pool) (
-            count_over_time(up{test_run_id="{{args.run-id}}"}[30m])
+            count_over_time(up{test_run_id="{{ .Args.runId }}"}[30m])
           )
         minimum_sample_observations_30m_by_bucket: |-
           min by (scale_bucket, scale_scraper_pool) (
-            count_over_time(scrape_samples_post_metric_relabeling{test_run_id="{{args.run-id}}"}[30m])
+            count_over_time(scrape_samples_post_metric_relabeling{test_run_id="{{ .Args.runId }}"}[30m])
           )
         minimum_samples_30m_by_bucket: |-
           min by (scale_bucket, scale_scraper_pool) (
-            min_over_time(scrape_samples_post_metric_relabeling{test_run_id="{{args.run-id}}"}[30m])
+            min_over_time(scrape_samples_post_metric_relabeling{test_run_id="{{ .Args.runId }}"}[30m])
           )
         maximum_samples_30m_by_bucket: |-
           max by (scale_bucket, scale_scraper_pool) (
-            max_over_time(scrape_samples_post_metric_relabeling{test_run_id="{{args.run-id}}"}[30m])
+            max_over_time(scrape_samples_post_metric_relabeling{test_run_id="{{ .Args.runId }}"}[30m])
           )
         producer_inventory_by_container: |-
           count by (container) (

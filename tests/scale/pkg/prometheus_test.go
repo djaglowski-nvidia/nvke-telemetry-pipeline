@@ -36,7 +36,7 @@ stages:
         interval: 15ms
         units: {series: series}
         queries:
-          series: 'count({test_run_id="{{args.run-id}}"})'
+          series: 'count({test_run_id="{{ .Args.runId }}"})'
 `, server.URL))
 	args, err := ParseArguments([]string{"run-id=integration-run"})
 	if err != nil {
@@ -46,7 +46,7 @@ stages:
 	if err != nil {
 		t.Fatal(err)
 	}
-	report, err := (Executor{}).Execute(t.Context(), plan, args["run-id"])
+	report, err := (Executor{}).Execute(t.Context(), plan, args[runIDArgument])
 	if err != nil {
 		t.Fatalf("Execute() error = %v", err)
 	}
@@ -71,7 +71,7 @@ stages:
 	if strings.ContainsAny(formatted, "▁▂▃▄▅▆▇█") || strings.Contains(formatted, "Timeline:") || strings.Contains(formatted, "    Time ") {
 		t.Errorf("formatted report contains a bar or timeline:\n%s", formatted)
 	}
-	if strings.Contains(queries["series"].Expression, "{{args.") {
+	if strings.Contains(queries["series"].Expression, "{{ .Args.") {
 		t.Errorf("report retains an unresolved expression: %s", queries["series"].Expression)
 	}
 }

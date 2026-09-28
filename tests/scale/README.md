@@ -186,14 +186,14 @@ runs. Attribution lets you distinguish one run's metrics, logs and traces from
 that other traffic. Use the same run ID in generator attributes and measurement
 queries to select the intended test data.
 
-Use `{{args.name}}` to make a value configurable. For example, in your plan's
-Job spec:
+Plans are Go `text/template` templates. Use `{{ .Args.name }}` to make a value
+configurable. For example, in your plan's Job spec:
 
 ```yaml
 args:
-  - "--rate={{args.rate}}"
-  - "--duration={{args.duration}}"
-  - '--telemetry-attributes=test_run_id="{{args.run-id}}"'
+  - "--rate={{ .Args.rate }}"
+  - "--duration={{ .Args.duration }}"
+  - '--telemetry-attributes=test_run_id="{{ .Args.runId }}"'
 ```
 
 Run that plan from the repository root, supplying values with repeated
@@ -208,8 +208,10 @@ task scale:test -- -plan /absolute/path/to/plan.yaml \
 
 Supply each referenced argument once, except `run-id`, which is generated when
 omitted. Other missing arguments and duplicate assignments fail the command.
-Argument names start with an ASCII letter and may contain
-letters, digits, underscores and hyphens.
+Argument names start with an ASCII letter and may contain letters, digits,
+underscores, and single hyphens. Hyphenated command-line names become camel case
+in templates: `sample-rate` becomes `.Args.sampleRate` and `run-id` becomes
+`.Args.runId`. Names that normalize to the same template key are duplicates.
 
 Omit `-arg run-id=...` to get a fresh random ID for each run, shown in the test
 output. Supply your own ID to associate a run with a CI job or another external
@@ -217,15 +219,15 @@ reference. Use 1 to 63 ASCII letters, digits, underscores, hyphens or dots, with
 letter or digit at each end. Use a different ID for each run you want to
 distinguish.
 
-Reference `{{args.run-id}}` in query filters too, for example
-`count({test_run_id="{{args.run-id}}"})`. The
+Reference `{{ .Args.runId }}` in query filters too, for example
+`count({test_run_id="{{ .Args.runId }}"})`. The
 [telemetrygen plan](plans/telemetrygen.yaml) includes examples for metrics, logs
 and traces. The metrics stage executes PromQL queries against the in-cluster
 Prometheus. The logs and traces stages retain no-op query examples.
 
 Quote references that should remain strings, as in the YAML example. Escape
 supplied values for the surrounding YAML and query syntax. To include the
-literal text `{{args.name}}`, write `{{{{args.name}}`.
+literal text `{{ .Args.name }}`, write `{{ "{{ .Args.name }}" }}`.
 
 ## Prometheus measurements
 
@@ -245,7 +247,7 @@ measurement:
       throughput: points/s
       queue: bytes
     queries:
-      run_series: 'count({test_run_id="{{args.run-id}}"})'
+      run_series: 'count({test_run_id="{{ .Args.runId }}"})'
       throughput: 'sum(rate(otelcol_exporter_sent_metric_points_total{job="nktp-gateway-metrics"}[2m]))'
       queue: 'otelcol_exporter_queue_size{job="nktp-gateway-metrics",data_type="metrics"}'
 ```
@@ -341,7 +343,7 @@ generator:
         nodeTemplate:
           metadata:
             labels:
-              run_id: '{{args.run-id}}'
+              run_id: '{{ .Args.runId }}'
           status:
             capacity:
               cpu: "96"
@@ -391,12 +393,12 @@ generator:
     podTemplate:
       metadata:
         labels:
-          run_id: '{{args.run-id}}'
+          run_id: '{{ .Args.runId }}'
           scale.nktp.io/lifecycle: complete-30s
       spec:
         restartPolicy: Never
         nodeSelector:
-          run_id: '{{args.run-id}}'
+          run_id: '{{ .Args.runId }}'
         tolerations:
         - key: kwok.x-k8s.io/node
           operator: Equal
@@ -448,7 +450,7 @@ generator:
       metadata:
         namespace: nktp
         labels:
-          run_id: '{{args.run-id}}'
+          run_id: '{{ .Args.runId }}'
       spec:
         containers:
         - name: load

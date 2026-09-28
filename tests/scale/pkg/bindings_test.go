@@ -24,24 +24,18 @@ import (
 	"k8s.io/client-go/kubernetes/scheme"
 )
 
-// TestParseSubstitutesArguments checks references, literal escapes, and unchanged inputs.
+// TestParseSubstitutesArguments checks template rendering into a plan without changing inputs.
 func TestParseSubstitutesArguments(t *testing.T) {
-	data := []byte(`# Comments are also substituted: {{args.name}}
-name: 'experiment-{{args.name}}'
-timeout: '{{args.duration}}'
-execution: '{{args.execution}}'
+	data := []byte(`name: 'experiment-{{ .Args.name }}'
+timeout: '{{ .Args.duration }}'
+execution: '{{ .Args.execution }}'
 stages:
-  - name: '{{args.stage}}'
+  - name: '{{ .Args.stage }}'
     generator:
-      type: '{{args.generator}}'
+      type: '{{ .Args.generator }}'
       spec:
         args:
-          - '--telemetry-attributes=test_run_id="{{args.run-id}}"'
-          - '{{ args.prefix }}{{args.prefix}}'
-          - '{{args.empty}}'
-          - '{{{{args.literal}}'
-          - '{{args.payload}}'
-          - '${OTHER} $RUN_ID $(echo untouched) args.run-id'
+          - '--telemetry-attributes=test_run_id="{{ .Args.runId }}"'
         nested:
           count: 42
           enabled: true
@@ -49,7 +43,7 @@ stages:
     measurement:
       type: custom
       spec:
-        query: 'sum(metric{test_run_id="{{args.run-id}}"})'
+        query: 'sum(metric{test_run_id="{{ .Args.runId }}"})'
 `)
 	args := map[string]string{
 		"name":      "smoke",
@@ -57,10 +51,7 @@ stages:
 		"execution": "sequential",
 		"stage":     "load",
 		"generator": "custom",
-		"run-id":    "ci-123",
-		"prefix":    "value",
-		"empty":     "",
-		"payload":   "{{args.not-expanded}} $1",
+		"runId":     "ci-123",
 	}
 	originalData, originalArgs := bytes.Clone(data), maps.Clone(args)
 	plan, err := Parse(data, args)
@@ -82,14 +73,7 @@ stages:
 		t.Fatalf("decode generator spec: %v", err)
 	}
 	want := map[string]any{
-		"args": []any{
-			`--telemetry-attributes=test_run_id="ci-123"`,
-			"valuevalue",
-			"",
-			"{{args.literal}}",
-			args["payload"],
-			"${OTHER} $RUN_ID $(echo untouched) args.run-id",
-		},
+		"args":   []any{`--telemetry-attributes=test_run_id="ci-123"`},
 		"nested": map[string]any{"count": 42, "enabled": true, "empty": nil},
 	}
 	if !reflect.DeepEqual(got, want) {
@@ -107,8 +91,8 @@ stages:
 	}
 }
 
-// TestParseReportsMissingArguments checks that missing names are sorted and deduplicated.
-func TestParseReportsMissingArguments(t *testing.T) {
+// TestParseReportsMissingArgument checks that execution rejects an absent value.
+func TestParseReportsMissingArgument(t *testing.T) {
 	const data = `name: missing-inputs
 timeout: 1m
 stages:
@@ -117,10 +101,10 @@ stages:
       type: custom
       spec:
         args:
-          - '{{args.gateway}}'
-          - '{{args.rate}}'
-          - '{{args.run-id}}'
-          - '{{args.gateway}}'
+          - '{{ .Args.gateway }}'
+          - '{{ .Args.rate }}'
+          - '{{ .Args.runId }}'
+          - '{{ .Args.gateway }}'
     measurement: {type: noop}
 `
 	args := map[string]string{"unrelated": "kept"}
@@ -128,32 +112,31 @@ stages:
 	if err == nil {
 		t.Fatal("Parse() succeeded with missing arguments")
 	}
-	if want := "missing arguments: gateway, rate, run-id"; err.Error() != want {
-		t.Errorf("Parse() error = %q, want %q", err, want)
+	if want := `map has no entry for key "gateway"`; !strings.Contains(err.Error(), want) {
+		t.Errorf("Parse() error = %q, want error containing %q", err, want)
 	}
 	if !maps.Equal(args, map[string]string{"unrelated": "kept"}) {
-		t.Errorf("Parse() changed arguments to %v, want the original map without a generated run-id", args)
+		t.Errorf("Parse() changed arguments to %v, want the original map without a generated runId", args)
 	}
 }
 
-// TestParseRejectsInvalidArgumentExpressions checks malformed and unsupported references.
-func TestParseRejectsInvalidArgumentExpressions(t *testing.T) {
-	for _, value := range []string{
-		"{{args.missing",
-		"{{}}",
-		"{{unknown}}",
-		"{{args.}}",
-		"{{args.1number}}",
-		"{{args.name.other}}",
-		"{{args.name | quote}}",
-		"{{args.name}}{{unsupported}}",
-	} {
-		t.Run(value, func(t *testing.T) {
-			data := strings.Replace(planYAML, "spec: {}", "spec: {value: '"+value+"'}", 1)
-			if _, err := Parse([]byte(data), map[string]string{"name": "provided"}); err == nil {
-				t.Errorf("Parse() accepted invalid argument expression %q", value)
-			}
-		})
+func TestBindArgumentsIndex(t *testing.T) {
+	const data = `{{ index .Args "gateway" }}`
+
+	got, err := bindArguments(data, map[string]string{"gateway": "collector:4317"})
+	if err != nil {
+		t.Fatalf("bindArguments() error = %v", err)
+	}
+	if got != "collector:4317" {
+		t.Errorf("bindArguments() = %q, want %q", got, "collector:4317")
+	}
+
+	_, err = bindArguments(data, map[string]string{})
+	if err == nil {
+		t.Fatal("bindArguments() succeeded with a missing indexed argument")
+	}
+	if want := `map has no entry for key "gateway"`; !strings.Contains(err.Error(), want) {
+		t.Errorf("bindArguments() error = %q, want error containing %q", err, want)
 	}
 }
 
@@ -163,7 +146,7 @@ func TestExecuteRejectsInvalidComponentYAML(t *testing.T) {
 		name string
 		spec string
 	}{
-		{name: "resolved unknown key", spec: "{'{{args.name}}': value}"},
+		{name: "resolved unknown key", spec: "{'{{ .Args.name }}': value}"},
 		{name: "numeric key", spec: "{1: value}"},
 		{name: "Boolean key", spec: "{true: value}"},
 		{name: "sequence key", spec: "{[first, second]: value}"},
@@ -185,29 +168,9 @@ func TestExecuteRejectsInvalidComponentYAML(t *testing.T) {
 	}
 }
 
-// TestBindArgumentsPreservesRawValues checks that replacement values are not escaped or expanded again.
-func TestBindArgumentsPreservesRawValues(t *testing.T) {
-	const input = "value: '{{args.value}}'\n# {{args.comment}}"
-	args := map[string]string{
-		"value":   "O'Reilly\nnext: true\n{{args.other}} $1",
-		"comment": "also replaced",
-	}
-	got, err := bindArguments(input, args)
-	if err != nil {
-		t.Fatalf("bindArguments() error = %v", err)
-	}
-	want := "value: 'O'Reilly\nnext: true\n{{args.other}} $1'\n# also replaced"
-	if got != want {
-		t.Errorf("bindArguments() = %q, want %q", got, want)
-	}
-	if _, err := bindArguments("# {{args.missing}}", nil); err == nil {
-		t.Error("bindArguments() accepted a missing argument in a comment")
-	}
-}
-
 // TestParseSubstitutesBeforeYAMLDecoding checks that values follow the surrounding YAML syntax.
 func TestParseSubstitutesBeforeYAMLDecoding(t *testing.T) {
-	data := strings.Replace(planYAML, "spec: {}", "spec: { '{{args.key}}': {{args.value}} }", 1)
+	data := strings.Replace(planYAML, "spec: {}", "spec: { '{{ .Args.key }}': {{ .Args.value }} }", 1)
 	plan, err := Parse([]byte(data), map[string]string{"key": "count", "value": "100"})
 	if err != nil {
 		t.Fatalf("Parse() error = %v", err)
@@ -220,7 +183,7 @@ func TestParseSubstitutesBeforeYAMLDecoding(t *testing.T) {
 		t.Errorf("resolved spec = %#v, want %#v", got, want)
 	}
 
-	data = strings.Replace(planYAML, "name: smoke", "name: '{{args.name}}'", 1)
+	data = strings.Replace(planYAML, "name: smoke", "name: '{{ .Args.name }}'", 1)
 	if _, err := Parse([]byte(data), map[string]string{"name": "O'Reilly"}); err == nil {
 		t.Error("Parse() accepted a value that breaks YAML quoting")
 	}
@@ -235,11 +198,11 @@ func TestParseSubstitutesBeforeYAMLDecoding(t *testing.T) {
 
 // TestParsePreservesStrictDecoding checks envelope validation and quoted scalar types.
 func TestParsePreservesStrictDecoding(t *testing.T) {
-	data := strings.Replace(planYAML, "name: smoke", "name: '{{args.name}}'", 1)
+	data := strings.Replace(planYAML, "name: smoke", "name: '{{ .Args.name }}'", 1)
 	if _, err := Parse([]byte(data+"unknown: true\n"), map[string]string{"name": "resolved"}); err == nil || !strings.Contains(err.Error(), "field unknown") {
 		t.Errorf("Parse() error = %v, want unknown envelope field error after substitution", err)
 	}
-	data = strings.Replace(planYAML, "spec: {}", "spec: {count: '{{args.count}}', enabled: '{{args.enabled}}'}", 1)
+	data = strings.Replace(planYAML, "spec: {}", "spec: {count: '{{ .Args.count }}', enabled: '{{ .Args.enabled }}'}", 1)
 	plan, err := Parse([]byte(data), map[string]string{"count": "100", "enabled": "true"})
 	if err != nil {
 		t.Fatalf("Parse() error = %v", err)
@@ -261,8 +224,8 @@ func TestParsePreservesStrictDecoding(t *testing.T) {
 
 // TestParseConcurrentSharedInputs checks independent plans parsed from shared inputs.
 func TestParseConcurrentSharedInputs(t *testing.T) {
-	data := []byte(strings.Replace(planYAML, "spec: {}", "spec: {value: '{{args.run-id}}'}", 1))
-	args := map[string]string{"run-id": "shared-input", "unused": "unchanged"}
+	data := []byte(strings.Replace(planYAML, "spec: {}", "spec: {value: '{{ .Args.runId }}'}", 1))
+	args := map[string]string{runIDArgument: "shared-input", "unused": "unchanged"}
 	originalData, originalArgs := bytes.Clone(data), maps.Clone(args)
 	var wg sync.WaitGroup
 	for range 4 {
@@ -331,16 +294,16 @@ stages:
     generator:
       type: job
       spec:
-        namespace: '{{args.namespace}}'
+        namespace: '{{ .Args.namespace }}'
         image: example:test
         args:
-          - '{{args.run-id}}'
-          - '--telemetry-attributes=test_run_id="{{args.run-id}}"'
-          - '{{args.message}}'
+          - '{{ .Args.runId }}'
+          - '--telemetry-attributes=test_run_id="{{ .Args.runId }}"'
+          - '{{ .Args.message }}'
           - '${OTHER} $RUN_ID $(echo untouched)'
     measurement: {type: noop}
 `)
-	flags := []string{"namespace=load", "message={{args.keep-literal}}"}
+	flags := []string{"namespace=load", "message={{ .Args.keep-literal }}"}
 	originalData, originalFlags := bytes.Clone(data), slices.Clone(flags)
 	reports := make([]PlanReport, executions)
 	var wg sync.WaitGroup
@@ -378,13 +341,13 @@ stages:
 			if !reflect.DeepEqual(report, PlanReport{}) {
 				t.Errorf("Execute() report = %+v, want no execution on mismatch", report)
 			}
-			report, err = executor.Execute(t.Context(), plan, args["run-id"])
+			report, err = executor.Execute(t.Context(), plan, args[runIDArgument])
 			if err == nil || !strings.Contains(err.Error(), "create Job") {
 				t.Errorf("Execute() error = %v, want fake API rejection", err)
 			}
 			reports[i] = report
-			if report.RunID != args["run-id"] {
-				t.Errorf("report RunID = %q, want resolved argument %q", report.RunID, args["run-id"])
+			if report.RunID != args[runIDArgument] {
+				t.Errorf("report RunID = %q, want resolved argument %q", report.RunID, args[runIDArgument])
 			}
 			if i%2 == 1 && report.RunID != fmt.Sprintf("ci-%d", i) {
 				t.Errorf("report RunID = %q, want supplied ID ci-%d", report.RunID, i)
@@ -429,7 +392,7 @@ stages:
 		if len(jobs) != 2 {
 			t.Errorf("run %q submitted %d Jobs, want 2", report.RunID, len(jobs))
 		}
-		want := []string{report.RunID, `--telemetry-attributes=test_run_id="` + report.RunID + `"`, "{{args.keep-literal}}", "${OTHER} $RUN_ID $(echo untouched)"}
+		want := []string{report.RunID, `--telemetry-attributes=test_run_id="` + report.RunID + `"`, "{{ .Args.keep-literal }}", "${OTHER} $RUN_ID $(echo untouched)"}
 		for _, got := range jobs {
 			if !slices.Equal(got, want) {
 				t.Errorf("Job args = %v, want %v", got, want)

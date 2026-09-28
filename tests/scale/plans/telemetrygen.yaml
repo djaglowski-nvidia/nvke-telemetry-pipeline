@@ -17,7 +17,7 @@ stages:
           - --duration=3m
           - --rate=10
           - --workers=1
-          - '--telemetry-attributes=test_run_id="{{args.run-id}}"'
+          - '--telemetry-attributes=test_run_id="{{ .Args.runId }}"'
     measurement:
       type: prometheus
       spec:
@@ -35,7 +35,7 @@ stages:
           gateway_memory_growth_bytes_per_second: bytes/s
         queries:
           # Empty results are retained until this run's metrics reach the backend.
-          active_series: 'count({test_run_id="{{args.run-id}}"})'
+          active_series: 'count({test_run_id="{{ .Args.runId }}"})'
           # Collector self-metrics include all traffic through the service.
           gateway_received_points_per_second: 'sum(rate(otelcol_receiver_accepted_metric_points_total{job="nktp-gateway-metrics"}[2m]))'
           gateway_sent_points_per_second: 'sum(rate(otelcol_exporter_sent_metric_points_total{job="nktp-gateway-metrics"}[2m]))'
@@ -58,14 +58,14 @@ stages:
           - --duration=3m
           - --rate=10
           - --workers=1
-          - '--telemetry-attributes=test_run_id="{{args.run-id}}"'
+          - '--telemetry-attributes=test_run_id="{{ .Args.runId }}"'
     measurement:
       type: noop
       spec:
         queries:
           # LogQL assumes OTLP log attributes are stored as structured metadata.
           # service_name selects indexed streams before filtering the run.
-          log_entries: '{service_name=~".+"} | test_run_id="{{args.run-id}}"'
+          log_entries: '{service_name=~".+"} | test_run_id="{{ .Args.runId }}"'
   - name: traces
     generator:
       type: job
@@ -80,10 +80,10 @@ stages:
           - --duration=3m
           - --rate=10
           - --workers=1
-          - '--telemetry-attributes=test_run_id="{{args.run-id}}"'
+          - '--telemetry-attributes=test_run_id="{{ .Args.runId }}"'
     measurement:
       type: noop
       spec:
         queries:
           # TraceQL selects spans carrying this run's telemetry attribute.
-          traces: '{ span.test_run_id = "{{args.run-id}}" }'
+          traces: '{ span.test_run_id = "{{ .Args.runId }}" }'

@@ -1,52 +1,31 @@
 package runner
 
 import (
-	"errors"
 	"fmt"
-	"regexp"
-	"sort"
 	"strings"
+	"text/template"
 )
 
-// argumentReferencePattern matches escaped openings before complete expressions
-// and unclosed openings so literal delimiters take precedence.
-var argumentReferencePattern = regexp.MustCompile(`(?s)\{\{\{\{|\{\{.*?\}\}|\{\{`)
-
-// bindArguments replaces references in raw text before YAML decoding. Replacement
-// values are not escaped or scanned again, including when they contain $ or {{.
 func bindArguments(data string, args map[string]string) (string, error) {
-	var errs []error
-	missing := make(map[string]bool)
-	resolved := argumentReferencePattern.ReplaceAllStringFunc(data, func(reference string) string {
-		switch reference {
-		case "{{{{":
-			return "{{"
-		case "{{":
-			errs = append(errs, errors.New("unterminated argument reference"))
-			return reference
-		}
-		expression := strings.TrimSpace(reference[2 : len(reference)-2])
-		name, ok := strings.CutPrefix(expression, "args.")
-		if !ok || !argumentNamePattern.MatchString(name) {
-			errs = append(errs, fmt.Errorf("unsupported argument reference %q", expression))
-			return reference
-		}
-		value, ok := args[name]
-		if !ok {
-			missing[name] = true
-		}
-		return value
-	})
-	if len(missing) != 0 {
-		names := make([]string, 0, len(missing))
-		for name := range missing {
-			names = append(names, name)
-		}
-		sort.Strings(names)
-		errs = append(errs, fmt.Errorf("missing arguments: %s", strings.Join(names, ", ")))
+	tmpl, err := template.New("plan").Funcs(template.FuncMap{
+		"index": indexArgument,
+	}).Option("missingkey=error").Parse(data)
+	if err != nil {
+		return "", fmt.Errorf("parse plan template: %w", err)
 	}
-	if err := errors.Join(errs...); err != nil {
-		return "", err
+	var resolved strings.Builder
+	if err := tmpl.Execute(&resolved, struct {
+		Args map[string]string
+	}{Args: args}); err != nil {
+		return "", fmt.Errorf("execute plan template: %w", err)
 	}
-	return resolved, nil
+	return resolved.String(), nil
+}
+
+func indexArgument(args map[string]string, key string) (string, error) {
+	value, ok := args[key]
+	if !ok {
+		return "", fmt.Errorf("map has no entry for key %q", key)
+	}
+	return value, nil
 }

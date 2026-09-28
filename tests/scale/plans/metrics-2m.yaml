@@ -30,7 +30,7 @@ stages:
           - --batch
           - --batch-size=100
           - --allow-export-failures
-          - '--telemetry-attributes=test_run_id="{{args.run-id}}"'
+          - '--telemetry-attributes=test_run_id="{{ .Args.runId }}"'
           - '--telemetry-attributes=load_generator="telemetrygen"'
     measurement:
       type: prometheus
@@ -134,7 +134,7 @@ stages:
           - --series-interval=0
           - --metric-interval=0
           - --series-operation-mode=disabled
-          - --const-label=test_run_id={{args.run-id}}
+          - --const-label=test_run_id={{ .Args.runId }}
           - --const-label=load_generator=avalanche
     measurement:
       type: noop
