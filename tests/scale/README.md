@@ -11,60 +11,58 @@ performance.
 For the mixed 100M Avalanche workload with node-local and large-target scraping,
 see the [Avalanche 100M guide](avalanche-100m.md).
 
-## Local cluster
+## Setup
 
-Requires Docker, Kind, kubectl, Helm 3 or 4, and Task. From the repository root:
+Requires kubectl, Helm 3 or 4, Task, and Go. Local provisioning also requires
+Docker and Kind. Run commands from the repository root.
+
+Create a local cluster:
 
 ```sh
-task scale:up
-task scale:down
+export KUBECONFIG="$(task --silent scale:up)"
 ```
 
-`scale:up` creates `nktp-scale` with the [dedicated Kind config](kind-config.yaml)
-if needed, installs cert-manager and its CRDs, installs KWOK, then installs or
-upgrades the NKTP Helm release in namespace `nktp` from the local chart. It prepares chart dependencies and waits
-for nodes and NKTP workloads, including workloads created by the Operator. Each readiness wait has a
-five-minute timeout. Workload readiness does not verify telemetry delivery.
-Chart dependencies are downloaded only when missing or invalid. Once workloads
-are ready, `scale:up` forwards [Prometheus](http://127.0.0.1:9090) and
-[Grafana](http://127.0.0.1:3000) in the background. Keep local ports 9090 and 3000
-free. Repeating `scale:up` restarts both forwards. Logs are in
-`tests/scale/.prometheus-port-forward.log` and `.grafana-port-forward.log`.
+For an existing cluster, authenticate with its provider and select its kubeconfig:
 
-`scale:up` installs KWOK v0.8.0 using the upstream `kwok` and `stage-fast`
-Helm charts at version 0.3.0. It waits for the controller and applies the pod
-lifecycle policy. Repeating the command upgrades the releases and reapplies the
-policy. The controller is not pinned to the control plane. It manages nodes
-annotated `kwok.x-k8s.io/node: fake` and simulates node and pod status without
-running containers. The [node generator](#kwok-nodes) creates tainted emulated
-nodes. The [Pod generator](#pods) runs workloads on those nodes.
+```sh
+export KUBECONFIG=/absolute/path/to/kubeconfig
+```
 
-Label emulated pods `scale.nktp.io/lifecycle: complete-30s` to use the
-[30-second completion policy](kwok/stages/pod-complete-30s.yaml). It marks a
-Running pod `Succeeded` 30 seconds after `status.startTime`. Controller delays
-may extend this lifetime. Delete completed pods after collecting their results.
+Install the test environment, then run a plan:
+
+```sh
+task scale:install
+task scale:test -- -plan "$PWD/tests/scale/plans/telemetrygen.yaml"
+```
+
+`scale:up` only provisions the local cluster and prints its kubeconfig path.
+`scale:install` sets up cert-manager and its CRDs, KWOK, and NKTP in the selected
+cluster.
+It waits for readiness and forwards [Prometheus](http://127.0.0.1:9090) and
+[Grafana](http://127.0.0.1:3000). Keep both local ports free. Tests use the
+kubeconfig's current context and clean up their generated workloads.
+For runs longer than the default 12 minutes, set `TEST_TIMEOUT=30m` before `--`
+with enough time for the plan and cleanup.
+
+Use `HELM_VALUES_FILE` for the environment configuration. Paths are relative to
+the repository root. Supply the file on each `task scale:install` run to retain
+the configuration. Installation creates or upgrades the `nktp` Helm release.
+For existing clusters, configure reuse of compatible shared components in this file.
+
+`INSTALL_KWOK` defaults to `true` for installation and uninstallation. Set it to
+`false` on both commands when KWOK is shared or not needed for the selected plans.
+
+Run `task scale:uninstall` explicitly to remove NKTP and stop its forwards.
+With `INSTALL_KWOK=true`, it also removes the KWOK releases and completion policy.
+It preserves cert-manager, the cluster and kubeconfig and is never invoked by
+another task.
+`task scale:down` deletes only the local scale Kind cluster and its kubeconfig,
+even when another `KUBECONFIG` is exported. Save observations before cleanup
+because LGTM storage is temporary. Failed setup leaves resources for inspection.
+
+Label emulated pods `scale.nktp.io/lifecycle: complete-30s` to complete them after
+30 seconds of Running time. Controller delays may extend their lifetime.
 Pods without the lifecycle label use KWOK's default behavior.
-
-Use `HELM_VALUES_FILE=/absolute/path/to/values.yaml` to supply Helm values.
-Relative paths are resolved from `tests/scale/`. Each run applies the current
-chart defaults and the supplied values file. Pass the file on every run that
-needs it. Omitting it restores chart defaults. Tilt is not required.
-
-Run `scale:up` again to apply local chart or values changes to the existing
-cluster. Kind configuration changes require `scale:down` followed by `scale:up`.
-Failed setup leaves the cluster for inspection. After correcting the problem,
-retry `scale:up` or run `scale:down` followed by `scale:up` for a fresh cluster.
-
-Scale commands use only `tests/scale/.kubeconfig` and the `kind-nktp-scale`
-context. For manual access:
-
-```sh
-export KUBECONFIG="$PWD/tests/scale/.kubeconfig"
-```
-
-`scale:down` stops both managed port-forwards, then deletes the scale cluster and
-its kubeconfig. It does not stop the dev Tilt session or delete the dev cluster.
-The no-op plans below do not require `scale:up`.
 
 ## Domain model
 
@@ -139,34 +137,31 @@ executor before any runnable starts.
 
 ## Running
 
-From the repository root, run the telemetrygen plan against the default scale
-Kind cluster:
+Run a plan against the installed environment. `task tests:scale` is an alias for
+`task scale:test`:
 
 ```sh
-task scale:up
-task test:scale -- -plan "$PWD/tests/scale/plans/telemetrygen.yaml"
-task scale:down
+task scale:test -- -plan "$PWD/tests/scale/plans/telemetrygen.yaml"
 ```
 
 The default kubeconfig is `tests/scale/.kubeconfig`, created by `scale:up` for
-context `kind-nktp-scale`. To use another cluster:
+context `kind-nktp-scale`.
+To use another cluster:
 
 ```sh
-task test:scale KUBECONFIG=/absolute/path/to/kubeconfig -- -plan "$PWD/tests/scale/plans/telemetrygen.yaml"
+task scale:test KUBECONFIG=/absolute/path/to/kubeconfig -- -plan "$PWD/tests/scale/plans/telemetrygen.yaml"
 ```
 
 Override the default with the Task variable `KUBECONFIG` before `--`, an
-environment variable, or `-kubeconfig PATH` after `--`. The forwarded form
-`-plan PATH KUBECONFIG=/absolute/path/to/kubeconfig` also works. A trailing
-assignment takes precedence over `-kubeconfig`, which overrides the Task or
-environment default. Prefer absolute paths for overrides. Relative paths
-resolve from `tests/scale`. Kubeconfig file lists are rejected.
+environment variable, or `-kubeconfig PATH` after `--`. Prefer absolute paths.
+Relative Task values resolve from the repository root. Relative paths passed
+through `-kubeconfig` resolve from `tests/scale`. Kubeconfig file lists are rejected.
 
 No-op plans do not require a kubeconfig or cluster:
 
 ```sh
-task test:scale
-task test:scale -- -plan "$PWD/tests/scale/plans/noop.yaml"
+task scale:test
+task scale:test -- -plan "$PWD/tests/scale/plans/noop.yaml"
 ```
 
 Or from `tests/`:
@@ -205,7 +200,7 @@ Run that plan from the repository root, supplying values with repeated
 `-arg NAME=VALUE` flags:
 
 ```sh
-task test:scale -- -plan /absolute/path/to/plan.yaml \
+task scale:test -- -plan /absolute/path/to/plan.yaml \
   -arg rate=100 \
   -arg duration=3m \
   -arg run-id=ci-123
@@ -262,9 +257,8 @@ An `endpoint`, a positive `duration`, and at least one named query are required.
 `interval` defaults to `15s` and `query_timeout` to `10s`. Optional `units` labels
 results by query name, with automatic scaling for `bytes` and `bytes/s`.
 
-For the scale Kind cluster, `task scale:up` makes Prometheus available at the
-example endpoint. For another environment, use an endpoint reachable from the
-test host.
+`task scale:install` makes Prometheus available at the example endpoint. For
+another environment, use an endpoint reachable from the test host.
 
 Collection starts with the stage, querying at `interval`, and ends normally after
 `duration`. Query failures before that deadline fail the run and preserve results
@@ -319,7 +313,7 @@ The harness can be extended with additional generators and measurements.
   measurements run, then deletes them. See the [node plan](plans/kwok-nodes.yaml).
 
 The telemetrygen plan uses namespace `nktp` and the NKTP services installed by
-`task scale:up`. When using another cluster, adjust the plan namespace and
+`task scale:install`. When using another cluster, adjust the plan namespace and
 endpoints as needed. The test harness itself does not provision a cluster.
 
 Jobs spread their pods evenly across eligible nodes. Each Job spreads
@@ -375,8 +369,9 @@ The [example plan](plans/kwok-nodes.yaml) uses this configuration. From the
 repository root:
 
 ```sh
-task scale:up
-task test:scale -- -plan "$PWD/tests/scale/plans/kwok-nodes.yaml" -test.timeout=40m
+export KUBECONFIG="$(task --silent scale:up)"
+task scale:install
+task scale:test TEST_TIMEOUT=40m -- -plan "$PWD/tests/scale/plans/kwok-nodes.yaml"
 ```
 
 The test timeout allows for the plan deadline and cleanup. Increase it when
@@ -416,12 +411,12 @@ generator:
               memory: 128Mi
 ```
 
-`task scale:up` installs KWOK and the completion policy. Target KWOK nodes must
+`task scale:install` installs KWOK and the completion policy. Target KWOK nodes must
 have the matching `run_id` label and enough capacity for the requested Pods.
 Use the same kubeconfig and run ID for the node and Pod generators:
 
 ```sh
-task test:scale -- -plan "$PWD/tests/scale/plans/kwok-pods.yaml" -arg run-id=example-run -test.timeout=30m
+task scale:test TEST_TIMEOUT=30m -- -plan "$PWD/tests/scale/plans/kwok-pods.yaml" -arg run-id=example-run
 ```
 
 The test timeout allows for the plan's 20-minute deadline and cleanup.
@@ -486,11 +481,11 @@ the blackhole collectors.
 From the repository root:
 
 ```sh
-task scale:up HELM_VALUES_FILE=scale-test-values.yaml
-task test:scale -- -plan "$PWD/tests/scale/plans/avalanche.yaml"
+task scale:install HELM_VALUES_FILE="$PWD/tests/scale/scale-test-values.yaml"
+task scale:test -- -plan "$PWD/tests/scale/plans/avalanche.yaml"
 ```
 
-Pass the values file on subsequent `scale:up` runs to keep the scrape profile.
+Pass the values file on subsequent `scale:install` runs to keep the scrape profile.
 The plan and profile use namespace `nktp`. Adjust both when using another namespace.
 
 Adjust `replicas`, `duration` or the container arguments to change the load.
@@ -514,8 +509,8 @@ after startup.
 From the repository root:
 
 ```sh
-task scale:up HELM_VALUES_FILE=scale-test-values.yaml
-task test:scale -- -plan "$PWD/tests/scale/plans/metrics-1m.yaml"
+task scale:install HELM_VALUES_FILE="$PWD/tests/scale/scale-test-values.yaml"
+task scale:test -- -plan "$PWD/tests/scale/plans/metrics-1m.yaml"
 ```
 
 [plans/metrics-2m.yaml](plans/metrics-2m.yaml) doubles the offered load to about
@@ -523,7 +518,7 @@ task test:scale -- -plan "$PWD/tests/scale/plans/metrics-1m.yaml"
 6 telemetrygen pods. It uses the same ten-minute duration and scale profile.
 
 ```sh
-task test:scale -- -plan "$PWD/tests/scale/plans/metrics-2m.yaml"
+task scale:test -- -plan "$PWD/tests/scale/plans/metrics-2m.yaml"
 ```
 
 The [scale profile](scale-test-values.yaml) runs two blackhole collectors that

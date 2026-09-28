@@ -75,5 +75,6 @@ Examples:
 
 - [OCCT](../../occt/Taskfile.yml) owns its test and snapshot update commands,
   exposed as `task occt:test` and `task occt:update`.
-- [Scale tests](../../tests/scale/Taskfile.yml) own cluster bootstrap, Helm
-  deployment, and teardown, exposed as `task scale:up` and `task scale:down`.
+- [Scale tests](../../tests/scale/Taskfile.yml) own local cluster provisioning
+  and teardown through `task scale:up` and `task scale:down`.
+  `task scale:install` sets up an existing cluster, and `task scale:test` runs a plan.

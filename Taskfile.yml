@@ -51,11 +51,14 @@ tasks:
         --set crds.enabled=true
         --wait --timeout 5m
 
-  test:scale:
-    desc: 'Run a scale test plan (no cluster required for no-op components)'
-    dir: tests
+  tests:scale:
+    aliases: [test:scale]
+    desc: Alias for scale:test
     cmds:
-      - go test -tags scale -count=1 -v -timeout=12m -run '^TestRun$' ./scale -args -kubeconfig {{.KUBECONFIG | default (printf "%s/tests/scale/.kubeconfig" .ROOT_DIR) | shellQuote}} {{.CLI_ARGS}}
+      - task: scale:test
+        vars:
+          KUBECONFIG: '{{.KUBECONFIG}}'
+          CLI_ARGS: '{{.CLI_ARGS}}'
 
   test:
     desc: 'Run the NKTP chart unit tests (pass flags: task test -- -u)'

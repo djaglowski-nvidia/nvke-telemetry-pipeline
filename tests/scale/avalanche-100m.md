@@ -65,9 +65,10 @@ cross-pool scraping, OTLP, DNS and kubelet connectivity.
 
 From the repository root, authenticate and select the EKS kubeconfig. Requires
 kubectl, Helm, Task and Go, with cert-manager and metrics-server already installed.
+Replace the kubeconfig path below with your cluster’s kubeconfig.
 
 ```sh
-export KUBECONFIG="${HOME}/.kube/xmyhfkxqrt-dgxc-k8s-aws-use1-non-prod.kubeconfig"
+export KUBECONFIG="/absolute/path/to/kubeconfig"
 
 helm repo add open-telemetry https://open-telemetry.github.io/opentelemetry-helm-charts --force-update
 helm repo add prometheus-community https://prometheus-community.github.io/helm-charts --force-update
@@ -93,9 +94,9 @@ Back in the original terminal, run one experiment at a time:
 
 ```sh
 RUN_ID="avalanche100m-$(date -u +%Y%m%d%H%M%S)"
-task test:scale KUBECONFIG="$KUBECONFIG" -- \
+task scale:test KUBECONFIG="$KUBECONFIG" TEST_TIMEOUT=130m -- \
   -plan "$PWD/tests/scale/plans/avalanche-100m.yaml" \
-  -arg run-id="$RUN_ID" -test.timeout=130m
+  -arg run-id="$RUN_ID"
 ```
 
 Each producer runs for 75 minutes from its own start. Observations run for 100
