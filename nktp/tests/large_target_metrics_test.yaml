@@ -89,8 +89,8 @@ tests:
       - equal:
           path: spec.targetAllocator.resources
           value:
-            requests: {cpu: 100m, memory: 256Mi}
-            limits: {cpu: "1", memory: 1Gi}
+            requests: {cpu: 250m, memory: 1Gi}
+            limits: {cpu: "1", memory: 2Gi}
       - equal:
           path: spec.targetAllocator.podSecurityContext
           value:

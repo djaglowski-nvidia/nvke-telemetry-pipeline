@@ -441,6 +441,9 @@ tests:
             enabled: true
             replicas: 1
             allocationStrategy: per-node
+            resources:
+              requests: {cpu: 250m, memory: 2Gi}
+              limits: {cpu: "2", memory: 4Gi}
             env:
               - name: OTEL_SERVICE_NAME
                 value: nktp-targetallocator
@@ -539,8 +542,8 @@ tests:
       - equal:
           path: spec.resources
           value:
-            requests: {cpu: 200m, memory: 256Mi}
-            limits: {cpu: 500m, memory: 512Mi}
+            requests: {cpu: 200m, memory: 6Gi}
+            limits: {cpu: "2", memory: 8Gi}
       - notExists:
           path: spec.config.ignored
 

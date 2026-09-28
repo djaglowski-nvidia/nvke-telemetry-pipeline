@@ -127,7 +127,7 @@ tests:
           path: spec.resources
           value:
             requests: {cpu: 300m, memory: 512Mi}
-            limits: {cpu: "1", memory: 1Gi}
+            limits: {cpu: "4", memory: 8Gi}
       - equal:
           path: spec.env
           value:

@@ -43,6 +43,13 @@ watchdog:
       enabled: true # Assign each explicit scrape target to one watchdog replica.
       replicas: 1
       allocationStrategy: consistent-hashing
+      resources:
+        requests:
+          cpu: 250m
+          memory: 1Gi
+        limits:
+          cpu: "1"
+          memory: 2Gi
       env:
         - name: OTEL_SERVICE_NAME
           value: nktp-watchdog-targetallocator
@@ -225,11 +232,11 @@ gateway_logs:
         cpu: 200m
         memory: 512Mi
       limits:
-        cpu: "1"
-        memory: 1Gi
+        cpu: "4"
+        memory: 8Gi
     env:
       - name: GOMEMLIMIT
-        value: 896MiB # Soft Go runtime target. Leaves 128Mi nominal headroom below the container limit.
+        value: 7GiB # Soft Go runtime target. Leaves 1Gi nominal headroom below the container limit.
       - name: GOGC
         value: "50" # More frequent GC trades CPU for lower heap growth.
     podDisruptionBudget:
@@ -277,8 +284,8 @@ gateway_logs:
       processors:
         memory_limiter:
           check_interval: 500ms # Poll Go heap Alloc. Bursts can allocate between checks.
-          limit_percentage: 80 # Hard heap threshold, 819.2Mi. Leaves room below the container cap.
-          spike_limit_percentage: 25 # Subtract from hard threshold for soft refusal at 55% (563.2Mi).
+          limit_percentage: 80 # Hard heap threshold, 6.4Gi. Leaves room below the container cap.
+          spike_limit_percentage: 25 # Subtract from hard threshold for soft refusal at 55% (4.4Gi).
       exporters:
         otlp_http:
           endpoint: http://lgtm:4318
@@ -343,11 +350,11 @@ gateway_metrics:
         cpu: 200m
         memory: 512Mi
       limits:
-        cpu: "1"
-        memory: 1Gi
+        cpu: "4"
+        memory: 8Gi
     env:
       - name: GOMEMLIMIT
-        value: 896MiB # Soft Go runtime target. Leaves 128Mi nominal headroom below the container limit.
+        value: 7GiB # Soft Go runtime target. Leaves 1Gi nominal headroom below the container limit.
       - name: GOGC
         value: "50" # More frequent GC trades CPU for lower heap growth.
     podDisruptionBudget:
@@ -395,8 +402,8 @@ gateway_metrics:
       processors:
         memory_limiter:
           check_interval: 500ms # Poll Go heap Alloc. Bursts can allocate between checks.
-          limit_percentage: 80 # Hard heap threshold, 819.2Mi. Leaves room below the container cap.
-          spike_limit_percentage: 25 # Subtract from hard threshold for soft refusal at 55% (563.2Mi).
+          limit_percentage: 80 # Hard heap threshold, 6.4Gi. Leaves room below the container cap.
+          spike_limit_percentage: 25 # Subtract from hard threshold for soft refusal at 55% (4.4Gi).
       exporters:
         otlp_http:
           endpoint: http://lgtm:4318
@@ -461,11 +468,11 @@ gateway_traces:
         cpu: 200m
         memory: 512Mi
       limits:
-        cpu: "1"
-        memory: 1Gi
+        cpu: "4"
+        memory: 8Gi
     env:
       - name: GOMEMLIMIT
-        value: 896MiB # Soft Go runtime target. Leaves 128Mi nominal headroom below the container limit.
+        value: 7GiB # Soft Go runtime target. Leaves 1Gi nominal headroom below the container limit.
       - name: GOGC
         value: "50" # More frequent GC trades CPU for lower heap growth.
     podDisruptionBudget:
@@ -513,8 +520,8 @@ gateway_traces:
       processors:
         memory_limiter:
           check_interval: 500ms # Poll Go heap Alloc. Bursts can allocate between checks.
-          limit_percentage: 80 # Hard heap threshold, 819.2Mi. Leaves room below the container cap.
-          spike_limit_percentage: 25 # Subtract from hard threshold for soft refusal at 55% (563.2Mi).
+          limit_percentage: 80 # Hard heap threshold, 6.4Gi. Leaves room below the container cap.
+          spike_limit_percentage: 25 # Subtract from hard threshold for soft refusal at 55% (4.4Gi).
       exporters:
         otlp_http:
           endpoint: http://lgtm:4318
@@ -627,6 +634,13 @@ daemonset:
       enabled: true
       replicas: 1
       allocationStrategy: per-node # Targets without a matching collector node stay unassigned.
+      resources:
+        requests:
+          cpu: 250m
+          memory: 2Gi
+        limits:
+          cpu: "2"
+          memory: 4Gi
       env:
         - name: OTEL_SERVICE_NAME
           value: nktp-targetallocator
@@ -677,14 +691,14 @@ daemonset:
               values: ["true"]
     resources:
       requests:
-        cpu: 100m
-        memory: 256Mi
+        cpu: "2"
+        memory: 6Gi
       limits:
-        cpu: 500m
-        memory: 512Mi
+        cpu: "2"
+        memory: 8Gi
     env:
       - name: GOMEMLIMIT
-        value: 448MiB # Soft Go runtime target. Leaves 64Mi nominal headroom below the container limit.
+        value: 7GiB # Soft Go runtime target. Leaves 1Gi nominal headroom below the container limit.
       - name: GOGC
         value: "50" # More frequent GC trades CPU for lower heap growth.
       - name: NODE_NAME
@@ -920,8 +934,8 @@ daemonset:
       processors:
         memory_limiter:
           check_interval: 500ms # Poll Go heap Alloc. Bursts can allocate between checks.
-          limit_percentage: 80 # Hard heap threshold, 409.6Mi. Leaves room below the container cap.
-          spike_limit_percentage: 25 # Subtract from hard threshold for soft refusal at 55% (281.6Mi).
+          limit_percentage: 80 # Hard heap threshold, 6.4Gi. Leaves room below the container cap.
+          spike_limit_percentage: 25 # Subtract from hard threshold for soft refusal at 55% (4.4Gi).
         resource/node:
           attributes:
             - key: k8s.node.name
@@ -949,7 +963,7 @@ daemonset:
           sending_queue:
             block_on_overflow: true
             sizer: bytes # Counts serialized bytes. Go heap use can be several times larger.
-            queue_size: 8388608 # Gateway queues each hold 8MiB, including in-flight payloads.
+            queue_size: 8388608 # Logs queue holds 8MiB, including in-flight payloads.
             num_consumers: 32 # Export concurrency. Idle worker slots hold no batch payload.
             batch:
               sizer: bytes # Batch sizes use serialized bytes, matching queue accounting.
@@ -963,7 +977,7 @@ daemonset:
           sending_queue:
             block_on_overflow: true
             sizer: bytes
-            queue_size: 8388608
+            queue_size: 33554432 # 32MiB to admit large scrapes before batching.
             num_consumers: 32
             batch:
               sizer: bytes
@@ -1078,11 +1092,11 @@ large_target_metrics:
                     temporalityPreference: cumulative
       resources:
         requests:
-          cpu: 100m
-          memory: 256Mi # Discovery cache size depends on Kubernetes objects and target count.
+          cpu: 250m
+          memory: 1Gi # Discovery cache size depends on Kubernetes objects and target count.
         limits:
           cpu: "1"
-          memory: 1Gi
+          memory: 2Gi
       podSecurityContext:
         runAsNonRoot: true
         seccompProfile:
@@ -1126,10 +1140,10 @@ large_target_metrics:
       targetMemoryUtilization: 100 # Scale at 8Gi working set. The limiter checks Go heap separately.
     resources:
       requests:
-        cpu: 500m
+        cpu: "2"
         memory: 8Gi # Reserve memory for parsing and retained scrape data.
       limits:
-        cpu: "2"
+        cpu: "4"
         memory: 16Gi # Allow headroom for overlapping scrapes and the exporter queue.
     env:
       - name: GOMEMLIMIT

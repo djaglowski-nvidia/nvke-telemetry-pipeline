@@ -1,12 +1,9 @@
 # Kind host paths and sizing, applied to every run before any
 # -values file given on the command line.
 #
-# Replica counts, autoscaler floors, and resource requests are capacity rather
-# than behavior. The chart's defaults ask for roughly 3 vCPU and 21Gi of
-# collectors, which no single-node cluster on a hosted runner can schedule
-# alongside kube-system, and how much a collector needs per replica is the scale
-# suite's question, not this one. Everything the suite actually asserts on is
-# left at its default.
+# Lower replica counts, autoscaler floors and resource requests keep the small
+# e2e workload schedulable on a hosted Kind runner. Collection behavior and
+# resource limits retain the chart defaults.
 #
 # Two workloads keep their replica counts, because there the count is behavior:
 # cluster_events runs an elected reader and a standby, and large_target_metrics
@@ -15,6 +12,11 @@
 
 watchdog:
   kubernetes:
+    targetAllocator:
+      resources:
+        requests:
+          cpu: 50m
+          memory: 128Mi
     replicas: 1
     autoscaler:
       minReplicas: 1
@@ -51,9 +53,15 @@ gateway_traces:
 
 daemonset:
   kubernetes:
+    targetAllocator:
+      resources:
+        requests:
+          cpu: 50m
+          memory: 128Mi
     resources:
       requests:
         cpu: 50m
+        memory: 256Mi
     # Kind stores its journal in /run. Helm replaces volume lists in full.
     volumes:
       - name: pod-logs
@@ -97,10 +105,14 @@ cluster_events:
       requests:
         cpu: 50m
 
-# The only workload whose default request a hosted runner cannot hold at all:
-# 8Gi each, twice over, against a runner with about 7Gi in total.
+# Keep two scrapers to exercise target distribution within the pool.
 large_target_metrics:
   kubernetes:
+    targetAllocator:
+      resources:
+        requests:
+          cpu: 100m
+          memory: 256Mi
     resources:
       requests:
         cpu: 50m
