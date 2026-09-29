@@ -1262,10 +1262,10 @@ cluster_events:
     replicas: 2 # One active reader and one standby. More replicas do not increase watch throughput.
     resources:
       requests:
-        cpu: 200m
+        cpu: "1"
         memory: 512Mi
       limits:
-        cpu: "1"
+        cpu: "4"
         memory: 1Gi # The receiver lists Events at leadership start. Size for retained Event volume.
     env:
       - name: GOMEMLIMIT

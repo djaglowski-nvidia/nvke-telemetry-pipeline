@@ -23,6 +23,7 @@ Default budgets are per Pod. Configure collector resources under
 | Node collector | 2 / 6 GiB | 2 / 8 GiB |
 | Large-target collector | 2 / 8 GiB | 4 / 16 GiB |
 | Metrics, logs and traces gateways | 200m / 512 MiB | 4 / 8 GiB |
+| Cluster event reader | 1 / 512 MiB | 4 / 1 GiB |
 | Node Target Allocator | 250m / 2 GiB | 2 / 4 GiB |
 | Large-target and watchdog Target Allocators | 250m / 1 GiB | 1 / 2 GiB |
 
