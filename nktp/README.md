@@ -135,6 +135,10 @@ clusters do not serve. Add them to `resource_types` only when the cluster serves
 its own `namespaces` list. RBAC follows the effective namespace selection.
 An empty list means all namespaces. Empty strings are ignored.
 
+Set `kube-state-metrics.metricLabelsAllowlist` to expose selected Kubernetes labels,
+for example `["pods=[app.kubernetes.io/name]"]`. Additional Kubernetes labels are
+disabled by default.
+
 Secret metrics are opt-in because collection requires list/watch access to complete
 Secret objects, including their contents. To enable them, set
 `kube-state-metrics.deployments.configuration.resource_types` to `[configmaps, secrets]`.

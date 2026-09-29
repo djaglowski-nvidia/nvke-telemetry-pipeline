@@ -1,0 +1,158 @@
+# One kube-burner Pod on each of 100 workers offers 10,000 Events/s total. See ../kube-burner-events.md.
+# Install ../kube-burner-events-values.yaml before running this plan.
+name: kube-burner-events
+timeout: 20m
+stages:
+- name: events
+  generator:
+    type: pod
+    spec:
+      replicas: 100
+      podTemplate:
+        metadata:
+          namespace: nktp
+          labels:
+            scale.nktp.io/workload: kube-burner-events
+            scale.nktp.io/run-id: '{{ .Args.runId }}'
+        spec:
+          restartPolicy: Never
+          serviceAccountName: nktp-kube-burner-events
+          automountServiceAccountToken: true
+          activeDeadlineSeconds: 1080
+          terminationGracePeriodSeconds: 10
+          nodeSelector:
+            nodeGroup: customer-cpu
+          tolerations:
+          - key: skyhook.nvidia.com
+            operator: Equal
+            value: runtime-required
+            effect: NoSchedule
+          affinity:
+            podAntiAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+              - topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels:
+                    scale.nktp.io/workload: kube-burner-events
+                    scale.nktp.io/run-id: '{{ .Args.runId }}'
+          containers:
+          - name: kube-burner-events
+            image: quay.io/kube-burner/kube-burner:v2.8.6@sha256:340a8e1428bf042e944e605487bd9d1c9d5195d0f9c2599b4d31ca114b1864ae
+            command:
+            - /bin/kube-burner
+            workingDir: /etc/kube-burner
+            args:
+            - init
+            - --config=config.yaml
+            - --uuid=$(POD_UID)
+            - --timeout=15m
+            - --skip-log-file
+            env:
+            - name: POD_UID
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.uid
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: EVENT_RUN_ID
+              value: '{{ .Args.runId }}'
+            - name: EVENT_COUNT
+              value: '12000'
+            - name: EVENT_QPS
+              value: '100'
+            - name: EVENT_BURST
+              value: '1'
+            - name: EVENT_MESSAGE_BYTES
+              value: '1024'
+            resources:
+              requests:
+                cpu: 250m
+                memory: 256Mi
+              limits:
+                cpu: '1'
+                memory: 1Gi
+            securityContext:
+              allowPrivilegeEscalation: false
+              readOnlyRootFilesystem: true
+              capabilities:
+                drop:
+                - ALL
+            volumeMounts:
+            - name: config
+              mountPath: /etc/kube-burner
+              readOnly: true
+          volumes:
+          - name: config
+            configMap:
+              name: nktp-kube-burner-events
+  measurement:
+    type: prometheus
+    spec:
+      endpoint: http://127.0.0.1:9090
+      duration: 5m
+      interval: 15s
+      query_timeout: 10s
+      queries:
+        producer_running_pods: >-
+          sum(
+            max by (namespace,pod) (
+              kube_pod_status_phase{namespace="nktp",phase="Running"}
+              and (time() - timestamp(kube_pod_status_phase{namespace="nktp",phase="Running"}) < 90)
+            )
+            and on (namespace,pod) max by (namespace,pod) (
+              kube_pod_container_info{namespace="nktp",container="kube-burner-events"}
+              and (time() - timestamp(kube_pod_container_info{namespace="nktp",container="kube-burner-events"}) < 90)
+            )
+            and on (namespace,pod) max by (namespace,pod) (
+              kube_pod_labels{namespace="nktp",label_scale_nktp_io_run_id="{{ .Args.runId }}"}
+              and (time() - timestamp(kube_pod_labels{namespace="nktp",label_scale_nktp_io_run_id="{{ .Args.runId }}"}) < 90)
+            )
+          )
+        producer_cpu_cores: >-
+          sum by (pod) (
+            rate(container_cpu_usage_seconds_total{namespace="nktp",container="kube-burner-events"}[2m])
+            and (time() - timestamp(container_cpu_usage_seconds_total{namespace="nktp",container="kube-burner-events"}) < 90)
+            and on (namespace,pod) max by (namespace,pod) (
+              kube_pod_labels{namespace="nktp",label_scale_nktp_io_run_id="{{ .Args.runId }}"}
+              and (time() - timestamp(kube_pod_labels{namespace="nktp",label_scale_nktp_io_run_id="{{ .Args.runId }}"}) < 90)
+            )
+          )
+        producer_memory_bytes: >-
+          max by (pod) (
+            container_memory_working_set_bytes{namespace="nktp",container="kube-burner-events"}
+            and (time() - timestamp(container_memory_working_set_bytes{namespace="nktp",container="kube-burner-events"}) < 90)
+            and on (namespace,pod) max by (namespace,pod) (
+              kube_pod_labels{namespace="nktp",label_scale_nktp_io_run_id="{{ .Args.runId }}"}
+              and (time() - timestamp(kube_pod_labels{namespace="nktp",label_scale_nktp_io_run_id="{{ .Args.runId }}"}) < 90)
+            )
+          )
+        received_records_per_second: sum by (job,instance,receiver) (rate(otelcol_receiver_accepted_log_records_total{job=~"nktp-cluster-events|nktp-gateway-logs|nktp-kube-burner-events-blackhole|nktp-watchdog"}[2m]))
+        sent_records_per_second: sum by (job,instance,exporter) (rate(otelcol_exporter_sent_log_records_total{job=~"nktp-cluster-events|nktp-gateway-logs|nktp-kube-burner-events-blackhole|nktp-watchdog"}[2m]))
+        component_cpu_cores: sum by (job,instance) (rate(otelcol_process_cpu_seconds_total{job=~"nktp-cluster-events|nktp-gateway-logs|nktp-kube-burner-events-blackhole|nktp-watchdog"}[2m]))
+        component_memory_bytes: otelcol_process_memory_rss_bytes{job=~"nktp-cluster-events|nktp-gateway-logs|nktp-kube-burner-events-blackhole|nktp-watchdog"}
+        # These exporters use sending_queue.sizer: bytes, so queue size is serialized bytes.
+        queue_bytes: otelcol_exporter_queue_size{job=~"nktp-cluster-events|nktp-gateway-logs|nktp-kube-burner-events-blackhole|nktp-watchdog"}
+        queue_utilization_ratio: otelcol_exporter_queue_size{job=~"nktp-cluster-events|nktp-gateway-logs|nktp-kube-burner-events-blackhole|nktp-watchdog"}
+          / otelcol_exporter_queue_capacity{job=~"nktp-cluster-events|nktp-gateway-logs|nktp-kube-burner-events-blackhole|nktp-watchdog"}
+        receiver_refused_records_per_second: sum by (job,instance,receiver) (rate(otelcol_receiver_refused_log_records_total{job=~"nktp-cluster-events|nktp-gateway-logs|nktp-kube-burner-events-blackhole|nktp-watchdog"}[2m]))
+        exporter_enqueue_failed_records_per_second: sum by (job,instance,exporter) (rate(otelcol_exporter_enqueue_failed_log_records_total{job=~"nktp-cluster-events|nktp-gateway-logs|nktp-kube-burner-events-blackhole|nktp-watchdog"}[2m]))
+        exporter_send_failed_records_per_second: sum by (job,instance,exporter) (rate(otelcol_exporter_send_failed_log_records_total{job=~"nktp-cluster-events|nktp-gateway-logs|nktp-kube-burner-events-blackhole|nktp-watchdog"}[2m]))
+        self_metrics_age_seconds: max by (job,instance) (time() - timestamp(otelcol_process_memory_rss_bytes{job=~"nktp-cluster-events|nktp-gateway-logs|nktp-kube-burner-events-blackhole|nktp-watchdog"}))
+        container_restarts: max by (pod,container) (increase(kube_pod_container_status_restarts_total{namespace="nktp",pod=~"nktp-cluster-events-.*|nktp-gateway-logs-.*|nktp-kube-burner-events-blackhole-.*|nktp-watchdog-.*|lgtm-.*|scale-.*"}[2m]))
+      units:
+        producer_running_pods: count
+        producer_cpu_cores: cores
+        producer_memory_bytes: bytes
+        received_records_per_second: records/s
+        sent_records_per_second: records/s
+        component_cpu_cores: cores
+        component_memory_bytes: bytes
+        queue_bytes: bytes
+        queue_utilization_ratio: ratio
+        receiver_refused_records_per_second: records/s
+        exporter_enqueue_failed_records_per_second: records/s
+        exporter_send_failed_records_per_second: records/s
+        self_metrics_age_seconds: s
+        container_restarts: count

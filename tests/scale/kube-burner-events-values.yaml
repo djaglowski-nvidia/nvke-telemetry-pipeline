@@ -1,0 +1,356 @@
+# Kubernetes Event profile for the existing EKS test cluster.
+# NKTP resource requests and limits use chart defaults.
+# Test logs end at blackhole. Metrics and watchdog telemetry remain in LGTM.
+watchdog:
+  kubernetes:
+    nodeSelector: &systemSelector
+      nodeGroup: system-cpu
+    tolerations: &systemTolerations
+      - key: dedicated
+        operator: Equal
+        value: system-workload
+    targetAllocator: &allocatorPlacement
+      nodeSelector: *systemSelector
+      tolerations: *systemTolerations
+
+daemonset:
+  kubernetes:
+    targetAllocator: *allocatorPlacement
+
+gateway_logs:
+  kubernetes:
+    nodeSelector: *systemSelector
+    tolerations: *systemTolerations
+  otelcol:
+    config:
+      exporters:
+        otlp_http:
+          endpoint: http://nktp-kube-burner-events-blackhole-collector:4318
+
+gateway_metrics:
+  kubernetes:
+    nodeSelector: *systemSelector
+    tolerations: *systemTolerations
+
+gateway_traces:
+  kubernetes:
+    nodeSelector: *systemSelector
+    tolerations: *systemTolerations
+
+large_target_metrics:
+  kubernetes:
+    nodeSelector: *systemSelector
+    tolerations: *systemTolerations
+    targetAllocator: *allocatorPlacement
+
+cluster_events:
+  kubernetes:
+    nodeSelector: *systemSelector
+    tolerations: *systemTolerations
+
+kube-state-metrics:
+  metricLabelsAllowlist:
+    - pods=[scale.nktp.io/run-id]
+  deployments:
+    unscheduled-pods:
+      kubernetes: &systemPlacement
+        nodeSelector: *systemSelector
+        tolerations: *systemTolerations
+    workloads:
+      kubernetes: *systemPlacement
+    networking:
+      kubernetes: *systemPlacement
+    storage:
+      kubernetes: *systemPlacement
+    configuration:
+      kubernetes: *systemPlacement
+    cluster:
+      kubernetes: *systemPlacement
+
+# This profile supplies LGTM with explicit placement and resource budgets below.
+otel-lgtm:
+  enabled: false
+
+opentelemetry-kube-stack:
+  opentelemetry-operator:
+    admissionWebhooks:
+      certManager:
+        enabled: false
+      autoGenerateCert:
+        enabled: true
+        recreate: false
+    nodeSelector: *systemSelector
+    tolerations: *systemTolerations
+  extraObjects:
+    # Preserve operator policies and permit discovery through this EKS API service.
+    - apiVersion: networking.k8s.io/v1
+      kind: NetworkPolicy
+      metadata:
+        name: nktp-kube-burner-events-api-access
+        namespace: '{{ .Release.Namespace }}'
+      spec:
+        podSelector:
+          matchLabels:
+            app.kubernetes.io/name: opentelemetry-operator
+            app.kubernetes.io/component: controller-manager
+        policyTypes: [Egress]
+        egress: &apiEgress
+          - to:
+              - ipBlock:
+                  cidr: 172.20.0.1/32
+            ports:
+              - {protocol: TCP, port: 443}
+    - apiVersion: networking.k8s.io/v1
+      kind: NetworkPolicy
+      metadata:
+        name: nktp-kube-burner-events-allocator-api-access
+        namespace: '{{ .Release.Namespace }}'
+      spec:
+        podSelector:
+          matchLabels:
+            app.kubernetes.io/component: opentelemetry-targetallocator
+        policyTypes: [Egress]
+        egress: *apiEgress
+
+    # Accept and discard test logs so backend storage does not limit the test.
+    - apiVersion: opentelemetry.io/v1beta1
+      kind: OpenTelemetryCollector
+      metadata:
+        name: nktp-kube-burner-events-blackhole
+        labels:
+          helm.sh/chart: '{{ include "opentelemetry-kube-stack.chart" . }}'
+        namespace: '{{ .Release.Namespace }}'
+      spec:
+        image: otel/opentelemetry-collector-k8s:0.159.0
+        mode: deployment
+        replicas: 4
+        nodeSelector: *systemSelector
+        tolerations: *systemTolerations
+        resources:
+          requests: {cpu: "4", memory: 4Gi}
+          limits: {cpu: "16", memory: 16Gi}
+        env:
+          - {name: GOMEMLIMIT, value: 14GiB}
+          - {name: GOGC, value: "50"}
+        topologySpreadConstraints:
+          - maxSkew: 1
+            topologyKey: kubernetes.io/hostname
+            whenUnsatisfiable: DoNotSchedule
+            nodeAffinityPolicy: Honor
+            nodeTaintsPolicy: Honor
+            labelSelector:
+              matchLabels:
+                app.kubernetes.io/name: nktp-kube-burner-events-blackhole-collector
+        config:
+          extensions:
+            health_check:
+              endpoint: 0.0.0.0:13133
+          receivers:
+            otlp:
+              protocols:
+                http:
+                  endpoint: 0.0.0.0:4318
+          processors:
+            memory_limiter:
+              check_interval: 500ms
+              limit_percentage: 80
+              spike_limit_percentage: 25
+          exporters:
+            nop: {}
+          service:
+            extensions: [health_check]
+            telemetry:
+              resource:
+                service.name: nktp-kube-burner-events-blackhole
+              metrics:
+                readers:
+                  - periodic:
+                      exporter:
+                        otlp:
+                          protocol: http/protobuf
+                          endpoint: http://nktp-watchdog-collector:4318
+              logs:
+                processors:
+                  - batch:
+                      exporter:
+                        otlp:
+                          protocol: http/protobuf
+                          endpoint: http://nktp-watchdog-collector:4318
+            pipelines:
+              logs:
+                receivers: [otlp]
+                processors: [memory_limiter]
+                exporters: [nop]
+
+    - apiVersion: v1
+      kind: Service
+      metadata:
+        name: lgtm
+        namespace: '{{ .Release.Namespace }}'
+      spec:
+        selector: {app: lgtm}
+        ports:
+          - {name: prometheus, port: 9090, targetPort: 9090}
+          - {name: grafana, port: 3000, targetPort: 3000}
+          - {name: otlp-grpc, port: 4317, targetPort: 4317}
+          - {name: otlp-http, port: 4318, targetPort: 4318}
+    - apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: lgtm
+        namespace: '{{ .Release.Namespace }}'
+      spec:
+        replicas: 1
+        selector:
+          matchLabels: {app: lgtm}
+        template:
+          metadata:
+            labels: {app: lgtm}
+          spec:
+            nodeSelector: *systemSelector
+            tolerations: *systemTolerations
+            containers:
+              - name: lgtm
+                image: grafana/otel-lgtm:0.32.0
+                resources:
+                  requests: {cpu: "8", memory: 16Gi}
+                  limits: {cpu: "16", memory: 32Gi}
+                env:
+                  - {name: GF_AUTH_ANONYMOUS_ENABLED, value: "true"}
+                  - {name: GF_AUTH_ANONYMOUS_ORG_ROLE, value: Admin}
+                  - name: PROMETHEUS_EXTRA_ARGS
+                    value: --enable-feature=otlp-deltatocumulative
+                readinessProbe:
+                  exec:
+                    command: [cat, /tmp/ready]
+                volumeMounts:
+                  - {name: tempo, mountPath: /data/tempo}
+                  - {name: grafana, mountPath: /data/grafana}
+                  - {name: loki, mountPath: /data/loki}
+                  - {name: loki-storage, mountPath: /loki}
+                  - {name: prometheus, mountPath: /data/prometheus}
+                  - {name: pyroscope, mountPath: /data/pyroscope}
+            volumes:
+              - {name: tempo, emptyDir: {}}
+              - {name: grafana, emptyDir: {}}
+              - {name: loki, emptyDir: {}}
+              - {name: loki-storage, emptyDir: {}}
+              - {name: prometheus, emptyDir: {}}
+              - {name: pyroscope, emptyDir: {}}
+
+    # Each generator can create Events only in the release namespace.
+    - apiVersion: v1
+      kind: ServiceAccount
+      metadata:
+        name: nktp-kube-burner-events
+        namespace: '{{ .Release.Namespace }}'
+    - apiVersion: rbac.authorization.k8s.io/v1
+      kind: Role
+      metadata:
+        name: nktp-kube-burner-events
+        namespace: '{{ .Release.Namespace }}'
+      rules:
+        - apiGroups: [""]
+          resources: [events]
+          verbs: [create]
+    - apiVersion: rbac.authorization.k8s.io/v1
+      kind: RoleBinding
+      metadata:
+        name: nktp-kube-burner-events
+        namespace: '{{ .Release.Namespace }}'
+      roleRef:
+        apiGroup: rbac.authorization.k8s.io
+        kind: Role
+        name: nktp-kube-burner-events
+      subjects:
+        - kind: ServiceAccount
+          name: nktp-kube-burner-events
+          namespace: '{{ .Release.Namespace }}'
+    # Stock kube-burner verifies each replica's count with a cluster-wide Event LIST.
+    - apiVersion: rbac.authorization.k8s.io/v1
+      kind: ClusterRole
+      metadata:
+        name: '{{ .Release.Name }}-kube-burner-events-verify'
+      rules:
+        - apiGroups: [""]
+          resources: [events]
+          verbs: [list]
+    - apiVersion: rbac.authorization.k8s.io/v1
+      kind: ClusterRoleBinding
+      metadata:
+        name: '{{ .Release.Name }}-kube-burner-events-verify'
+      roleRef:
+        apiGroup: rbac.authorization.k8s.io
+        kind: ClusterRole
+        name: '{{ .Release.Name }}-kube-burner-events-verify'
+      subjects:
+        - kind: ServiceAccount
+          name: nktp-kube-burner-events
+          namespace: '{{ .Release.Namespace }}'
+    - apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: nktp-kube-burner-events
+        namespace: '{{ .Release.Namespace }}'
+      data:
+        config.yaml: |
+          {{`{{- $count := env "EVENT_COUNT" | default "12000" | atoi -}}`}}
+          {{`{{- $qps := env "EVENT_QPS" | default "100" | atoi -}}`}}
+          {{`{{- $burst := env "EVENT_BURST" | default "1" | atoi -}}`}}
+          {{`{{- $messageBytes := env "EVENT_MESSAGE_BYTES" | default "1024" | atoi -}}`}}
+          {{`{{- if or (lt $count 1) (lt $qps 1) (lt $burst 1) -}}`}}
+          {{`{{- fail "EVENT_COUNT, EVENT_QPS and EVENT_BURST must be positive integers" -}}`}}
+          {{`{{- end -}}`}}
+          {{`{{- if or (lt $messageBytes 1) (gt $messageBytes 1024) -}}`}}
+          {{`{{- fail "EVENT_MESSAGE_BYTES must be between 1 and 1024" -}}`}}
+          {{`{{- end }}`}}
+          {{`{{- $runID := env "EVENT_RUN_ID" | default .UUID }}`}}
+          global:
+            gc: false
+            requestTimeout: 30s
+          jobs:
+            - name: nktp-events-{{`{{ .UUID }}`}}
+              jobType: create
+              namespace: {{ .Release.Namespace }}
+              namespacedIterations: false
+              jobIterations: {{`{{ $count }}`}}
+              qps: {{`{{ $qps }}`}}
+              burst: {{`{{ $burst }}`}}
+              cleanup: false
+              preLoadImages: false
+              podWait: false
+              waitWhenFinished: false
+              verifyObjects: true
+              errorOnVerify: true
+              maxWaitTimeout: 30s
+              objects:
+                - objectTemplate: event.yaml
+                  replicas: 1
+                  wait: false
+                  inputVars:
+                    messageBytes: {{`{{ $messageBytes }}`}}
+                    eventRunID: {{`{{ $runID | quote }}`}}
+        event.yaml: |
+          {{`{{- $timestamp := now | date "2006-01-02T15:04:05.000000000Z07:00" }}`}}
+          apiVersion: v1
+          kind: Event
+          metadata:
+            name: nktp-event-{{`{{ .UUID }}`}}-{{`{{ .Iteration }}`}}-{{`{{ .Replica }}`}}
+            namespace: {{ .Release.Namespace }}
+            labels:
+              scale.nktp.io/workload: kube-burner-events
+              scale.nktp.io/run-id: {{`{{ .eventRunID | quote }}`}}
+          involvedObject:
+            apiVersion: v1
+            kind: Pod
+            namespace: {{ .Release.Namespace }}
+            name: {{`{{ env "POD_NAME" | quote }}`}}
+            uid: {{`{{ env "POD_UID" | quote }}`}}
+          reason: NKTPScaleTest
+          type: Normal
+          message: '{{`{{ repeat (int .messageBytes) "x" }}`}}'
+          source:
+            component: kube-burner
+          firstTimestamp: '{{`{{ $timestamp }}`}}'
+          lastTimestamp: '{{`{{ $timestamp }}`}}'
+          count: 1

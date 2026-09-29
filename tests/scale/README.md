@@ -11,6 +11,9 @@ performance.
 For the mixed 100M Avalanche workload with node-local and large-target scraping,
 see the [Avalanche 100M guide](avalanche-100m.md).
 
+For Kubernetes Event load through the scale harness, see the
+[kube-burner plan and profile](kube-burner-events.md).
+
 ## Setup
 
 Requires kubectl, Helm 3 or 4, Task, and Go. Local provisioning also requires

@@ -62,6 +62,25 @@ tests:
           path: metadata.name
           value: nktp-ksm-workloads-0
 
+  - it: exposes configured Kubernetes labels in node-local and central workloads
+    set:
+      kube-state-metrics.metricLabelsAllowlist:
+        - pods=[app.kubernetes.io/name]
+        - nodes=[kubernetes.io/hostname]
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --metric-labels-allowlist=pods=[app.kubernetes.io/name],nodes=[kubernetes.io/hostname]
+        documentSelector:
+          path: metadata.name
+          value: nktp-ksm-pods
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --metric-labels-allowlist=pods=[app.kubernetes.io/name],nodes=[kubernetes.io/hostname]
+        documentSelector:
+          path: metadata.name
+          value: nktp-ksm-cluster-0
+
   - it: gives every shard a unique identity and one replica
     set:
       kube-state-metrics.deployments.workloads.shards: 2
