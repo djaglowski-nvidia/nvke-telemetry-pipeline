@@ -12,6 +12,14 @@ Set `global.imageRegistry` to override the image registry of all the components.
 Caveat: `metrics-server` dependency and the nested OpenTelemetry Operator do **not**
 read this setting. Configure their image repositories explicitly when required.
 
+
+### Secure backend export
+
+The default LGTM backend uses plaintext OTLP for local development. Configure an
+HTTPS endpoint before sending gateway traffic to a production backend. See
+[Secure gateway export](../docs/gateway_mtls.md) for TLS, mTLS, and cert-manager
+configuration.
+
 ### Resource sizing
 
 Default budgets are per Pod. Configure collector resources under
