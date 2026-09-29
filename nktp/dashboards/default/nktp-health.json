@@ -3779,7 +3779,7 @@
           "id": 50,
           "type": "table",
           "title": "KSM central shard coverage",
-          "description": "Each resource group has its own shard set. Reporting counts distinct shard ordinals with a successful telemetry scrape, so duplicate replicas do not increase coverage. Configured comes from KSM total_shards. Missing is configured minus reporting. Missing telemetry stays Unknown; workload readiness remains the independent check when a whole group disappears.",
+          "description": "Each central KSM resource group has its own shard set. Configured comes from the total_shards metric reported by KSM; it is not a Kubernetes desired replica count. Reporting counts distinct shard ordinals with a successful telemetry scrape, so duplicate replicas do not increase coverage. Missing is configured minus reporting. Missing telemetry stays Unknown; workload readiness remains the independent check when a whole group disappears. Scrape coverage does not prove Kubernetes objects are current.",
           "gridPos": {
             "x": 0,
             "y": 59,

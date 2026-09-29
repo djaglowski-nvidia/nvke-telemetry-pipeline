@@ -7373,7 +7373,7 @@ matches the snapshot with default values:
                   "id": 50,
                   "type": "table",
                   "title": "KSM central shard coverage",
-                  "description": "Each resource group has its own shard set. Reporting counts distinct shard ordinals with a successful telemetry scrape, so duplicate replicas do not increase coverage. Configured comes from KSM total_shards. Missing is configured minus reporting. Missing telemetry stays Unknown; workload readiness remains the independent check when a whole group disappears.",
+                  "description": "Each central KSM resource group has its own shard set. Configured comes from the total_shards metric reported by KSM; it is not a Kubernetes desired replica count. Reporting counts distinct shard ordinals with a successful telemetry scrape, so duplicate replicas do not increase coverage. Missing is configured minus reporting. Missing telemetry stays Unknown; workload readiness remains the independent check when a whole group disappears. Scrape coverage does not prove Kubernetes objects are current.",
                   "gridPos": {
                     "x": 0,
                     "y": 59,
@@ -8227,6 +8227,7 @@ matches the snapshot with default values:
         {
           "uid": "nktp-large-target-metrics",
           "title": "NKTP Large-target Metrics",
+          "description": "A separate Collector pool for metrics endpoints with large scrape responses, such as kube-state-metrics. It scrapes ServiceMonitor, PodMonitor, Probe, and ScrapeConfig resources explicitly labeled nktp.nvidia.io/large-target=true; NKTP does not classify targets by size automatically. A Target Allocator spreads those scrapes across the Collectors. Collected metrics go to the NKTP metrics gateway, while the Collectors' own diagnostic telemetry goes to Watchdog. Panels show metric flow, queue use, scrape sample counts, and target assignments; sample counts do not measure response bytes or delivery to storage.",
           "schemaVersion": 39,
           "refresh": "30s",
           "time": {
@@ -8478,6 +8479,7 @@ matches the snapshot with default values:
               "id": 10,
               "type": "timeseries",
               "title": "Target Allocator collectors",
+              "description": "Discovered and allocatable large-target Collectors reported by each Target Allocator replica. A discovered Collector may not yet be allocatable; replica reports are shown separately.",
               "gridPos": {
                 "x": 0,
                 "y": 35,
@@ -8510,6 +8512,7 @@ matches the snapshot with default values:
               "id": 11,
               "type": "timeseries",
               "title": "Targets per collector",
+              "description": "Targets assigned to each large-target Collector by the Target Allocator. This is an assignment count, not a count of successful scrapes. Multiple allocator replicas may report the same assignments.",
               "gridPos": {
                 "x": 12,
                 "y": 35,
@@ -8811,6 +8814,7 @@ matches the snapshot with default values:
         {
           "uid": "nktp-watchdog",
           "title": "NKTP Watchdog",
+          "description": "NKTP's monitoring Collector. Other NKTP Collectors send it their internal metrics, logs, and traces. It forwards that diagnostic telemetry to the configured backend (bundled LGTM by default) and scrapes OpenTelemetry Operator metrics. These panels show Watchdog traffic, failures, queue use, process resources, Operator scrape reachability, and Target Allocator reports.",
           "schemaVersion": 39,
           "refresh": "30s",
           "time": { "from": "now-30m", "to": "now" },
@@ -8888,13 +8892,15 @@ matches the snapshot with default values:
               ]
             },
             {
-              "id": 7, "type": "stat", "title": "Scrape targets up",
+              "id": 7, "type": "stat", "title": "Operator scrape targets up",
+              "description": "Number of discovered nktp-operator endpoints whose latest scrape succeeded (up = 1). Other Watchdog inputs are excluded. A positive count can hide failed endpoints; no value means Operator scrape telemetry is absent, not that all targets are healthy.",
               "gridPos": { "x": 0, "y": 21, "w": 6, "h": 7 },
               "datasource": { "type": "prometheus", "uid": "prometheus" },
               "targets": [{ "expr": "sum(up{job=\"nktp-operator\"})", "legendFormat": "Operator", "instant": true, "refId": "A" }]
             },
             {
               "id": 8, "type": "timeseries", "title": "Allocator collectors",
+              "description": "Sum of discovered and allocatable Watchdog collectors reported by Target Allocator replicas. With multiple allocator replicas, the same collectors may be counted more than once.",
               "gridPos": { "x": 6, "y": 21, "w": 9, "h": 7 },
               "datasource": { "type": "prometheus", "uid": "prometheus" },
               "fieldConfig": { "defaults": { "min": 0 } },
@@ -8905,6 +8911,7 @@ matches the snapshot with default values:
             },
             {
               "id": 9, "type": "timeseries", "title": "Targets per collector",
+              "description": "Targets assigned to each Watchdog Collector as reported by the Target Allocator. Each allocator replica can report the same assignment; this is not a count of successful scrapes.",
               "gridPos": { "x": 15, "y": 21, "w": 9, "h": 7 },
               "datasource": { "type": "prometheus", "uid": "prometheus" },
               "fieldConfig": { "defaults": { "min": 0 } },
@@ -9011,7 +9018,7 @@ matches the snapshot with default values:
       template:
         metadata:
           annotations:
-            checksum/dashboards: 189b5b505296e5106cfb27cea93677a52b268095d3ccb9f53c3368dce23871b8
+            checksum/dashboards: a0f954271ce59b37b76b545230b1ce033a71a702b34d035bdcf16e9c5b9897ff
           labels:
             app: lgtm
         spec:
