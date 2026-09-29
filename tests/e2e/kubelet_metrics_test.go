@@ -166,7 +166,7 @@ func waitForKubeletMetricNodes(ctx context.Context, k *kube.Client, want []strin
 		if lastErr != nil {
 			return false, nil
 		}
-		return coversNodes(gotKubelet, want) && coversNodes(gotCadvisor, want), nil
+		return coversValues(gotKubelet, want) && coversValues(gotCadvisor, want), nil
 	})
 	if wait.Interrupted(err) {
 		return fmt.Errorf("%w: want nodes %v; kubelet_active_pods nodes %v; container_memory_working_set_bytes nodes %v; last query error: %v",
@@ -175,15 +175,14 @@ func waitForKubeletMetricNodes(ctx context.Context, k *kube.Client, want []strin
 	return err
 }
 
-// coversNodes permits stale series for nodes that have left the cluster while
-// requiring a current series for every node the API listed for this run.
-func coversNodes(got, want []string) bool {
+// coversValues permits extra series while requiring every expected label value.
+func coversValues(got, want []string) bool {
 	found := make(map[string]bool, len(got))
-	for _, node := range got {
-		found[node] = true
+	for _, value := range got {
+		found[value] = true
 	}
-	for _, node := range want {
-		if !found[node] {
+	for _, expected := range want {
+		if !found[expected] {
 			return false
 		}
 	}
@@ -191,6 +190,10 @@ func coversNodes(got, want []string) bool {
 }
 
 func prometheusMetricNodes(ctx context.Context, k *kube.Client, expression string) ([]string, error) {
+	return prometheusMetricLabelValues(ctx, k, expression, "node")
+}
+
+func prometheusMetricLabelValues(ctx context.Context, k *kube.Client, expression, label string) ([]string, error) {
 	body, err := k.ServiceEndpointQuery(ctx, *namespace, "lgtm", "9090", "/api/v1/query", map[string]string{"query": expression})
 	if err != nil {
 		return nil, fmt.Errorf("querying Prometheus for %q: %w", expression, err)
@@ -211,12 +214,12 @@ func prometheusMetricNodes(ctx context.Context, k *kube.Client, expression strin
 		return nil, fmt.Errorf("Prometheus query %q returned status %q: %s", expression, response.Status, response.Error)
 	}
 
-	nodes := make([]string, 0, len(response.Data.Result))
+	values := make([]string, 0, len(response.Data.Result))
 	for _, result := range response.Data.Result {
-		if node := result.Metric["node"]; node != "" {
-			nodes = append(nodes, node)
+		if value := result.Metric[label]; value != "" {
+			values = append(values, value)
 		}
 	}
-	sort.Strings(nodes)
-	return slices.Compact(nodes), nil
+	sort.Strings(values)
+	return slices.Compact(values), nil
 }

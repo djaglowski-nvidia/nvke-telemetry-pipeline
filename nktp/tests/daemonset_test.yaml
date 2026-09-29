@@ -439,6 +439,9 @@ tests:
           path: spec.targetAllocator
           value:
             enabled: true
+            mtls:
+              enabled: true
+              useCertManager: true
             replicas: 1
             allocationStrategy: per-node
             resources:

@@ -16,7 +16,8 @@ Tests of user-visible NKTP behavior after deploying the real chart to a Kind or 
 ## Running
 
 Requires a Docker-compatible container runtime, [Kind](https://kind.sigs.k8s.io/),
-[Task](https://taskfile.dev/installation/), Helm, kubectl, and Go.
+[Task](https://taskfile.dev/installation/), Helm, kubectl, and Go. From the
+repository root:
 
 ```sh
 task e2e:up      # create the cluster and fetch the chart dependencies

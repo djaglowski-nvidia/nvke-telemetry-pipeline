@@ -310,8 +310,7 @@ PodMonitor, Probe, and ScrapeConfig resources with the metadata label
 Apply this label to monitoring resources for endpoints with large scrape
 responses, such as kube-state-metrics.
 
-A Target Allocator distributes scrapes across the pool's replicas. Default
-discovery supports endpoints without Secret-backed credentials.
+A Target Allocator distributes scrapes across the pool's replicas.
 The Target Allocator rejects ServiceMonitor and PodMonitor endpoints that reference
 local bearer-token or TLS files in the Collector container.
 Setting `large_target_metrics.kubernetes.targetAllocator.enabled` to `false`
@@ -411,6 +410,45 @@ opentelemetry-kube-stack:
         enabled: true
         recreate: false
 ```
+
+NKTP also explicitly enables cert-manager-backed mTLS between each Collector
+and its Target Allocator. The Operator provisions a CA plus server and client
+certificates for each pair, as described in
+[With cert-manager (default)](https://github.com/open-telemetry/opentelemetry-operator/blob/main/docs/target-allocator/README.md#with-cert-manager-default).
+
+As an alternative, set `useCertManager: false` and reference certificates that
+already exist in the release namespace. Apply the same `mtls` block under each
+enabled allocator at `watchdog.kubernetes.targetAllocator`,
+`daemonset.kubernetes.targetAllocator`, and
+`large_target_metrics.kubernetes.targetAllocator`. For example:
+
+```yaml
+daemonset:
+  kubernetes:
+    targetAllocator:
+      mtls:
+        enabled: true
+        useCertManager: false
+        tls:
+          certificateAuthorityCertificate:
+            configMap:
+              name: target-allocator-ca
+          serverCertificate:
+            certificateSecret:
+              name: target-allocator-server
+            keySecret:
+              name: target-allocator-server
+          clientCertificate:
+            certificateSecret:
+              name: target-allocator-client
+            keySecret:
+              name: target-allocator-client
+```
+
+See the Operator's
+[user-provided certificate documentation](https://github.com/open-telemetry/opentelemetry-operator/blob/main/docs/target-allocator/README.md#without-cert-manager-user-provided-certificates)
+for the accepted Secret and ConfigMap references, default keys, and certificate
+rotation behavior.
 
 Override the Operator image with
 `opentelemetry-kube-stack.opentelemetry-operator.manager.image.tag`.

@@ -41,6 +41,9 @@ watchdog:
     replicas: 2
     targetAllocator:
       enabled: true # Assign each explicit scrape target to one watchdog replica.
+      mtls:
+        enabled: true # Let cert-manager secure Collector requests to the allocator.
+        useCertManager: true
       replicas: 1
       allocationStrategy: consistent-hashing
       resources:
@@ -632,6 +635,9 @@ daemonset:
       - operator: Exists
     targetAllocator:
       enabled: true
+      mtls:
+        enabled: true # Let cert-manager secure Collector requests to the allocator.
+        useCertManager: true
       replicas: 1
       allocationStrategy: per-node # Targets without a matching collector node stay unassigned.
       resources:
@@ -1070,6 +1076,9 @@ large_target_metrics:
     replicas: 2
     targetAllocator:
       enabled: true
+      mtls:
+        enabled: true # Let cert-manager secure Collector requests to the allocator.
+        useCertManager: true
       replicas: 1
       allocationStrategy: consistent-hashing
       env:

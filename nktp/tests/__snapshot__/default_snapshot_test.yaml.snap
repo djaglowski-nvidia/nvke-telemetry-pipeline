@@ -703,6 +703,9 @@ matches the snapshot with default values:
                 fieldPath: metadata.name
           - name: OTEL_RESOURCE_ATTRIBUTES
             value: service.instance.id=$(POD_NAME)
+        mtls:
+          enabled: true
+          useCertManager: true
         observability:
           metrics:
             enableMetrics: false
@@ -2533,6 +2536,9 @@ matches the snapshot with default values:
                 fieldPath: metadata.name
           - name: OTEL_RESOURCE_ATTRIBUTES
             value: service.instance.id=$(POD_NAME)
+        mtls:
+          enabled: true
+          useCertManager: true
         observability:
           metrics:
             enableMetrics: false
@@ -9281,6 +9287,9 @@ matches the snapshot with default values:
                 fieldPath: metadata.name
           - name: OTEL_RESOURCE_ATTRIBUTES
             value: service.instance.id=$(POD_NAME)
+        mtls:
+          enabled: true
+          useCertManager: true
         observability:
           metrics:
             enableMetrics: false

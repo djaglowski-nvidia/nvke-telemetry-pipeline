@@ -37,6 +37,10 @@ tests:
           value: "consistent-hashing"
         documentIndex: 0
       - equal:
+          path: "spec.targetAllocator.mtls"
+          value: {"enabled": true, "useCertManager": true}
+        documentIndex: 0
+      - equal:
           path: "spec.config.receivers.prometheus.config.global.external_labels.nktp_metrics_pool"
           value: large-target
         documentIndex: 0
