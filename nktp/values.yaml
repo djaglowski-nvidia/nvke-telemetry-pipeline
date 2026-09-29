@@ -16,12 +16,6 @@ global:
   #           repository: <mirror>/open-telemetry/opentelemetry-operator/opentelemetry-operator
   imageRegistry: ""
 
-# Namespace for all namespaced NKTP resources. Created by the chart when
-# create is true. CRDs and other cluster-scoped resources are unaffected.
-namespace:
-  name: nktp
-  create: true
-
 # Collector image used by all OTel workloads. global.imageRegistry replaces registry.
 otelcol_image:
   registry: "" # Empty pulls from the image's default registry (Docker Hub for this repository).
