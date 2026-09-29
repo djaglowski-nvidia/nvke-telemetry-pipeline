@@ -44,7 +44,6 @@ Not covered yet:
 - stale resources other than workloads, notably Services, ConfigMaps, and the
   PersistentVolumeClaims a StatefulSet leaves behind
 - upgrading from a published release, which waits on the chart being published
-- asserting that a custom values file is respected, rather than only accepting one
 - the checks that a component is absent before an install and present after it,
   which need a suite of their own: asking the cluster whether an API is served
   cannot tell an NKTP component apart from one that was already there
@@ -105,10 +104,10 @@ The equivalent direct Go invocation is:
   `-nktp.namespace`. Each test fails if that exact Helm release does not exist,
   waits for its Operator-derived workloads to be ready, and then runs its
   assertions without installing, upgrading, or uninstalling the release. The
-  lifecycle test verifies the existing installation but omits its reapply and
-  removal stages.
+  installation checks run against that release. The lifecycle and target
+  allocator RBAC tests are skipped because they require ownership of the release.
 
-Chart and values-file arguments affect only install mode; reuse mode tests the
+Chart and values file arguments affect only install mode. Reuse mode tests the
 configuration already stored in the cluster. Functional tests may still create
 and clean up their own disposable fixtures, but they leave the Helm release
 untouched.

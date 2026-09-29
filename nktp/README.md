@@ -295,6 +295,29 @@ remain unassigned.
 The Target Allocator rejects ServiceMonitor and PodMonitor endpoints that reference
 local bearer-token or TLS files in the Collector container.
 
+To grant the allocator access to Secrets and CA ConfigMaps referenced by monitors, list
+the namespaces containing those monitors and their referenced objects:
+
+```yaml
+daemonset:
+  kubernetes:
+    targetAllocator:
+      prometheusCR:
+        secretNamespaces: [metrics-monitors]
+```
+
+`daemonset.rbac.create` defaults to `true`. For each explicitly
+listed namespace, Helm creates a Role granting Secrets `get/list/watch` and
+ConfigMaps `get`, bound to the allocator ServiceAccount in the release namespace.
+The binding honors `daemonset.kubernetes.targetAllocator.serviceAccount`.
+Omitting the list or setting it to `[]` creates no namespace RBAC. Set
+`daemonset.rbac.create: false` to manage these grants externally.
+
+Grants cover all Secrets in each listed namespace. Use namespaces with trusted
+monitor authors. Secret and CA references resolve in the monitor's namespace.
+The namespaces must already exist. `secretNamespaces` controls Secret watching.
+Configure monitor and namespace selectors separately.
+
 ### Log classification
 
 NKTP classifies logs by source using the `nvidia.telemetry.class` resource

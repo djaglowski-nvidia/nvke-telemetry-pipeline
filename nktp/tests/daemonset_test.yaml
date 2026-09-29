@@ -18,6 +18,19 @@ tests:
       - failedTemplate:
           errorMessage: daemonset.kubernetes.targetAllocator.enabled must be true to assign scrape targets to Collectors on the same node
 
+  - it: forwards secretNamespaces without adding chart RBAC options to the CR
+    set:
+      daemonset.kubernetes.targetAllocator.prometheusCR.secretNamespaces: [metrics-monitors]
+    asserts:
+      - equal:
+          path: spec.targetAllocator.prometheusCR.secretNamespaces
+          value: [metrics-monitors]
+      - equal:
+          path: spec.targetAllocator.prometheusCR.denyFSAccessThroughSMs
+          value: true
+      - notExists:
+          path: spec.rbac
+
   - it: routes local pod logs and assigned metrics to their gateways
     asserts:
       - equal:

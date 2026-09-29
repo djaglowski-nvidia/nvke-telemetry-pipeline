@@ -34,15 +34,12 @@ type Client struct {
 	Log io.Writer
 }
 
-// Install puts a chart on the cluster and waits for the resources helm applies
-// itself to become ready. The workloads another controller derives from those
-// resources are not covered by that wait.
-//
-// It upgrades a release that already exists, so calling it twice with the same
-// arguments is how a reapply is exercised.
+// Install installs or upgrades a release using chart defaults and the supplied
+// values files in order, discarding previous release overrides. It waits for
+// resources Helm manages, excluding workloads created by other controllers.
 func (c *Client) Install(ctx context.Context, r Release, chart string, valueFiles []string, timeout time.Duration) error {
 	args := []string{
-		"upgrade", "--install", r.Name, chart,
+		"upgrade", "--install", r.Name, chart, "--reset-values",
 		"--namespace", r.Namespace, "--create-namespace",
 		"--wait", "--timeout", timeout.String(),
 	}
