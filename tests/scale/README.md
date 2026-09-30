@@ -67,6 +67,11 @@ Label emulated pods `scale.nktp.io/lifecycle: complete-30s` to complete them aft
 30 seconds of Running time. Controller delays may extend their lifetime.
 Pods without the lifecycle label use KWOK's default behavior.
 
+## Watchdog load
+
+The [watchdog plan](watchdog.md) runs 5,000 sources, each sending 100 metric
+points and 100 log records per minute with 100 KiB log bodies.
+
 ## Domain model
 
 | Concept | Meaning |

@@ -74,10 +74,8 @@ tasks:
           KUBECONFIG_PATH: '{{.KUBECONFIG_PATH}}'
           CONTEXT: '{{.CONTEXT}}'
       - task: chart:deps
-      - task: :cert-manager:install
-        vars:
-          KUBECONFIG_FILE: '{{.KUBECONFIG_PATH}}'
-          KUBE_CONTEXT: '{{.CONTEXT}}'
+      - task: cert-manager:install
+        vars: *target
       - task: kwok:install
         vars: *target
       - task: :install
@@ -129,6 +127,22 @@ tasks:
         printf 'Installing in context %s\n' {{.CONTEXT | shellQuote}}
         kubectl --kubeconfig {{.KUBECONFIG_PATH | shellQuote}} --context {{.CONTEXT | shellQuote}} --request-timeout=10s get nodes || exit $?
 
+  cert-manager:install:
+    internal: true
+    silent: true
+    preconditions:
+      - sh: '{{if .CERT_MANAGER_VALUES_FILE}}test -f {{.CERT_MANAGER_VALUES_FILE | shellQuote}}{{else}}true{{end}}'
+        msg: 'CERT_MANAGER_VALUES_FILE must name an existing values file.'
+    cmds:
+      - helm repo add jetstack https://charts.jetstack.io --force-update
+      - >-
+        helm upgrade --install cert-manager jetstack/cert-manager
+        --kubeconfig {{.KUBECONFIG_PATH | shellQuote}} --kube-context {{.CONTEXT | shellQuote}}
+        --namespace cert-manager --create-namespace --version {{.CERT_MANAGER_VERSION | shellQuote}}
+        --set crds.enabled=true
+        {{if .CERT_MANAGER_VALUES_FILE}}--values {{.CERT_MANAGER_VALUES_FILE | shellQuote}}{{end}}
+        --wait --timeout 5m
+
   kwok:install:
     internal: true
     silent: true
@@ -163,7 +177,7 @@ tasks:
         }
         # Helm waits for its workloads. Also wait for workloads created by the Operator.
         collectors=$(helm get manifest nktp --namespace nktp --kubeconfig {{.KUBECONFIG_PATH | shellQuote}} --kube-context {{.CONTEXT | shellQuote}} |
-          kubectl_environment get -f - -o jsonpath='{range .items[?(@.kind=="OpenTelemetryCollector")]}{.metadata.name}{" "}{.spec.mode}{" "}{.spec.targetAllocator.enabled}{"\n"}{end}') || exit $?
+          kubectl --kubeconfig {{.KUBECONFIG_PATH | shellQuote}} --context {{.CONTEXT | shellQuote}} get -f - -o jsonpath='{range .items[?(@.kind=="OpenTelemetryCollector")]}{.metadata.name}{" "}{.spec.mode}{" "}{.spec.targetAllocator.enabled}{"\n"}{end}') || exit $?
         test -n "$collectors" || { echo "No NKTP collectors found in the release." >&2; exit 1; }
         while read -r name mode allocator; do
           case "$mode" in
