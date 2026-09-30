@@ -22,4 +22,4 @@ kubeadmConfigPatches:
   - |-
     kind: KubeProxyConfiguration
     # configure proxy metrics bind address
-    metricsBindAddress: 0.0.0.0
+    metricsBindAddress: 0.0.0.0:10249

@@ -63,7 +63,7 @@ tasks:
     cmds:
       # NODE_IMAGE comes from the root Taskfile, so this cluster and the dev
       # loop's run the same Kubernetes version.
-      - kind create cluster --name {{.CLUSTER}} --image {{.NODE_IMAGE}} --kubeconfig {{.CLUSTER_KUBECONFIG}}
+      - kind create cluster --name {{.CLUSTER}} --image {{.NODE_IMAGE}} --config {{.TASKFILE_DIR}}/kind.yaml --kubeconfig {{.CLUSTER_KUBECONFIG}}
       - kind -q export kubeconfig --name {{.CLUSTER}} --kubeconfig {{.CLUSTER_KUBECONFIG}}
       - kubectl wait --kubeconfig {{.CLUSTER_KUBECONFIG}} --context kind-{{.CLUSTER}} --for=condition=Ready nodes --all --timeout=5m
       - task: dependencies

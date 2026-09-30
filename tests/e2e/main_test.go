@@ -130,8 +130,10 @@ func prepareRelease(t *testing.T, k *kube.Client) (*framework.Chart, bool) {
 // release afterward only when -nktp.install=true caused the test to create it.
 func withRelease(t *testing.T, test func(*testing.T, *kube.Client)) {
 	t.Helper()
+	started := time.Now()
 	k := newKube(t)
 	deployed, created := prepareRelease(t, k)
+	t.Logf("release ready after %s", time.Since(started))
 
 	if created {
 		defer func() {
