@@ -5,10 +5,10 @@ release:
 templates:
   - templates/certs.yaml
 tests:
-  - it: creates an internal CA and leaf issuer by default
+  - it: creates the internal CA and all collector leaf certificates by default
     asserts:
       - hasDocuments:
-          count: 3
+          count: 13
       - equal:
           path: spec.selfSigned
           value: {}
@@ -39,8 +39,56 @@ tests:
         documentSelector:
           path: metadata.name
           value: nktp-internal-ca-issuer
+      - containsDocument: {apiVersion: cert-manager.io/v1, kind: Certificate, name: nktp-watchdog-server, any: true}
+      - containsDocument: {apiVersion: cert-manager.io/v1, kind: Certificate, name: nktp-gateway-logs-server, any: true}
+      - containsDocument: {apiVersion: cert-manager.io/v1, kind: Certificate, name: nktp-gateway-metrics-server, any: true}
+      - containsDocument: {apiVersion: cert-manager.io/v1, kind: Certificate, name: nktp-gateway-traces-server, any: true}
+      - containsDocument: {apiVersion: cert-manager.io/v1, kind: Certificate, name: nktp-daemonset-client, any: true}
+      - containsDocument: {apiVersion: cert-manager.io/v1, kind: Certificate, name: nktp-large-target-metrics-client, any: true}
+      - containsDocument: {apiVersion: cert-manager.io/v1, kind: Certificate, name: nktp-cluster-events-client, any: true}
+      - containsDocument: {apiVersion: cert-manager.io/v1, kind: Certificate, name: nktp-gateway-logs-client, any: true}
+      - containsDocument: {apiVersion: cert-manager.io/v1, kind: Certificate, name: nktp-gateway-metrics-client, any: true}
+      - containsDocument: {apiVersion: cert-manager.io/v1, kind: Certificate, name: nktp-gateway-traces-client, any: true}
+      - equal:
+          path: spec
+          value:
+            secretName: nktp-watchdog-server-tls
+            duration: 2160h
+            renewBefore: 360h
+            dnsNames:
+              - nktp-watchdog-collector
+              - nktp-watchdog-collector.nktp
+              - nktp-watchdog-collector.nktp.svc
+              - nktp-watchdog-collector.nktp.svc.cluster.local
+            usages: [server auth]
+            privateKey:
+              rotationPolicy: Always
+            issuerRef:
+              name: nktp-internal-ca-issuer
+              kind: Issuer
+              group: cert-manager.io
+        documentSelector:
+          path: metadata.name
+          value: nktp-watchdog-server
+      - equal:
+          path: spec
+          value:
+            secretName: nktp-daemonset-client-tls
+            commonName: nktp-daemonset
+            duration: 2160h
+            renewBefore: 360h
+            usages: [client auth]
+            privateKey:
+              rotationPolicy: Always
+            issuerRef:
+              name: nktp-internal-ca-issuer
+              kind: Issuer
+              group: cert-manager.io
+        documentSelector:
+          path: metadata.name
+          value: nktp-daemonset-client
 
-  - it: leaves issuance to the configured external issuer
+  - it: uses the configured external issuer for all leaf certificates
     set:
       tls.internal.certManager.issuerRef:
         name: corporate-workload-ca
@@ -48,7 +96,30 @@ tests:
         group: cert-manager.io
     asserts:
       - hasDocuments:
-          count: 0
+          count: 10
+      - containsDocument:
+          apiVersion: cert-manager.io/v1
+          kind: Issuer
+          any: true
+        not: true
+      - equal:
+          path: spec.issuerRef
+          value:
+            name: corporate-workload-ca
+            kind: ClusterIssuer
+            group: cert-manager.io
+        documentSelector:
+          path: metadata.name
+          value: nktp-watchdog-server
+      - equal:
+          path: spec.issuerRef
+          value:
+            name: corporate-workload-ca
+            kind: ClusterIssuer
+            group: cert-manager.io
+        documentSelector:
+          path: metadata.name
+          value: nktp-daemonset-client
 
   - it: creates no certificate resources when internal TLS is disabled
     set:
