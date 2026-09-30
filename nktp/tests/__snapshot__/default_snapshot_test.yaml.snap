@@ -946,6 +946,7 @@ matches the snapshot with default values:
                 fieldPath: metadata.name
           - name: OTEL_RESOURCE_ATTRIBUTES
             value: service.instance.id=$(POD_NAME)
+        image: ghcr.io/open-telemetry/opentelemetry-operator/target-allocator:0.159.0
         mtls:
           enabled: true
           useCertManager: true
@@ -2779,6 +2780,7 @@ matches the snapshot with default values:
                 fieldPath: metadata.name
           - name: OTEL_RESOURCE_ATTRIBUTES
             value: service.instance.id=$(POD_NAME)
+        image: ghcr.io/open-telemetry/opentelemetry-operator/target-allocator:0.159.0
         mtls:
           enabled: true
           useCertManager: true
@@ -9537,6 +9539,7 @@ matches the snapshot with default values:
                 fieldPath: metadata.name
           - name: OTEL_RESOURCE_ATTRIBUTES
             value: service.instance.id=$(POD_NAME)
+        image: ghcr.io/open-telemetry/opentelemetry-operator/target-allocator:0.159.0
         mtls:
           enabled: true
           useCertManager: true

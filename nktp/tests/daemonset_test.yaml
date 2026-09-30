@@ -452,6 +452,7 @@ tests:
           path: spec.targetAllocator
           value:
             enabled: true
+            image: ghcr.io/open-telemetry/opentelemetry-operator/target-allocator:0.159.0
             mtls:
               enabled: true
               useCertManager: true
@@ -519,6 +520,9 @@ tests:
       - equal:
           path: spec.image
           value: mirror.example.com/otel/opentelemetry-collector-k8s:0.162.0
+      - equal:
+          path: spec.targetAllocator.image
+          value: mirror.example.com/open-telemetry/opentelemetry-operator/target-allocator:0.159.0
 
   - it: passes workload overrides through while resolving Collector configuration separately
     set:

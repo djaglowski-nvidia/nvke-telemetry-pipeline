@@ -164,6 +164,10 @@ tests:
           path: "spec.image"
           value: "mirror.example.com/otel/opentelemetry-collector-k8s:0.162.0"
         documentIndex: 0
+      - equal:
+          path: "spec.targetAllocator.image"
+          value: "mirror.example.com/open-telemetry/opentelemetry-operator/target-allocator:0.159.0"
+        documentIndex: 0
   - it: replaces all own telemetry exporter lists with gRPC for large_target_metrics
     set:
       large_target_metrics.otelcol.config.service.telemetry.metrics.readers: [{"periodic": {"exporter": {"otlp": {"protocol": "grpc", "endpoint": "http://own-metrics:4317"}}}}]

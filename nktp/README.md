@@ -13,8 +13,9 @@ TODO
 
 ### Image registry
 
-Set `global.imageRegistry` to override the image registry of all the components.
-Caveat: `metrics-server` dependency and the nested OpenTelemetry Operator do **not**
+Set `global.imageRegistry` to override the image registry of all the components,
+including the Collectors (`otelcol_image`) and the Target Allocators
+(`targetallocator_image`). Caveat: `metrics-server` dependency and the nested OpenTelemetry Operator do **not**
 read this setting. Configure their image repositories explicitly when required.
 
 

@@ -45,6 +45,7 @@ tests:
           path: spec.targetAllocator
           value:
             enabled: true
+            image: ghcr.io/open-telemetry/opentelemetry-operator/target-allocator:0.159.0
             mtls:
               enabled: true
               useCertManager: true
@@ -243,6 +244,26 @@ tests:
       - equal:
           path: spec.image
           value: mirror.example.com/otel/opentelemetry-collector-k8s:0.162.0
+      - equal:
+          path: spec.targetAllocator.image
+          value: mirror.example.com/open-telemetry/opentelemetry-operator/target-allocator:0.159.0
+
+  - it: uses the Operator's Target Allocator image by default
+    template: templates/watchdog.yaml
+    asserts:
+      - equal:
+          path: spec.targetAllocator.image
+          value: ghcr.io/open-telemetry/opentelemetry-operator/target-allocator:0.159.0
+
+  - it: keeps a workload Target Allocator image override
+    template: templates/watchdog.yaml
+    set:
+      global.imageRegistry: mirror.example.com
+      watchdog.kubernetes.targetAllocator.image: example.com/allocator:custom
+    asserts:
+      - equal:
+          path: spec.targetAllocator.image
+          value: example.com/allocator:custom
 
   - it: replaces an image's own registry with global.imageRegistry
     template: templates/watchdog.yaml
