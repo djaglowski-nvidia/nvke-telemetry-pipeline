@@ -1,0 +1,58 @@
+suite: internal TLS certificates
+release:
+  name: nktp
+  namespace: nktp
+templates:
+  - templates/certs.yaml
+tests:
+  - it: creates an internal CA and leaf issuer by default
+    asserts:
+      - hasDocuments:
+          count: 3
+      - equal:
+          path: spec.selfSigned
+          value: {}
+        documentSelector:
+          path: metadata.name
+          value: nktp-internal-selfsigned-issuer
+      - equal:
+          path: spec
+          value:
+            secretName: nktp-internal-ca
+            commonName: nktp-internal-ca
+            duration: 43800h
+            renewBefore: 8760h
+            isCA: true
+            usages: [cert sign]
+            privateKey:
+              rotationPolicy: Never
+            issuerRef:
+              name: nktp-internal-selfsigned-issuer
+              kind: Issuer
+              group: cert-manager.io
+        documentSelector:
+          path: metadata.name
+          value: nktp-internal-ca
+      - equal:
+          path: spec.ca.secretName
+          value: nktp-internal-ca
+        documentSelector:
+          path: metadata.name
+          value: nktp-internal-ca-issuer
+
+  - it: leaves issuance to the configured external issuer
+    set:
+      tls.internal.certManager.issuerRef:
+        name: corporate-workload-ca
+        kind: ClusterIssuer
+        group: cert-manager.io
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: creates no certificate resources when internal TLS is disabled
+    set:
+      tls.internal.enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0

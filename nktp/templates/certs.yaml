@@ -1,0 +1,38 @@
+{{- if and .Values.tls.internal.enabled (empty .Values.tls.internal.certManager.issuerRef) }}
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: nktp-internal-selfsigned-issuer
+  namespace: {{ .Release.Namespace }}
+spec:
+  selfSigned: {}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: nktp-internal-ca
+  namespace: {{ .Release.Namespace }}
+spec:
+  secretName: nktp-internal-ca
+  commonName: nktp-internal-ca
+  duration: 43800h # Five years. CA rotation requires a coordinated trust migration.
+  renewBefore: 8760h # One year.
+  isCA: true
+  usages:
+    - cert sign
+  privateKey:
+    rotationPolicy: Never # Preserve the trust key during routine certificate renewal.
+  issuerRef:
+    name: nktp-internal-selfsigned-issuer
+    kind: Issuer
+    group: cert-manager.io
+---
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: nktp-internal-ca-issuer
+  namespace: {{ .Release.Namespace }}
+spec:
+  ca:
+    secretName: nktp-internal-ca
+{{- end }}

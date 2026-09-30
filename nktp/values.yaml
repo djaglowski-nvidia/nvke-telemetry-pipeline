@@ -16,6 +16,20 @@ global:
   #           repository: <mirror>/open-telemetry/opentelemetry-operator/opentelemetry-operator
   imageRegistry: ""
 
+tls:
+  # Enable mTLS for collector-to-collector communication
+  internal:
+    enabled: true
+    certManager:
+      # Leave empty to let NKTP create an internal self-signed CA and Issuer.
+      #
+      # To use an existing Issuer or ClusterIssuer:
+      # issuerRef:
+      #   name: corporate-workload-ca
+      #   kind: ClusterIssuer
+      #   group: cert-manager.io
+      issuerRef: {}
+     
 # Collector image used by all OTel workloads. global.imageRegistry replaces registry.
 otelcol_image:
   registry: "" # Empty pulls from the image's default registry (Docker Hub for this repository).

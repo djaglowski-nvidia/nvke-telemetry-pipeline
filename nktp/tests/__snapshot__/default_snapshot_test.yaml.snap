@@ -1,5 +1,42 @@
 matches the snapshot with default values:
   1: |
+    apiVersion: cert-manager.io/v1
+    kind: Issuer
+    metadata:
+      name: nktp-internal-selfsigned-issuer
+      namespace: NAMESPACE
+    spec:
+      selfSigned: {}
+  2: |
+    apiVersion: cert-manager.io/v1
+    kind: Certificate
+    metadata:
+      name: nktp-internal-ca
+      namespace: NAMESPACE
+    spec:
+      commonName: nktp-internal-ca
+      duration: 43800h
+      isCA: true
+      issuerRef:
+        group: cert-manager.io
+        kind: Issuer
+        name: nktp-internal-selfsigned-issuer
+      privateKey:
+        rotationPolicy: Never
+      renewBefore: 8760h
+      secretName: nktp-internal-ca
+      usages:
+        - cert sign
+  3: |
+    apiVersion: cert-manager.io/v1
+    kind: Issuer
+    metadata:
+      name: nktp-internal-ca-issuer
+      namespace: NAMESPACE
+    spec:
+      ca:
+        secretName: nktp-internal-ca
+  4: |
     apiVersion: rbac.authorization.k8s.io/v1
     kind: ClusterRole
     metadata:
@@ -13,7 +50,7 @@ matches the snapshot with default values:
           - get
           - list
           - watch
-  2: |
+  5: |
     apiVersion: rbac.authorization.k8s.io/v1
     kind: ClusterRoleBinding
     metadata:
@@ -26,7 +63,7 @@ matches the snapshot with default values:
       - kind: ServiceAccount
         name: nktp-cluster-events-collector
         namespace: NAMESPACE
-  3: |
+  6: |
     apiVersion: rbac.authorization.k8s.io/v1
     kind: Role
     metadata:
@@ -42,7 +79,7 @@ matches the snapshot with default values:
         verbs:
           - get
           - update
-  4: |
+  7: |
     apiVersion: rbac.authorization.k8s.io/v1
     kind: RoleBinding
     metadata:
@@ -56,13 +93,13 @@ matches the snapshot with default values:
       - kind: ServiceAccount
         name: nktp-cluster-events-collector
         namespace: NAMESPACE
-  5: |
+  8: |
     apiVersion: coordination.k8s.io/v1
     kind: Lease
     metadata:
       name: nktp-cluster-events
       namespace: NAMESPACE
-  6: |
+  9: |
     apiVersion: opentelemetry.io/v1beta1
     kind: OpenTelemetryCollector
     metadata:
@@ -189,7 +226,7 @@ matches the snapshot with default values:
           topologyKey: kubernetes.io/hostname
           whenUnsatisfiable: ScheduleAnyway
       upgradeStrategy: automatic
-  7: |
+  10: |
     apiVersion: rbac.authorization.k8s.io/v1
     kind: ClusterRole
     metadata:
@@ -226,7 +263,7 @@ matches the snapshot with default values:
           - get
           - list
           - watch
-  8: |
+  11: |
     apiVersion: rbac.authorization.k8s.io/v1
     kind: ClusterRoleBinding
     metadata:
@@ -239,7 +276,7 @@ matches the snapshot with default values:
       - kind: ServiceAccount
         name: nktp-daemonset-targetallocator
         namespace: NAMESPACE
-  9: |
+  12: |
     apiVersion: rbac.authorization.k8s.io/v1
     kind: ClusterRole
     metadata:
@@ -251,7 +288,7 @@ matches the snapshot with default values:
           - nodes/metrics
         verbs:
           - get
-  10: |
+  13: |
     apiVersion: rbac.authorization.k8s.io/v1
     kind: ClusterRoleBinding
     metadata:
@@ -264,7 +301,7 @@ matches the snapshot with default values:
       - kind: ServiceAccount
         name: nktp-daemonset-collector
         namespace: NAMESPACE
-  11: |
+  14: |
     apiVersion: opentelemetry.io/v1beta1
     kind: OpenTelemetryCollector
     metadata:
@@ -823,7 +860,7 @@ matches the snapshot with default values:
             path: /var/log
             type: Directory
           name: host-logs
-  12: |
+  15: |
     apiVersion: opentelemetry.io/v1beta1
     kind: OpenTelemetryCollector
     metadata:
@@ -948,7 +985,7 @@ matches the snapshot with default values:
           topologyKey: kubernetes.io/hostname
           whenUnsatisfiable: ScheduleAnyway
       upgradeStrategy: automatic
-  13: |
+  16: |
     apiVersion: opentelemetry.io/v1beta1
     kind: OpenTelemetryCollector
     metadata:
@@ -1073,7 +1110,7 @@ matches the snapshot with default values:
           topologyKey: kubernetes.io/hostname
           whenUnsatisfiable: ScheduleAnyway
       upgradeStrategy: automatic
-  14: |
+  17: |
     apiVersion: opentelemetry.io/v1beta1
     kind: OpenTelemetryCollector
     metadata:
@@ -1198,7 +1235,7 @@ matches the snapshot with default values:
           topologyKey: kubernetes.io/hostname
           whenUnsatisfiable: ScheduleAnyway
       upgradeStrategy: automatic
-  15: |
+  18: |
     apiVersion: monitoring.coreos.com/v1
     kind: PodMonitor
     metadata:
@@ -1219,7 +1256,7 @@ matches the snapshot with default values:
           app.kubernetes.io/component: kube-state-metrics
           app.kubernetes.io/instance: RELEASE-NAME
           app.kubernetes.io/name: nktp-ksm-cluster
-  16: |
+  19: |
     apiVersion: monitoring.coreos.com/v1
     kind: PodMonitor
     metadata:
@@ -1240,7 +1277,7 @@ matches the snapshot with default values:
           app.kubernetes.io/component: kube-state-metrics
           app.kubernetes.io/instance: RELEASE-NAME
           app.kubernetes.io/name: nktp-ksm-configuration
-  17: |
+  20: |
     apiVersion: monitoring.coreos.com/v1
     kind: PodMonitor
     metadata:
@@ -1261,7 +1298,7 @@ matches the snapshot with default values:
           app.kubernetes.io/component: kube-state-metrics
           app.kubernetes.io/instance: RELEASE-NAME
           app.kubernetes.io/name: nktp-ksm-networking
-  18: |
+  21: |
     apiVersion: monitoring.coreos.com/v1
     kind: PodMonitor
     metadata:
@@ -1281,7 +1318,7 @@ matches the snapshot with default values:
           app.kubernetes.io/component: kube-state-metrics
           app.kubernetes.io/instance: RELEASE-NAME
           app.kubernetes.io/name: nktp-ksm-pods
-  19: |
+  22: |
     apiVersion: monitoring.coreos.com/v1
     kind: PodMonitor
     metadata:
@@ -1302,7 +1339,7 @@ matches the snapshot with default values:
           app.kubernetes.io/component: kube-state-metrics
           app.kubernetes.io/instance: RELEASE-NAME
           app.kubernetes.io/name: nktp-ksm-storage
-  20: |
+  23: |
     apiVersion: monitoring.coreos.com/v1
     kind: PodMonitor
     metadata:
@@ -1323,7 +1360,7 @@ matches the snapshot with default values:
           app.kubernetes.io/component: kube-state-metrics
           app.kubernetes.io/instance: RELEASE-NAME
           app.kubernetes.io/name: nktp-ksm-unscheduled-pods
-  21: |
+  24: |
     apiVersion: monitoring.coreos.com/v1
     kind: PodMonitor
     metadata:
@@ -1344,7 +1381,7 @@ matches the snapshot with default values:
           app.kubernetes.io/component: kube-state-metrics
           app.kubernetes.io/instance: RELEASE-NAME
           app.kubernetes.io/name: nktp-ksm-workloads
-  22: |
+  25: |
     apiVersion: v1
     kind: ServiceAccount
     metadata:
@@ -1354,7 +1391,7 @@ matches the snapshot with default values:
         app.kubernetes.io/name: nktp-ksm-cluster
       name: nktp-ksm-cluster
       namespace: NAMESPACE
-  23: |
+  26: |
     apiVersion: rbac.authorization.k8s.io/v1
     kind: ClusterRole
     metadata:
@@ -1396,7 +1433,7 @@ matches the snapshot with default values:
         verbs:
           - list
           - watch
-  24: |
+  27: |
     apiVersion: rbac.authorization.k8s.io/v1
     kind: ClusterRoleBinding
     metadata:
@@ -1413,7 +1450,7 @@ matches the snapshot with default values:
       - kind: ServiceAccount
         name: nktp-ksm-cluster
         namespace: NAMESPACE
-  25: |
+  28: |
     apiVersion: rbac.authorization.k8s.io/v1
     kind: ClusterRole
     metadata:
@@ -1438,7 +1475,7 @@ matches the snapshot with default values:
         verbs:
           - list
           - watch
-  26: |
+  29: |
     apiVersion: rbac.authorization.k8s.io/v1
     kind: ClusterRoleBinding
     metadata:
@@ -1455,7 +1492,7 @@ matches the snapshot with default values:
       - kind: ServiceAccount
         name: nktp-ksm-cluster
         namespace: NAMESPACE
-  27: |
+  30: |
     apiVersion: v1
     kind: ServiceAccount
     metadata:
@@ -1465,7 +1502,7 @@ matches the snapshot with default values:
         app.kubernetes.io/name: nktp-ksm-configuration
       name: nktp-ksm-configuration
       namespace: NAMESPACE
-  28: |
+  31: |
     apiVersion: rbac.authorization.k8s.io/v1
     kind: ClusterRole
     metadata:
@@ -1482,7 +1519,7 @@ matches the snapshot with default values:
         verbs:
           - list
           - watch
-  29: |
+  32: |
     apiVersion: rbac.authorization.k8s.io/v1
     kind: ClusterRoleBinding
     metadata:
@@ -1499,7 +1536,7 @@ matches the snapshot with default values:
       - kind: ServiceAccount
         name: nktp-ksm-configuration
         namespace: NAMESPACE
-  30: |
+  33: |
     apiVersion: v1
     kind: ServiceAccount
     metadata:
@@ -1509,7 +1546,7 @@ matches the snapshot with default values:
         app.kubernetes.io/name: nktp-ksm-networking
       name: nktp-ksm-networking
       namespace: NAMESPACE
-  31: |
+  34: |
     apiVersion: rbac.authorization.k8s.io/v1
     kind: ClusterRole
     metadata:
@@ -1541,7 +1578,7 @@ matches the snapshot with default values:
         verbs:
           - list
           - watch
-  32: |
+  35: |
     apiVersion: rbac.authorization.k8s.io/v1
     kind: ClusterRoleBinding
     metadata:
@@ -1558,7 +1595,7 @@ matches the snapshot with default values:
       - kind: ServiceAccount
         name: nktp-ksm-networking
         namespace: NAMESPACE
-  33: |
+  36: |
     apiVersion: v1
     kind: ServiceAccount
     metadata:
@@ -1568,7 +1605,7 @@ matches the snapshot with default values:
         app.kubernetes.io/name: nktp-ksm-pods
       name: nktp-ksm-pods
       namespace: NAMESPACE
-  34: |
+  37: |
     apiVersion: rbac.authorization.k8s.io/v1
     kind: ClusterRole
     metadata:
@@ -1585,7 +1622,7 @@ matches the snapshot with default values:
         verbs:
           - list
           - watch
-  35: |
+  38: |
     apiVersion: rbac.authorization.k8s.io/v1
     kind: ClusterRoleBinding
     metadata:
@@ -1602,7 +1639,7 @@ matches the snapshot with default values:
       - kind: ServiceAccount
         name: nktp-ksm-pods
         namespace: NAMESPACE
-  36: |
+  39: |
     apiVersion: v1
     kind: ServiceAccount
     metadata:
@@ -1612,7 +1649,7 @@ matches the snapshot with default values:
         app.kubernetes.io/name: nktp-ksm-storage
       name: nktp-ksm-storage
       namespace: NAMESPACE
-  37: |
+  40: |
     apiVersion: rbac.authorization.k8s.io/v1
     kind: ClusterRole
     metadata:
@@ -1636,7 +1673,7 @@ matches the snapshot with default values:
         verbs:
           - list
           - watch
-  38: |
+  41: |
     apiVersion: rbac.authorization.k8s.io/v1
     kind: ClusterRoleBinding
     metadata:
@@ -1653,7 +1690,7 @@ matches the snapshot with default values:
       - kind: ServiceAccount
         name: nktp-ksm-storage
         namespace: NAMESPACE
-  39: |
+  42: |
     apiVersion: rbac.authorization.k8s.io/v1
     kind: ClusterRole
     metadata:
@@ -1670,7 +1707,7 @@ matches the snapshot with default values:
         verbs:
           - list
           - watch
-  40: |
+  43: |
     apiVersion: rbac.authorization.k8s.io/v1
     kind: ClusterRoleBinding
     metadata:
@@ -1687,7 +1724,7 @@ matches the snapshot with default values:
       - kind: ServiceAccount
         name: nktp-ksm-storage
         namespace: NAMESPACE
-  41: |
+  44: |
     apiVersion: v1
     kind: ServiceAccount
     metadata:
@@ -1697,7 +1734,7 @@ matches the snapshot with default values:
         app.kubernetes.io/name: nktp-ksm-unscheduled-pods
       name: nktp-ksm-unscheduled-pods
       namespace: NAMESPACE
-  42: |
+  45: |
     apiVersion: rbac.authorization.k8s.io/v1
     kind: ClusterRole
     metadata:
@@ -1714,7 +1751,7 @@ matches the snapshot with default values:
         verbs:
           - list
           - watch
-  43: |
+  46: |
     apiVersion: rbac.authorization.k8s.io/v1
     kind: ClusterRoleBinding
     metadata:
@@ -1731,7 +1768,7 @@ matches the snapshot with default values:
       - kind: ServiceAccount
         name: nktp-ksm-unscheduled-pods
         namespace: NAMESPACE
-  44: |
+  47: |
     apiVersion: v1
     kind: ServiceAccount
     metadata:
@@ -1741,7 +1778,7 @@ matches the snapshot with default values:
         app.kubernetes.io/name: nktp-ksm-workloads
       name: nktp-ksm-workloads
       namespace: NAMESPACE
-  45: |
+  48: |
     apiVersion: rbac.authorization.k8s.io/v1
     kind: ClusterRole
     metadata:
@@ -1790,7 +1827,7 @@ matches the snapshot with default values:
         verbs:
           - list
           - watch
-  46: |
+  49: |
     apiVersion: rbac.authorization.k8s.io/v1
     kind: ClusterRoleBinding
     metadata:
@@ -1807,7 +1844,7 @@ matches the snapshot with default values:
       - kind: ServiceAccount
         name: nktp-ksm-workloads
         namespace: NAMESPACE
-  47: |
+  50: |
     apiVersion: apps/v1
     kind: Deployment
     metadata:
@@ -1882,7 +1919,7 @@ matches the snapshot with default values:
             seccompProfile:
               type: RuntimeDefault
           serviceAccountName: nktp-ksm-cluster
-  48: |
+  51: |
     apiVersion: apps/v1
     kind: Deployment
     metadata:
@@ -1957,7 +1994,7 @@ matches the snapshot with default values:
             seccompProfile:
               type: RuntimeDefault
           serviceAccountName: nktp-ksm-configuration
-  49: |
+  52: |
     apiVersion: apps/v1
     kind: Deployment
     metadata:
@@ -2032,7 +2069,7 @@ matches the snapshot with default values:
             seccompProfile:
               type: RuntimeDefault
           serviceAccountName: nktp-ksm-networking
-  50: |
+  53: |
     apiVersion: apps/v1
     kind: DaemonSet
     metadata:
@@ -2110,7 +2147,7 @@ matches the snapshot with default values:
           serviceAccountName: nktp-ksm-pods
           tolerations:
             - operator: Exists
-  51: |
+  54: |
     apiVersion: apps/v1
     kind: Deployment
     metadata:
@@ -2185,7 +2222,7 @@ matches the snapshot with default values:
             seccompProfile:
               type: RuntimeDefault
           serviceAccountName: nktp-ksm-storage
-  52: |
+  55: |
     apiVersion: apps/v1
     kind: Deployment
     metadata:
@@ -2261,7 +2298,7 @@ matches the snapshot with default values:
             seccompProfile:
               type: RuntimeDefault
           serviceAccountName: nktp-ksm-unscheduled-pods
-  53: |
+  56: |
     apiVersion: apps/v1
     kind: Deployment
     metadata:
@@ -2336,7 +2373,7 @@ matches the snapshot with default values:
             seccompProfile:
               type: RuntimeDefault
           serviceAccountName: nktp-ksm-workloads
-  54: |
+  57: |
     apiVersion: rbac.authorization.k8s.io/v1
     kind: ClusterRole
     metadata:
@@ -2373,7 +2410,7 @@ matches the snapshot with default values:
           - get
           - list
           - watch
-  55: |
+  58: |
     apiVersion: rbac.authorization.k8s.io/v1
     kind: ClusterRoleBinding
     metadata:
@@ -2386,7 +2423,7 @@ matches the snapshot with default values:
       - kind: ServiceAccount
         name: nktp-large-target-metrics-targetallocator
         namespace: NAMESPACE
-  56: |
+  59: |
     apiVersion: rbac.authorization.k8s.io/v1
     kind: ClusterRole
     metadata:
@@ -2396,7 +2433,7 @@ matches the snapshot with default values:
           - /metrics
         verbs:
           - get
-  57: |
+  60: |
     apiVersion: rbac.authorization.k8s.io/v1
     kind: ClusterRoleBinding
     metadata:
@@ -2409,7 +2446,7 @@ matches the snapshot with default values:
       - kind: ServiceAccount
         name: nktp-large-target-metrics-collector
         namespace: NAMESPACE
-  58: |
+  61: |
     apiVersion: opentelemetry.io/v1beta1
     kind: OpenTelemetryCollector
     metadata:
@@ -2611,7 +2648,7 @@ matches the snapshot with default values:
           topologyKey: kubernetes.io/hostname
           whenUnsatisfiable: ScheduleAnyway
       upgradeStrategy: automatic
-  59: |
+  62: |
     apiVersion: v1
     data:
       nktp.yaml: |
@@ -2628,7 +2665,7 @@ matches the snapshot with default values:
     kind: ConfigMap
     metadata:
       name: lgtm-dashboard-provider
-  60: |
+  63: |
     apiVersion: v1
     data:
       nktp-cluster-events.json: |
@@ -8980,7 +9017,7 @@ matches the snapshot with default values:
     kind: ConfigMap
     metadata:
       name: lgtm-dashboards
-  61: |
+  64: |
     apiVersion: v1
     kind: Service
     metadata:
@@ -9005,7 +9042,7 @@ matches the snapshot with default values:
           targetPort: 4318
       selector:
         app: lgtm
-  62: |
+  65: |
     apiVersion: apps/v1
     kind: Deployment
     metadata:
@@ -9081,7 +9118,7 @@ matches the snapshot with default values:
               name: p8s-storage
             - emptyDir: {}
               name: pyroscope-storage
-  63: |
+  66: |
     apiVersion: rbac.authorization.k8s.io/v1
     kind: ClusterRoleBinding
     metadata:
@@ -9094,7 +9131,7 @@ matches the snapshot with default values:
       - kind: ServiceAccount
         name: nktp-watchdog-collector
         namespace: NAMESPACE
-  64: |
+  67: |
     apiVersion: rbac.authorization.k8s.io/v1
     kind: Role
     metadata:
@@ -9118,7 +9155,7 @@ matches the snapshot with default values:
           - get
           - list
           - watch
-  65: |
+  68: |
     apiVersion: rbac.authorization.k8s.io/v1
     kind: RoleBinding
     metadata:
@@ -9132,7 +9169,7 @@ matches the snapshot with default values:
       - kind: ServiceAccount
         name: nktp-watchdog-targetallocator
         namespace: NAMESPACE
-  66: |
+  69: |
     apiVersion: opentelemetry.io/v1beta1
     kind: OpenTelemetryCollector
     metadata:

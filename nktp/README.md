@@ -20,6 +20,14 @@ HTTPS endpoint before sending gateway traffic to a production backend. See
 [Secure gateway export](../docs/gateway_mtls.md) for TLS, mTLS, and cert-manager
 configuration.
 
+### Internal collector TLS
+
+By default, NKTP uses cert-manager to create a self-signed CA, issuer and certificates for each collector 
+used for collector-to-collector traffic encryption. Setting `tls.internal.certManager.issuerRef` allows you to specify
+an existing `Issuer` or `ClusterIssuer`.
+
+Disabling `tls.internal` requires you to manually reconfigure the collector configs to use `http` endpoints and not include `tls` blocks.
+
 ### Resource sizing
 
 Default budgets are per Pod. Configure collector resources under
