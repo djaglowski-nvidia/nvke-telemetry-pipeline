@@ -112,13 +112,13 @@ tests:
       - equal:
           path: spec.resources
           value:
-            requests: {cpu: 100m, memory: 256Mi}
-            limits: {cpu: 500m, memory: 512Mi}
+            requests: {cpu: 500m, memory: 512Mi}
+            limits: {cpu: "4", memory: 1Gi}
       - equal:
           path: spec.env
           value:
             - name: GOMEMLIMIT
-              value: 448MiB
+              value: 768MiB
             - name: GOGC
               value: "50"
       - equal:
@@ -296,8 +296,8 @@ tests:
       - equal:
           path: spec.resources
           value:
-            requests: {cpu: 100m, memory: 128Mi}
-            limits: {cpu: 500m, memory: 512Mi}
+            requests: {cpu: 500m, memory: 128Mi}
+            limits: {cpu: "4", memory: 1Gi}
       - equal:
           path: spec.autoscaler
           value:

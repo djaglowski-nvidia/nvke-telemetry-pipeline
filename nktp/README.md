@@ -40,11 +40,13 @@ Default budgets are per Pod. Configure collector resources under
 | Large-target collector | 2 / 8 GiB | 4 / 16 GiB |
 | Metrics, logs and traces gateways | 200m / 512 MiB | 4 / 8 GiB |
 | Cluster event reader | 1 / 512 MiB | 4 / 1 GiB |
+| Watchdog | 500m / 512 MiB | 4 / 1 GiB |
 | Node Target Allocator | 250m / 2 GiB | 2 / 4 GiB |
 | Large-target and watchdog Target Allocators | 250m / 1 GiB | 1 / 2 GiB |
 
 Node collectors and gateways use a 7 GiB `GOMEMLIMIT`. Large-target collectors
-use 8 GiB. Tune runtime memory targets and queues together with container limits.
+use 8 GiB and watchdog uses 768 MiB. Tune runtime memory targets and queues
+together with container limits.
 The node metrics queue holds 32 MiB to admit larger scrapes before batching.
 
 HPA targets are relative to requests. Increasing limits does not raise the

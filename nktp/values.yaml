@@ -91,14 +91,14 @@ watchdog:
       targetMemoryUtilization: 100
     resources:
       requests:
-        cpu: 100m
-        memory: 256Mi
-      limits:
         cpu: 500m
         memory: 512Mi
+      limits:
+        cpu: "4"
+        memory: 1Gi
     env:
       - name: GOMEMLIMIT
-        value: 448MiB # Soft Go runtime target. Leaves 64Mi nominal headroom below the container limit.
+        value: 768MiB # Soft Go runtime target. Leaves 256Mi nominal headroom below the container limit.
       - name: GOGC
         value: "50" # More frequent GC trades CPU for lower heap growth.
     podDisruptionBudget:
@@ -169,8 +169,8 @@ watchdog:
       processors:
         memory_limiter:
           check_interval: 500ms # Poll Go heap Alloc. Bursts can allocate between checks.
-          limit_percentage: 80 # Hard heap threshold, 409.6Mi. Leaves room below the container cap.
-          spike_limit_percentage: 25 # Subtract from hard threshold for soft refusal at 55% (281.6Mi).
+          limit_percentage: 80 # Hard heap threshold, 819.2Mi. Leaves room below the container cap.
+          spike_limit_percentage: 25 # Subtract from hard threshold for soft refusal at 55% (563.2Mi).
       exporters:
         otlp_http:
           endpoint: http://lgtm:4318

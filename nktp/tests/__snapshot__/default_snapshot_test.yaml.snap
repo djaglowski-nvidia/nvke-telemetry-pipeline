@@ -9293,7 +9293,7 @@ matches the snapshot with default values:
                         protocol: http/protobuf
       env:
         - name: GOMEMLIMIT
-          value: 448MiB
+          value: 768MiB
         - name: GOGC
           value: "50"
       image: otel/opentelemetry-collector-k8s:0.162.0
@@ -9308,11 +9308,11 @@ matches the snapshot with default values:
       replicas: 2
       resources:
         limits:
+          cpu: "4"
+          memory: 1Gi
+        requests:
           cpu: 500m
           memory: 512Mi
-        requests:
-          cpu: 100m
-          memory: 256Mi
       securityContext:
         allowPrivilegeEscalation: false
         capabilities:
