@@ -162,7 +162,7 @@ tests:
     asserts:
       - equal:
           path: "spec.image"
-          value: "mirror.example.com/otel/opentelemetry-collector-k8s:0.159.0"
+          value: "mirror.example.com/otel/opentelemetry-collector-k8s:0.162.0"
         documentIndex: 0
   - it: replaces all own telemetry exporter lists with gRPC for large_target_metrics
     set:

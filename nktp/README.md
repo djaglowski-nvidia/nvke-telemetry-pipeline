@@ -117,8 +117,7 @@ Use `cluster_events.otelcol.config` for Collector configuration and
 `cluster_events.kubernetes` for Kubernetes workload configuration. Retain
 `GOMEMLIMIT`, `GOGC` and `POD_NAMESPACE` when replacing its environment list.
 Set `receivers.k8s_events.namespaces` within the Collector configuration to limit
-the watched namespaces. Startup lists the retained Events, so large clusters
-need memory sized for that list. Events during a leadership handoff can be missed.
+the watched namespaces. Events during a leadership handoff can be missed.
 
 The chart creates the election Lease in the release namespace and restricts the
 reader's Lease permissions to that name. Set `extensions.k8s_leader_elector.lease_name`
