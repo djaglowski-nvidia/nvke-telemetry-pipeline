@@ -2,6 +2,11 @@
 
 NKTP is how NVIDIA runs OpenTelemetry on Kubernetes.
 
+## Prerequisites
+
+Kubernetes 1.25+, per the bundled OpenTelemetry Operator's
+[compatibility matrix](https://github.com/open-telemetry/opentelemetry-operator/blob/v0.159.0/docs/getting-started/compatibility.md).
+
 ## OpenTelemetry Topology
 
 TODO
