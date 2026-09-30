@@ -846,7 +846,7 @@
         "targets": [
           {
             "refId": "A",
-            "expr": "sum by (k8s_cluster_name,err_code) (DCGM_FI_DEV_XID_ERRORS{k8s_cluster_name=~\"$cluster\"}) > 0",
+            "expr": "count by (k8s_cluster_name,err_code) (DCGM_FI_DEV_XID_ERRORS{k8s_cluster_name=~\"$cluster\"} > 0)",
             "legendFormat": "{{k8s_cluster_name}}",
             "instant": false,
             "range": true
@@ -886,7 +886,7 @@
         "targets": [
           {
             "refId": "A",
-            "expr": "sum by (k8s_cluster_name,Hostname,err_msg,err_code) (DCGM_FI_DEV_XID_ERRORS{k8s_cluster_name=~\"$cluster\"} > 0 and ignoring(instance) (DCGM_FI_DEV_XID_ERRORS != 43 and DCGM_FI_DEV_XID_ERRORS != 109 and DCGM_FI_DEV_XID_ERRORS != 31))",
+            "expr": "count by (k8s_cluster_name,Hostname,err_msg,err_code) (DCGM_FI_DEV_XID_ERRORS{k8s_cluster_name=~\"$cluster\"} > 0 and ignoring(instance) (DCGM_FI_DEV_XID_ERRORS != 43 and DCGM_FI_DEV_XID_ERRORS != 109 and DCGM_FI_DEV_XID_ERRORS != 31))",
             "legendFormat": "{{k8s_cluster_name}}",
             "instant": true,
             "range": false,
