@@ -713,14 +713,14 @@ daemonset:
               values: ["true"]
     resources:
       requests:
-        cpu: "2"
-        memory: 6Gi
+        cpu: "1"
+        memory: 2Gi
       limits:
         cpu: "2"
-        memory: 8Gi
+        memory: 4Gi
     env:
       - name: GOMEMLIMIT
-        value: 7GiB # Soft Go runtime target. Leaves 1Gi nominal headroom below the container limit.
+        value: 3276MiB # Soft Go runtime target at about 80% of the 4Gi container limit.
       - name: GOGC
         value: "50" # More frequent GC trades CPU for lower heap growth.
       - name: NODE_NAME
@@ -956,8 +956,8 @@ daemonset:
       processors:
         memory_limiter:
           check_interval: 500ms # Poll Go heap Alloc. Bursts can allocate between checks.
-          limit_percentage: 80 # Hard heap threshold, 6.4Gi. Leaves room below the container cap.
-          spike_limit_percentage: 25 # Subtract from hard threshold for soft refusal at 55% (4.4Gi).
+          limit_percentage: 80 # Hard heap threshold, 3.2Gi. Leaves room below the container cap.
+          spike_limit_percentage: 25 # Subtract from hard threshold for soft refusal at 55% (2.2Gi).
         resource/node:
           attributes:
             - key: k8s.node.name

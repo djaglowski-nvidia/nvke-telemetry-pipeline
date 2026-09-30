@@ -558,8 +558,8 @@ tests:
       - equal:
           path: spec.resources
           value:
-            requests: {cpu: 200m, memory: 6Gi}
-            limits: {cpu: "2", memory: 8Gi}
+            requests: {cpu: 200m, memory: 2Gi}
+            limits: {cpu: "2", memory: 4Gi}
       - notExists:
           path: spec.config.ignored
 

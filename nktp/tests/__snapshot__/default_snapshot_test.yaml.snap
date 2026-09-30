@@ -897,7 +897,7 @@ matches the snapshot with default values:
                         protocol: http/protobuf
       env:
         - name: GOMEMLIMIT
-          value: 7GiB
+          value: 3276MiB
         - name: GOGC
           value: "50"
         - name: NODE_NAME
@@ -921,10 +921,10 @@ matches the snapshot with default values:
       resources:
         limits:
           cpu: "2"
-          memory: 8Gi
+          memory: 4Gi
         requests:
-          cpu: "2"
-          memory: 6Gi
+          cpu: "1"
+          memory: 2Gi
       securityContext:
         allowPrivilegeEscalation: false
         capabilities:
