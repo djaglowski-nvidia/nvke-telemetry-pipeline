@@ -56,6 +56,8 @@ vars:
 tasks:
   up:
     desc: Create the Kind cluster the end-to-end suite runs against, and fetch the chart dependencies
+    # Kind resolves the audit policy's relative host mount from this directory.
+    dir: '{{.TASKFILE_DIR}}'
     deps: [check-deps]
     preconditions:
       - sh: docker info >/dev/null 2>&1
@@ -88,7 +90,8 @@ tasks:
       # under the CI job's own timeout so that a hung run is killed by Go,
       # which dumps every goroutine, rather than by the runner, which says only
       # that time ran out.
-      - go test -tags e2e -count=1 -v -timeout 30m {{.CLI_ARGS}} . -args {{.SUITE_FLAGS}}
+      # TAGS selects a release-ownership group; e2e alone includes both.
+      - go test -tags 'e2e{{if .TAGS}},{{.TAGS}}{{end}}' -count=1 -v -timeout 30m {{.CLI_ARGS}} . -args {{.SUITE_FLAGS}}
 
   install:
     desc: Install or update one NKTP release for repeated tests with INSTALL=false

@@ -1,4 +1,4 @@
-//go:build e2e
+//go:build e2e && (e2e_release_shared || !e2e_release_owned)
 
 package e2e
 
@@ -10,8 +10,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"k8s.io/apimachinery/pkg/util/wait"
-
-	"github.com/NVIDIA-dev/nktp/tests/internal/kube"
 )
 
 // The bundled ServiceMonitors use a scrape interval of at most one minute.
@@ -22,11 +20,7 @@ const componentMetricMaxAge = 2 * time.Minute
 // ServiceMonitor delivers a recent metric to LGTM. The job label distinguishes
 // the four Kubernetes components that all export kubernetes_build_info.
 func TestKubernetesComponentMetrics(t *testing.T) {
-	withRelease(t, verifyKubernetesComponentMetrics)
-}
-
-func verifyKubernetesComponentMetrics(t *testing.T, k *kube.Client) {
-	t.Helper()
+	k := newKubeWithReadyRelease(t.Context(), t)
 
 	cases := []struct {
 		component string
@@ -41,7 +35,7 @@ func verifyKubernetesComponentMetrics(t *testing.T, k *kube.Client) {
 		{"etcd", "etcd_server_has_leader", "kube-etcd"},
 	}
 
-	ctx, cancel := deadline(t)
+	ctx, cancel := deadline(t.Context())
 	defer cancel()
 
 	found := make([]bool, len(cases))

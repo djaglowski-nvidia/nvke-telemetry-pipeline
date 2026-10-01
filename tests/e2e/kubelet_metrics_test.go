@@ -1,4 +1,4 @@
-//go:build e2e
+//go:build e2e && (e2e_release_shared || !e2e_release_owned)
 
 package e2e
 
@@ -14,7 +14,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	appsv1 "k8s.io/api/apps/v1"
-	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -24,10 +23,6 @@ import (
 
 const (
 	kubeletMetricsFixtureName = "nktp-e2e-kubelet-metrics"
-	// Topograph is an NVIDIA-owned, public, multi-platform Alpine image. Keep
-	// the release tag for provenance and pin the registry index digest
-	// so this test always runs the inspected image.
-	kubeletMetricsFixtureImage = "ghcr.io/nvidia/topograph:v0.4.0@sha256:f227bf161464da4a23273a535914c98b33d26e5bf24bdf7f50159ab4b875b717"
 )
 
 // TestKubeletMetrics uses the configured release mode and proves that every node sends
@@ -36,15 +31,9 @@ const (
 // to observe, requires that workload's memory metric to be non-zero, and then
 // removes the fixture and, in install mode, the release.
 func TestKubeletMetrics(t *testing.T) {
-	withRelease(t, verifyKubeletMetrics)
-}
+	k := newKubeWithReadyRelease(t.Context(), t)
 
-// verifyKubeletMetrics runs one passive container on every node, then waits
-// for both the kubelet and cAdvisor scrape jobs to reach the metrics backend.
-func verifyKubeletMetrics(t *testing.T, k *kube.Client) {
-	t.Helper()
-
-	ctx, cancel := deadline(t)
+	ctx, cancel := deadline(t.Context())
 	defer cancel()
 
 	nodes, err := k.CoreV1().Nodes().List(ctx, metav1.ListOptions{})
@@ -52,11 +41,11 @@ func verifyKubeletMetrics(t *testing.T, k *kube.Client) {
 	require.NotEmpty(t, nodes.Items, "the cluster must have a node to test")
 
 	require.NoError(t, createKubeletMetricsFixture(ctx, k))
-	defer func() {
-		cleanupCtx, cleanupCancel := deadline(t)
+	t.Cleanup(func() {
+		cleanupCtx, cleanupCancel := deadline(context.WithoutCancel(t.Context()))
 		defer cleanupCancel()
 		assert.NoError(t, deleteKubeletMetricsFixture(cleanupCtx, k), "removing the kubelet metrics fixture")
-	}()
+	})
 	require.NoError(t, waitForKubeletMetricsFixture(ctx, k, int32(len(nodes.Items))))
 
 	want := make([]string, 0, len(nodes.Items))
@@ -76,30 +65,7 @@ func createKubeletMetricsFixture(ctx context.Context, k *kube.Client) error {
 		ObjectMeta: metav1.ObjectMeta{Name: kubeletMetricsFixtureName, Namespace: *namespace},
 		Spec: appsv1.DaemonSetSpec{
 			Selector: &metav1.LabelSelector{MatchLabels: labels},
-			Template: corev1.PodTemplateSpec{
-				ObjectMeta: metav1.ObjectMeta{Labels: labels},
-				Spec: corev1.PodSpec{
-					AutomountServiceAccountToken:  new(false),
-					TerminationGracePeriodSeconds: new(int64(1)),
-					Tolerations:                   []corev1.Toleration{{Operator: corev1.TolerationOpExists}},
-					SecurityContext: &corev1.PodSecurityContext{
-						RunAsNonRoot:   new(true),
-						SeccompProfile: &corev1.SeccompProfile{Type: corev1.SeccompProfileTypeRuntimeDefault},
-					},
-					Containers: []corev1.Container{{
-						Name:            "memory",
-						Image:           kubeletMetricsFixtureImage,
-						ImagePullPolicy: corev1.PullIfNotPresent,
-						Command:         []string{"/bin/sleep", "3600"},
-						SecurityContext: &corev1.SecurityContext{
-							RunAsUser:                new(int64(65532)),
-							AllowPrivilegeEscalation: new(false),
-							ReadOnlyRootFilesystem:   new(true),
-							Capabilities:             &corev1.Capabilities{Drop: []corev1.Capability{"ALL"}},
-						},
-					}},
-				},
-			},
+			Template: passiveFixturePodTemplate(kubeletMetricsFixtureName),
 		},
 	}
 

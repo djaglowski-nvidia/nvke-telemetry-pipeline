@@ -2,15 +2,41 @@ kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
 nodes:
   - role: control-plane
+    extraMounts:
+      - hostPath: ./audit-policy.yaml
+        containerPath: /etc/kubernetes/audit-policy.yaml
+        readOnly: true
     kubeadmConfigPatches:
       - |
         kind: ClusterConfiguration
+        apiServer:
+          extraArgs:
+            audit-policy-file: /etc/kubernetes/audit-policy.yaml
+            audit-log-path: /var/log/kubernetes/audit/audit.log
+            audit-log-maxsize: "10"
+            audit-log-maxbackup: "1"
+            # Verbosity 3 emits HTTP request logs for the test's namespace reads.
+            v: "3"
+          extraVolumes:
+            - name: audit-policy
+              hostPath: /etc/kubernetes/audit-policy.yaml
+              mountPath: /etc/kubernetes/audit-policy.yaml
+              readOnly: true
+              pathType: File
+            - name: audit-logs
+              hostPath: /var/log/kubernetes/audit
+              mountPath: /var/log/kubernetes/audit
+              pathType: DirectoryOrCreate
         controllerManager:
           extraArgs:
             bind-address: 0.0.0.0
+            # Verbosity 4 emits "Controller created pod" for the Deployment fixture.
+            v: "4"
         scheduler:
           extraArgs:
             bind-address: 0.0.0.0
+            # Verbosity 2 emits "Successfully bound pod to node" for the fixture.
+            v: "2"
         etcd:
           local:
             extraArgs:
@@ -18,3 +44,6 @@ nodes:
       - |
         kind: KubeProxyConfiguration
         metricsBindAddress: 0.0.0.0:10249
+        # Verbosity 4 emits "Service updated ports" for the test's Service changes.
+        logging:
+          verbosity: 4

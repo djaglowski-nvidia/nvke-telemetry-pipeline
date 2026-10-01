@@ -97,57 +97,45 @@ func newChart(t *testing.T, k *kube.Client) *framework.Chart {
 	}
 }
 
-// prepareRelease gives a test a ready installation and reports whether it
-// created that installation. Reuse mode verifies the exact configured Helm
-// release exists rather than accepting unrelated workloads in the namespace.
-func prepareRelease(t *testing.T, k *kube.Client) (*framework.Chart, bool) {
+// readyRelease makes the configured release ready by installing it or waiting
+// for an existing one, according to -nktp.install. It uses the supplied client
+// and returns the chart for tests that need to modify the release.
+func readyRelease(ctx context.Context, t *testing.T, k *kube.Client) *framework.Chart {
 	t.Helper()
 	deployed := newChart(t, k)
 
-	ctx, cancel := deadline(t)
+	ctx, cancel := deadline(ctx)
 	defer cancel()
 
 	if *install {
-		t.Logf("installing a fresh release %v for %s, all OpenTelemetryCollectors must be Ready", deployed.Release, t.Name())
+		t.Logf("installing a fresh release %v/%v (all OpenTelemetryCollectors must be Ready)", deployed.Release.Namespace, deployed.Release.Name)
 		owned, err := deployed.InstallFresh(ctx)
 		if owned {
 			registerChartCleanup(t, deployed, k)
 		}
-		require.NoError(t, err, "installing a fresh release %v for %s", deployed.Release, t.Name())
+		require.NoError(t, err, "installing a fresh release %v/%v", deployed.Release.Namespace, deployed.Release.Name)
 	} else {
-		t.Logf("waiting for the existing release %v used by %s, all OpenTelemetryCollectors must be Ready", deployed.Release, t.Name())
+		t.Logf("waiting for the shared release %v/%v (all OpenTelemetryCollectors must be Ready)", deployed.Release.Namespace, deployed.Release.Name)
 		exists, err := deployed.Helm.Installed(ctx, deployed.Release)
-		require.NoError(t, err, "checking for the existing release used by %s", t.Name())
+		require.NoError(t, err, "checking for the shared release %v/%v", deployed.Release.Namespace, deployed.Release.Name)
 		require.True(t, exists,
 			"release %s must already exist in namespace %s when -nktp.install=false",
 			deployed.Release.Name, deployed.Release.Namespace)
-		require.NoError(t, deployed.WaitReady(ctx), "waiting for the existing release %v used by %s", deployed.Release, t.Name())
+		require.NoError(t, deployed.WaitReady(ctx), "waiting for the shared release %v/%v", deployed.Release.Namespace, deployed.Release.Name)
 	}
-	return deployed, false
+	return deployed
 }
 
-// withRelease gives a functional test a ready installation. It removes the
-// release afterward only when -nktp.install=true caused the test to create it.
-func withRelease(t *testing.T, test func(*testing.T, *kube.Client)) {
+// newKubeWithReadyRelease creates a Kubernetes client and installs or waits for
+// the configured release before returning that client. Release cleanup is
+// registered before fixture cleanup, so fixtures are removed first.
+func newKubeWithReadyRelease(ctx context.Context, t *testing.T) *kube.Client {
 	t.Helper()
 	started := time.Now()
 	k := newKube(t)
-	deployed, created := prepareRelease(t, k)
+	readyRelease(ctx, t, k)
 	t.Logf("release ready after %s", time.Since(started))
-
-	if created {
-		defer func() {
-			uninstallCtx, cancelUninstall := deadline(t)
-			assert.NoError(t, deployed.Uninstall(uninstallCtx), "uninstalling the release for %s", t.Name())
-			cancelUninstall()
-
-			waitCtx, cancelWait := deadline(t)
-			defer cancelWait()
-			assert.NoError(t, k.WaitWorkloadsGone(waitCtx, *namespace), "waiting for the workloads from %s to be removed", t.Name())
-		}()
-	}
-
-	test(t, k)
+	return k
 }
 
 // releaseRef names the release the suite operates on.
@@ -158,9 +146,8 @@ func releaseRef() helm.Release {
 // deadline budgets one operation. The grace beyond the timeout is there so
 // that a command handed the same timeout reports its own failure, instead of
 // being cut off by the context first and reporting a less specific one.
-func deadline(t *testing.T) (context.Context, context.CancelFunc) {
-	t.Helper()
-	return context.WithTimeout(t.Context(), *timeout+30*time.Second)
+func deadline(ctx context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(ctx, *timeout+30*time.Second)
 }
 
 // registerChartCleanup records ownership before a readiness assertion can
@@ -169,11 +156,11 @@ func deadline(t *testing.T) (context.Context, context.CancelFunc) {
 func registerChartCleanup(t *testing.T, deployed *framework.Chart, k *kube.Client) {
 	t.Helper()
 	t.Cleanup(func() {
-		uninstallCtx, cancelUninstall := context.WithTimeout(context.Background(), *timeout+30*time.Second)
+		uninstallCtx, cancelUninstall := context.WithTimeout(context.WithoutCancel(t.Context()), *timeout+30*time.Second)
 		assert.NoError(t, deployed.Uninstall(uninstallCtx), "uninstalling the test release")
 		cancelUninstall()
 
-		waitCtx, cancelWait := context.WithTimeout(context.Background(), *timeout+30*time.Second)
+		waitCtx, cancelWait := context.WithTimeout(context.WithoutCancel(t.Context()), *timeout+30*time.Second)
 		defer cancelWait()
 		assert.NoError(t, k.WaitWorkloadsGone(waitCtx, *namespace), "waiting for the test workloads to be removed")
 	})

@@ -1,4 +1,4 @@
-//go:build e2e
+//go:build e2e && (e2e_release_shared || !e2e_release_owned)
 
 package e2e
 
@@ -44,12 +44,8 @@ var targetAllocatorMTLSCases = []struct {
 // handler, so a new request proves the Collector completed mTLS and reached
 // the application rather than merely finding a ready certificate.
 func TestTargetAllocatorMTLS(t *testing.T) {
-	withRelease(t, verifyTargetAllocatorMTLS)
-}
-
-func verifyTargetAllocatorMTLS(t *testing.T, k *kube.Client) {
-	t.Helper()
-	ctx, cancel := deadline(t)
+	k := newKubeWithReadyRelease(t.Context(), t)
+	ctx, cancel := deadline(t.Context())
 	defer cancel()
 	var baseline map[string]float64
 	var lastErr error

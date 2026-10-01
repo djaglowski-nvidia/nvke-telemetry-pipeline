@@ -93,6 +93,9 @@ spec:
             # https://jirasw.nvidia.com/browse/NKX-16798
             - name: PROMETHEUS_EXTRA_ARGS
               value: --enable-feature=otlp-deltatocumulative
+            {{- with $lgtm.env }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
           ports:
             - containerPort: 3000
             - containerPort: 4317

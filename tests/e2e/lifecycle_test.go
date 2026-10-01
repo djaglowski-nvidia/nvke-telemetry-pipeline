@@ -1,8 +1,9 @@
-//go:build e2e
+//go:build e2e && (e2e_release_owned || !e2e_release_shared)
 
 package e2e
 
 import (
+	"context"
 	"fmt"
 	"slices"
 	"testing"
@@ -39,7 +40,7 @@ func TestChartLifecycle(t *testing.T) {
 	owner := t
 
 	installed := t.Run("the chart installs", func(t *testing.T) {
-		ctx, cancel := deadline(t)
+		ctx, cancel := deadline(t.Context())
 		defer cancel()
 
 		owned, err := deployed.InstallFresh(ctx)
@@ -54,57 +55,81 @@ func TestChartLifecycle(t *testing.T) {
 	// report on whatever the failure happened to leave.
 	require.True(t, installed, "the rest of the lifecycle needs an installed release")
 
-	t.Run("an installed release", func(t *testing.T) { verifyInstalled(t, k) })
+	for _, stage := range []string{
+		"an installed release",
+		"an installed release, reapplied",
+	} {
+		if stage == "an installed release, reapplied" {
+			t.Run("reapplying the release changes nothing", func(t *testing.T) {
+				before, err := k.Workloads(t.Context(), *namespace)
+				require.NoError(t, err)
 
-	t.Run("reapplying the release changes nothing", func(t *testing.T) {
-		before, err := k.Workloads(t.Context(), *namespace)
-		require.NoError(t, err)
+				ctx, cancel := deadline(t.Context())
+				defer cancel()
+				_, err = deployed.Apply(ctx)
+				require.NoError(t, err, "reapplying the chart")
 
-		ctx, cancel := deadline(t)
-		defer cancel()
-		_, err = deployed.Apply(ctx)
-		require.NoError(t, err, "reapplying the chart")
+				after, err := k.Workloads(t.Context(), *namespace)
+				require.NoError(t, err)
 
-		after, err := k.Workloads(t.Context(), *namespace)
-		require.NoError(t, err)
+				// Helm applies these itself and sets no owner reference on them, so
+				// nothing between the chart and the cluster can touch them: if one
+				// moved, the chart rendered differently on the second pass.
+				//
+				// A chart that generates something at install time, a hook that
+				// writes unique configuration for instance, would move them for a
+				// reason of its own. Nothing in the chart does today, so this holds;
+				// -nktp.stable-reapply=false reports it instead once something does.
+				wasHelm, isHelm := generations(before, false), generations(after, false)
+				if *stableReapply {
+					assert.Equal(t, wasHelm, isHelm,
+						"reapplying the same release rolled or changed a workload Helm manages")
+				} else if !slices.Equal(wasHelm, isHelm) {
+					t.Log("note: reapplying the release moved a workload Helm manages")
+				}
 
-		// Helm applies these itself and sets no owner reference on them, so
-		// nothing between the chart and the cluster can touch them: if one
-		// moved, the chart rendered differently on the second pass.
-		//
-		// A chart that generates something at install time, a hook that
-		// writes unique configuration for instance, would move them for a
-		// reason of its own. Nothing in the chart does today, so this holds;
-		// -nktp.stable-reapply=false reports it instead once something does.
-		wasHelm, isHelm := generations(before, false), generations(after, false)
-		if *stableReapply {
-			assert.Equal(t, wasHelm, isHelm,
-				"reapplying the same release rolled or changed a workload Helm manages")
-		} else if !slices.Equal(wasHelm, isHelm) {
-			t.Log("note: reapplying the release moved a workload Helm manages")
+				// Reported rather than enforced. Reapplying a Collector CR that Helm
+				// renders byte-identically still makes the operator rewrite the
+				// workload it derives from it, rolling every collector pod. That is
+				// the operator's behaviour to fix, not something the chart can be held
+				// to meanwhile.
+				if !slices.Equal(generations(before, true), generations(after, true)) {
+					t.Log("note: the operator rewrote the workloads it derives from unchanged Collector CRs, so a reapply rolled every collector pod")
+				}
+			})
 		}
 
-		// Reported rather than enforced. Reapplying a Collector CR that Helm
-		// renders byte-identically still makes the operator rewrite the
-		// workload it derives from it, rolling every collector pod. That is
-		// the operator's behaviour to fix, not something the chart can be held
-		// to meanwhile.
-		if !slices.Equal(generations(before, true), generations(after, true)) {
-			t.Log("note: the operator rewrote the workloads it derives from unchanged Collector CRs, so a reapply rolled every collector pod")
-		}
-	})
-
-	t.Run("an installed release, reapplied", func(t *testing.T) { verifyInstalled(t, k) })
+		t.Run(stage, func(t *testing.T) {
+			for _, tc := range []struct {
+				name  string
+				check func(context.Context, *kube.Client) error
+			}{
+				{"the node exporter runs on every node", checkNodeExporterCoverage},
+				{"the node exporter serves host metrics", checkNodeExporterMetrics},
+				{"the node exporter declares itself as a scrape target", checkNodeExporterMonitor},
+				{"the default backend serves Grafana", checkGrafanaHealth},
+				{"every collector the chart declares is deployed", checkCollectorDeployment},
+				{"every collector the chart declares is running", checkCollectorReadiness},
+				{"the CRDs the chart needs are served", checkRequiredCRDs},
+			} {
+				t.Run(tc.name, func(t *testing.T) {
+					ctx, cancel := deadline(t.Context())
+					defer cancel()
+					assert.NoError(t, tc.check(ctx, k))
+				})
+			}
+		})
+	}
 
 	t.Run("uninstalling takes the workloads with it", func(t *testing.T) {
-		ctx, cancel := deadline(t)
+		ctx, cancel := deadline(t.Context())
 		defer cancel()
 		require.NoError(t, deployed.Uninstall(ctx), "uninstalling the release")
 
 		// Kubernetes' garbage collector removes the workloads the operator
 		// derives, once the Collector they reference is gone. Helm waits only
 		// for the objects it applied itself.
-		waitCtx, cancelWait := deadline(t)
+		waitCtx, cancelWait := deadline(t.Context())
 		defer cancelWait()
 		assert.NoError(t, k.WaitWorkloadsGone(waitCtx, *namespace), "uninstall should leave no workloads behind")
 	})

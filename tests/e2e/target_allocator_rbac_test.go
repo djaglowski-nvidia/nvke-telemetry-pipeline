@@ -1,4 +1,4 @@
-//go:build e2e
+//go:build e2e && (e2e_release_owned || !e2e_release_shared)
 
 package e2e
 
@@ -27,10 +27,10 @@ func TestTargetAllocatorRBAC(t *testing.T) {
 	}
 
 	k := newKube(t)
-	deployed, _ := prepareRelease(t, k)
+	deployed := readyRelease(t.Context(), t, k)
 	baseline := slices.Clone(deployed.ValueFiles)
 
-	ctx, cancel := deadline(t)
+	ctx, cancel := deadline(t.Context())
 	defer cancel()
 
 	secretNamespace, err := k.CoreV1().Namespaces().Create(ctx, &corev1.Namespace{
@@ -40,7 +40,7 @@ func TestTargetAllocatorRBAC(t *testing.T) {
 		t.Fatalf("Create namespace: %v", err)
 	}
 	t.Cleanup(func() {
-		ctx, cancel := context.WithTimeout(context.Background(), *timeout)
+		ctx, cancel := context.WithTimeout(context.WithoutCancel(t.Context()), *timeout)
 		defer cancel()
 		if err := k.CoreV1().Namespaces().Delete(ctx, secretNamespace.Name, metav1.DeleteOptions{}); err != nil {
 			t.Errorf("Delete namespace %q: %v", secretNamespace.Name, err)
@@ -60,7 +60,7 @@ func TestTargetAllocatorRBAC(t *testing.T) {
 	}
 
 	if !t.Run("no Role or RoleBinding exists by default", func(t *testing.T) {
-		ctx, cancel := deadline(t)
+		ctx, cancel := deadline(t.Context())
 		defer cancel()
 
 		if err := checkTargetAllocatorRBAC(ctx, k, secretNamespace.Name, false); err != nil {
@@ -71,7 +71,7 @@ func TestTargetAllocatorRBAC(t *testing.T) {
 	}
 
 	if !t.Run("configuring secretNamespaces creates a Role and RoleBinding", func(t *testing.T) {
-		ctx, cancel := deadline(t)
+		ctx, cancel := deadline(t.Context())
 		defer cancel()
 
 		deployed.ValueFiles = append(slices.Clone(baseline), override)
@@ -86,7 +86,7 @@ func TestTargetAllocatorRBAC(t *testing.T) {
 	}
 
 	t.Run("removing the override deletes the Role and RoleBinding", func(t *testing.T) {
-		ctx, cancel := deadline(t)
+		ctx, cancel := deadline(t.Context())
 		defer cancel()
 
 		deployed.ValueFiles = baseline

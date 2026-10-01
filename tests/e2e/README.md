@@ -38,6 +38,20 @@ cluster, cert-manager, and the chart dependencies needed before Go runs the
 tests. Individual scenarios document their setup, assertions, and cleanup in
 their Go test comments.
 
+CI groups tests by release ownership using Go build tags. To run the same
+sequence locally:
+
+```sh
+task e2e:test TAGS=e2e_release_owned INSTALL=true
+task e2e:install
+task e2e:test TAGS=e2e_release_shared INSTALL=false
+```
+
+Test files that modify or remove the release use
+`e2e && (e2e_release_owned || !e2e_release_shared)`; tests that can reuse a
+release use `e2e && (e2e_release_shared || !e2e_release_owned)`. Shared helper
+files use only `e2e`. Without either group tag, both groups are included.
+
 Not covered yet:
 
 - the configuration inside the Collector CRs, as distinct from their presence

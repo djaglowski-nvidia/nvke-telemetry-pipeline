@@ -610,6 +610,19 @@ NKTP deploys it by default so that telemetry is viewable immediately after insta
 Prometheus is available on port 9090 of the `lgtm` Service, for example
 `http://lgtm.nktp.svc:9090` when installed in namespace `nktp`. Grafana is served on port 3000 of the `lgtm` service, with anonymous admin access (no login).
 
+Additional container environment variables can be supplied through
+`otel-lgtm.env`. To expose Loki and the backend Collector's process logs in
+the `lgtm` container logs for troubleshooting:
+
+```yaml
+otel-lgtm:
+  env:
+    - name: ENABLE_LOGS_LOKI
+      value: "true"
+    - name: ENABLE_LOGS_OTELCOL
+      value: "true"
+```
+
 The default **NKTP Health** dashboard shows workload readiness, pipeline faults,
 queues and telemetry flow. It includes component detail, diagnostic logs,
 internal traces and links to the component dashboards. Workload readiness uses

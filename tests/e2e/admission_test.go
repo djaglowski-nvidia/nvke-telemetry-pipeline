@@ -1,4 +1,4 @@
-//go:build e2e
+//go:build e2e && (e2e_release_shared || !e2e_release_owned)
 
 package e2e
 
@@ -12,7 +12,6 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
 	"github.com/NVIDIA-dev/nktp/tests/internal/framework"
-	"github.com/NVIDIA-dev/nktp/tests/internal/kube"
 )
 
 const collectorValidationWebhook = "vopentelemetrycollectorcreateupdatebeta.kb.io"
@@ -24,11 +23,7 @@ const collectorValidationWebhook = "vopentelemetrycollectorcreateupdatebeta.kb.i
 // server reached the webhook, rather than rejecting the object through CRD
 // schema validation or failing to connect.
 func TestAdmissionWebhook(t *testing.T) {
-	withRelease(t, verifyAdmissionWebhook)
-}
-
-func verifyAdmissionWebhook(t *testing.T, k *kube.Client) {
-	t.Helper()
+	k := newKubeWithReadyRelease(t.Context(), t)
 	name := "nktp-e2e-invalid-webhook-probe"
 	invalid := &unstructured.Unstructured{Object: map[string]any{
 		"apiVersion": "opentelemetry.io/v1beta1",
@@ -65,12 +60,12 @@ func verifyAdmissionWebhook(t *testing.T, k *kube.Client) {
 		},
 	}}
 
-	ctx, cancel := deadline(t)
+	ctx, cancel := deadline(t.Context())
 	defer cancel()
 	_, err := k.CreateCustomResource(ctx, *namespace, framework.Collectors, invalid)
 	if err == nil {
 		t.Cleanup(func() {
-			cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), *timeout+30*time.Second)
+			cleanupCtx, cleanupCancel := context.WithTimeout(context.WithoutCancel(t.Context()), *timeout+30*time.Second)
 			defer cleanupCancel()
 			assert.NoError(t, k.DeleteCustomResource(cleanupCtx, *namespace, framework.Collectors, name), "deleting invalid Collector %s", name)
 		})

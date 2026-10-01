@@ -1411,6 +1411,8 @@ cluster_events:
 # Default in-cluster backend. MUST be disabled for production use.
 otel-lgtm:
   enabled: true
+  # Additional environment variables for the bundled backend container.
+  env: []
   image:
     registry: "" # Empty pulls from the image's default registry (Docker Hub for this repository).
     repository: grafana/otel-lgtm

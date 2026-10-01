@@ -10,6 +10,20 @@
 # is a shard pool the Target Allocator distributes targets across. Only their
 # requests come down.
 
+# The image suppresses backend process logs by default. Keep Loki and its
+# internal collector's errors available in pod logs to diagnose failed ingest.
+otel-lgtm:
+  env:
+    - name: ENABLE_LOGS_LOKI
+      value: "true"
+    - name: ENABLE_LOGS_OTELCOL
+      value: "true"
+    # The hosted runner's shared filesystem exceeds Loki's default 90% usage
+    # threshold even with little WAL data. Disable that guard for this
+    # disposable backend so it can ingest logs while disk space remains.
+    - name: LOKI_EXTRA_ARGS
+      value: "-ingester.wal-disk-full-threshold=0"
+
 watchdog:
   kubernetes:
     targetAllocator:

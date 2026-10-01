@@ -90,8 +90,16 @@ jobs:
       - name: Create the test cluster
         run: task e2e:up NODE_IMAGE=${{ matrix.node-image }}
 
-      - name: Run end-to-end tests
-        run: task e2e:test
+      # These tests modify or remove their release and cannot reuse an install.
+      - name: Run end-to-end tests that own the release
+        run: task e2e:test TAGS=e2e_release_owned INSTALL=true
+
+      - name: Install the shared release
+        run: task e2e:install
+
+      # Reuse one release for functional checks, excluding release-owning tests.
+      - name: Run end-to-end tests that share the release
+        run: task e2e:test TAGS=e2e_release_shared INSTALL=false
 
       # Before the cluster goes away, since nobody can re-run a job and look at
       # one.
