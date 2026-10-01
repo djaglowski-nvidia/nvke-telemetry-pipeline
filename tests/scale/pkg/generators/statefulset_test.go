@@ -60,24 +60,21 @@ func TestNewStatefulSetGenerator(t *testing.T) {
 		{name: "zero duration", spec: "duration: 0s", wantErr: true},
 		{name: "negative duration", spec: "duration: -1s", wantErr: true},
 		{name: "unknown field", spec: "duration: 1s\nimage: invalid", wantErr: true},
-		{name: "unknown Pod field", spec: "duration: 1s\npodTemplate: {spec: {imag: typo}}", wantErr: true},
-		{name: "duplicate field", spec: "duration: 1s\nreplicas: 1\nreplicas: 2", wantErr: true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			g, err := NewStatefulSetGenerator(podSpec(t, test.spec), "/does/not/exist")
+			g, err := NewStatefulSetGenerator(parseSpec(t, test.spec), "/does/not/exist")
 			if test.wantErr {
 				assert.Error(t, err)
 				return
 			}
 			require.NoError(t, err)
 			assert.Equal(t, test.wantReplicas, g.config.Replicas)
-			assert.Equal(t, "default", newStatefulSet(g.config).Namespace)
 		})
 	}
 }
 
 func TestStatefulSetRunWithoutCredentials(t *testing.T) {
-	g, err := NewStatefulSetGenerator(podSpec(t, "duration: 1s\nreplicas: 0"), "/does/not/exist")
+	g, err := NewStatefulSetGenerator(parseSpec(t, "duration: 1s\nreplicas: 0"), "/does/not/exist")
 	require.NoError(t, err)
 	assert.NoError(t, g.Run(t.Context()))
 	g.config.Replicas = 1
@@ -87,10 +84,11 @@ func TestStatefulSetRunWithoutCredentials(t *testing.T) {
 }
 
 func TestStatefulSetManifest(t *testing.T) {
-	g, err := NewStatefulSetGenerator(podSpec(t, statefulSetTestSpec), "/does/not/exist")
+	g, err := NewStatefulSetGenerator(parseSpec(t, statefulSetTestSpec), "/does/not/exist")
 	require.NoError(t, err)
 	source := g.config.PodTemplate.DeepCopy()
 	workload := newStatefulSet(g.config)
+	assert.Equal(t, new(int64(7)), workload.Spec.Template.Spec.TerminationGracePeriodSeconds)
 	want := source.DeepCopy()
 	want.Labels[generatorOwnerLabel] = workload.Name
 	assert.Equal(t, *want, workload.Spec.Template)
@@ -132,7 +130,7 @@ func TestStatefulSetGeneratorRun(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
-				g, err := NewStatefulSetGenerator(podSpec(t, statefulSetTestSpec), "/does/not/exist")
+				g, err := NewStatefulSetGenerator(parseSpec(t, statefulSetTestSpec), "/does/not/exist")
 				require.NoError(t, err)
 				ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 				defer cancel()

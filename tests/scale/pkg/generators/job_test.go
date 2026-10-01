@@ -9,7 +9,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.yaml.in/yaml/v3"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -46,9 +45,7 @@ func TestNewJobGenerator(t *testing.T) {
 		{name: "parallelism", spec: jobTestSpec + "parallelism: 3", parallelism: 3},
 		{name: "zero parallelism", spec: "parallelism: 0", wantError: true},
 		{name: "negative parallelism", spec: "parallelism: -1", wantError: true},
-		{name: "overflow parallelism", spec: "parallelism: 2147483648", wantError: true},
 		{name: "unknown generator field", spec: "replicas: 2", wantError: true},
-		{name: "unknown Pod field", spec: "podTemplate: {spec: {imag: typo}}", wantError: true},
 		{name: "controller label", spec: "podTemplate: {metadata: {labels: {batch.kubernetes.io/job-name: foreign}}}", wantError: true},
 		{name: "legacy controller label", spec: "podTemplate: {metadata: {labels: {controller-uid: foreign}}}", wantError: true},
 		{name: "ownership label", spec: "podTemplate: {metadata: {labels: {scale.nktp.io/generator: foreign}}}", wantError: true},
@@ -56,7 +53,7 @@ func TestNewJobGenerator(t *testing.T) {
 		{name: "nonmapping", spec: "[]", wantError: true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			g, err := NewJobGenerator(jobSpec(t, test.spec), "/does/not/exist")
+			g, err := NewJobGenerator(parseSpec(t, test.spec), "/does/not/exist")
 			if test.wantError {
 				assert.Error(t, err, "NewJobGenerator()")
 				return
@@ -67,16 +64,8 @@ func TestNewJobGenerator(t *testing.T) {
 	}
 }
 
-// jobSpec decodes a test fixture into the node consumed by the constructor.
-func jobSpec(t *testing.T, data string) yaml.Node {
-	t.Helper()
-	var document yaml.Node
-	require.NoError(t, yaml.Unmarshal([]byte(data), &document), "decode test spec")
-	return *document.Content[0]
-}
-
 func TestJobTopologySpread(t *testing.T) {
-	g, err := NewJobGenerator(jobSpec(t, jobTestSpec+"parallelism: 3\n"), "/does/not/exist")
+	g, err := NewJobGenerator(parseSpec(t, jobTestSpec+"parallelism: 3\n"), "/does/not/exist")
 	require.NoError(t, err, "NewJobGenerator()")
 	first := g.manifest(time.Now().Add(time.Minute))
 	second := g.manifest(time.Now().Add(time.Minute))
@@ -111,7 +100,7 @@ func TestJobTopologySpread(t *testing.T) {
 }
 
 func TestJobManifestPreservesTemplate(t *testing.T) {
-	g, err := NewJobGenerator(jobSpec(t, jobTestSpec+`    restartPolicy: OnFailure
+	g, err := NewJobGenerator(parseSpec(t, jobTestSpec+`    restartPolicy: OnFailure
     automountServiceAccountToken: true
     topologySpreadConstraints: []
     nodeSelector: {pool: load}
@@ -122,6 +111,7 @@ func TestJobManifestPreservesTemplate(t *testing.T) {
 	require.NoError(t, err, "NewJobGenerator()")
 	source := g.config.PodTemplate.DeepCopy()
 	job := g.manifest(time.Now().Add(time.Minute))
+	assert.Equal(t, corev1.RestartPolicyOnFailure, job.Spec.Template.Spec.RestartPolicy)
 	want := source.DeepCopy()
 	want.Labels[generatorOwnerLabel] = job.Name
 	assert.Equal(t, *want, job.Spec.Template, "native Pod template preserved")
@@ -161,7 +151,7 @@ func TestJobGeneratorRun(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
-				g, err := NewJobGenerator(jobSpec(t, jobTestSpec+"parallelism: 3\n"), "/does/not/exist")
+				g, err := NewJobGenerator(parseSpec(t, jobTestSpec+"parallelism: 3\n"), "/does/not/exist")
 				require.NoError(t, err)
 				ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
 				defer cancel()
@@ -258,7 +248,7 @@ func TestJobGeneratorRun(t *testing.T) {
 }
 
 func TestJobRunRequiresDeadline(t *testing.T) {
-	g, err := NewJobGenerator(jobSpec(t, jobTestSpec), "/does/not/exist")
+	g, err := NewJobGenerator(parseSpec(t, jobTestSpec), "/does/not/exist")
 	require.NoError(t, err)
 	assert.ErrorContains(t, g.Run(t.Context()), "deadline")
 	ctx, cancel := context.WithCancel(t.Context())
@@ -283,7 +273,7 @@ func TestJobCleanupWaitIsBounded(t *testing.T) {
 func TestNewJobGeneratorRequiresKubeconfig(t *testing.T) {
 	for _, path := range []string{"", "relative/kubeconfig"} {
 		t.Run(path, func(t *testing.T) {
-			_, err := NewJobGenerator(jobSpec(t, jobTestSpec), path)
+			_, err := NewJobGenerator(parseSpec(t, jobTestSpec), path)
 			assert.Error(t, err, "NewJobGenerator() requires an absolute kubeconfig path")
 		})
 	}

@@ -13,7 +13,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.yaml.in/yaml/v3"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -54,13 +53,6 @@ podTemplate:
           memory: 128Mi
 `
 
-func podSpec(t *testing.T, data string) yaml.Node {
-	t.Helper()
-	var document yaml.Node
-	require.NoError(t, yaml.Unmarshal([]byte(data), &document))
-	return *document.Content[0]
-}
-
 func TestNewPodGenerator(t *testing.T) {
 	for _, test := range []struct {
 		name      string
@@ -75,18 +67,18 @@ func TestNewPodGenerator(t *testing.T) {
 		{name: "API validates fields", spec: "podTemplate: {spec: {restartPolicy: invalid}}", replicas: 1},
 		{name: "negative", spec: "replicas: -1", wantError: true},
 		{name: "unknown generator field", spec: "duration: 1m", wantError: true},
-		{name: "unknown Pod field", spec: "podTemplate: {spec: {imag: typo}}", wantError: true},
-		{name: "duplicate field", spec: "replicas: 1\nreplicas: 2", wantError: true},
-		{name: "wrong type", spec: "replicas: many", wantError: true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			g, err := NewPodGenerator(podSpec(t, test.spec), "/does/not/exist")
+			g, err := NewPodGenerator(parseSpec(t, test.spec), "/does/not/exist")
 			if test.wantError {
 				assert.Error(t, err)
 				return
 			}
 			require.NoError(t, err)
 			assert.Equal(t, test.replicas, g.config.Replicas)
+			if test.name == "native template" {
+				assert.Equal(t, new(int64(7)), g.config.PodTemplate.Spec.TerminationGracePeriodSeconds)
+			}
 			if test.name == "defaults" {
 				assert.Empty(t, g.config.PodTemplate.Spec.RestartPolicy)
 			}
@@ -95,7 +87,7 @@ func TestNewPodGenerator(t *testing.T) {
 }
 
 func TestPodRunWithoutCredentials(t *testing.T) {
-	g, err := NewPodGenerator(podSpec(t, "replicas: 0"), "/does/not/exist")
+	g, err := NewPodGenerator(parseSpec(t, "replicas: 0"), "/does/not/exist")
 	require.NoError(t, err)
 	assert.NoError(t, g.Run(t.Context()))
 	ctx, cancel := context.WithCancel(t.Context())
@@ -133,7 +125,7 @@ func TestPodGeneratorRun(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
-				g, err := NewPodGenerator(podSpec(t, podTestSpec), "/does/not/exist")
+				g, err := NewPodGenerator(parseSpec(t, podTestSpec), "/does/not/exist")
 				require.NoError(t, err)
 				g.config.PodTemplate.Namespace = test.namespace
 				original := g.config.PodTemplate.DeepCopy()

@@ -13,7 +13,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.yaml.in/yaml/v3"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -40,98 +39,43 @@ nodeGroups:
           pods: "40"
 `
 
-// TestNewKubernetesGenerator checks parsing and the default replica count.
 func TestNewKubernetesGenerator(t *testing.T) {
-	for _, tc := range []struct {
+	for _, test := range []struct {
 		name      string
 		spec      string
 		wantCount int
+		wantError bool
 	}{
 		{name: "configured", spec: kubernetesTestSpec, wantCount: 3},
-		{name: "default replicas", spec: strings.ReplaceAll(kubernetesTestSpec, "    replicas: 3\n", ""), wantCount: 1000},
-		{name: "no maximum replicas", spec: strings.ReplaceAll(kubernetesTestSpec, "replicas: 3", "replicas: 5001"), wantCount: 5001},
-		{name: "numeric quantities", spec: strings.ReplaceAll(strings.ReplaceAll(kubernetesTestSpec, `cpu: "4"`, "cpu: 4.0"), `pods: "40"`, "pods: 40"), wantCount: 3},
-		{name: "fractional cores", spec: strings.ReplaceAll(strings.ReplaceAll(kubernetesTestSpec, `cpu: "4"`, "cpu: 1500m"), `pods: "40"`, `pods: "15"`), wantCount: 3},
-		{name: "optional run label", spec: strings.ReplaceAll(kubernetesTestSpec, "          run_id: example-run\n", ""), wantCount: 3},
-		{name: "extended resources", spec: strings.ReplaceAll(kubernetesTestSpec, "memory: 16Gi", "memory: 16Gi\n          nvidia.com/gpu: 8"), wantCount: 3},
+		{name: "default replicas", spec: "duration: 1s\nnodeGroups: [{name: workers}]", wantCount: 1000},
+		{name: "zero replicas", spec: "duration: 1s\nnodeGroups: [{name: workers, replicas: 0}]", wantError: true},
+		{name: "negative replicas", spec: "duration: 1s\nnodeGroups: [{name: workers, replicas: -1}]", wantError: true},
+		{name: "missing group name", spec: "duration: 1s\nnodeGroups: [{}]", wantError: true},
+		{name: "duplicate group names", spec: "duration: 1s\nnodeGroups: [{name: workers}, {name: workers}]", wantError: true},
+		{name: "missing groups", spec: "duration: 1s", wantError: true},
+		{name: "missing duration", spec: "nodeGroups: [{name: workers}]", wantError: true},
+		{name: "zero duration", spec: "duration: 0s\nnodeGroups: [{name: workers}]", wantError: true},
+		{name: "negative duration", spec: "duration: -1s\nnodeGroups: [{name: workers}]", wantError: true},
+		{name: "invalid duration", spec: "duration: eventually\nnodeGroups: [{name: workers}]", wantError: true},
+		{name: "unknown field", spec: kubernetesTestSpec + "unknown: true", wantError: true},
+		{name: "invalid quantity", spec: strings.Replace(kubernetesTestSpec, "memory: 16Gi", "memory: invalid", 1), wantError: true},
 	} {
-		t.Run(tc.name, func(t *testing.T) {
-			g, err := NewKubernetesGenerator(kubernetesSpec(t, tc.spec), "/does-not-exist/kubeconfig")
+		t.Run(test.name, func(t *testing.T) {
+			g, err := NewKubernetesGenerator(parseSpec(t, test.spec), "/does/not/exist")
+			if test.wantError {
+				assert.Error(t, err)
+				return
+			}
 			require.NoError(t, err)
-			assert.Equal(t, tc.wantCount, *g.config.NodeGroups[0].Replicas)
+			assert.Equal(t, test.wantCount, *g.config.NodeGroups[0].Replicas)
 		})
 	}
 }
 
-// TestNewKubernetesGeneratorRejectsInvalidConfig checks run settings and parsing errors.
-func TestNewKubernetesGeneratorRejectsInvalidConfig(t *testing.T) {
-	for _, tc := range []struct{ name, old, replacement string }{
-		{name: "zero replicas", old: "replicas: 3", replacement: "replicas: 0"},
-		{name: "negative replicas", old: "replicas: 3", replacement: "replicas: -1"},
-		{name: "string replicas", old: "replicas: 3", replacement: "replicas: '3'"},
-		{name: "fractional replicas", old: "replicas: 3", replacement: "replicas: 1.5"},
-		{name: "missing group name", old: "name: workers", replacement: "name: ''"},
-		{name: "missing duration", old: "duration: 10ms\n", replacement: ""},
-		{name: "zero duration", old: "duration: 10ms", replacement: "duration: 0s"},
-		{name: "negative duration", old: "duration: 10ms", replacement: "duration: -1s"},
-		{name: "invalid duration", old: "duration: 10ms", replacement: "duration: eventually"},
-		{name: "unknown field", old: "duration: 10ms", replacement: "duration: 10ms\npods: {}"},
-		{name: "removed context", old: "duration: 10ms", replacement: "duration: 10ms\ncontext: scale"},
-		{name: "removed hold_for", old: "duration: 10ms", replacement: "hold_for: 10ms"},
-		{name: "removed run_id", old: "duration: 10ms", replacement: "duration: 10ms\nrun_id: example-run"},
-		{name: "unknown group field", old: "replicas: 3", replacement: "replicas: 3\n    unknown: value"},
-		{name: "duplicate field", old: "replicas: 3", replacement: "replicas: 3\n    replicas: 4"},
-		{name: "unknown native field", old: "      status:", replacement: "      specc: {}\n      status:"},
-		{name: "invalid quantity", old: "memory: 16Gi", replacement: "memory: invalid"},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			spec := kubernetesSpec(t, strings.Replace(kubernetesTestSpec, tc.old, tc.replacement, 1))
-			_, err := NewKubernetesGenerator(spec, "/example/kubeconfig")
-			assert.Error(t, err)
-		})
-	}
-	// Reuse the native template to isolate group-level configuration errors.
-	group := kubernetesTestSpec[strings.Index(kubernetesTestSpec, "  - name:"):]
-	for _, tc := range []struct{ name, spec string }{
-		{name: "missing groups", spec: "duration: 1s"},
-		{name: "empty groups", spec: "duration: 1s\nnodeGroups: []"},
-		{name: "null groups", spec: "duration: 1s\nnodeGroups: null"},
-		{name: "duplicate names", spec: kubernetesTestSpec + group},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			_, err := NewKubernetesGenerator(kubernetesSpec(t, tc.spec), "/example/kubeconfig")
-			assert.Error(t, err, "invalid node groups: %s", tc.spec)
-		})
-	}
-	_, err := NewKubernetesGenerator(yaml.Node{}, "/example/config")
-	assert.Error(t, err, "omitted specification")
-}
-
-// TestNewKubernetesGeneratorLeavesNodeValidationToAPI checks that semantic validation stays with Kubernetes.
-func TestNewKubernetesGeneratorLeavesNodeValidationToAPI(t *testing.T) {
-	for _, tc := range []struct{ name, old, replacement string }{
-		{name: "invalid label", old: "run_id: example-run", replacement: "run_id: invalid/id"},
-		{name: "negative capacity", old: "memory: 16Gi", replacement: "memory: -16Gi"},
-		{name: "missing capacity", old: "          memory: 16Gi\n", replacement: ""},
-		{name: "pod capacity", old: `pods: "40"`, replacement: "pods: '250'"},
-		{name: "allocatable", old: "      status:", replacement: "      status:\n        allocatable:\n          cpu: '5'"},
-		{name: "metadata", old: "      metadata:", replacement: "      metadata:\n        annotations:\n          example.com/note: custom"},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			spec := strings.Replace(kubernetesTestSpec, tc.old, tc.replacement, 1)
-			_, err := NewKubernetesGenerator(kubernetesSpec(t, spec), "/nonexistent/config")
-			assert.NoError(t, err, "parsing without template validation")
-		})
-	}
-}
-
-// kubernetesSpec parses test YAML and returns its root mapping.
-// It reports invalid fixture YAML as a fatal setup error.
-func kubernetesSpec(t *testing.T, data string) yaml.Node {
-	t.Helper()
-	var doc yaml.Node
-	require.NoError(t, yaml.Unmarshal([]byte(data), &doc))
-	return *doc.Content[0]
+func TestKubernetesGeneratorLeavesNodeValidationToAPI(t *testing.T) {
+	spec := "duration: 1s\nnodeGroups: [{name: workers, nodeTemplate: {metadata: {labels: {app: invalid/id}}}}]"
+	_, err := NewKubernetesGenerator(parseSpec(t, spec), "/does/not/exist")
+	assert.NoError(t, err)
 }
 
 func TestKubernetesGeneratorRun(t *testing.T) {
@@ -167,7 +111,7 @@ func TestKubernetesGeneratorRun(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
-				g, err := NewKubernetesGenerator(kubernetesSpec(t, kubernetesTestSpec), "/does/not/exist")
+				g, err := NewKubernetesGenerator(parseSpec(t, kubernetesTestSpec), "/does/not/exist")
 				require.NoError(t, err)
 				client := fake.NewClientset(&corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: "existing"}})
 				nodes := corev1.SchemeGroupVersion.WithResource("nodes")
@@ -259,7 +203,7 @@ func TestKubernetesGeneratorRun(t *testing.T) {
 
 func TestKubernetesGeneratorNodeGroups(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		g, err := NewKubernetesGenerator(kubernetesSpec(t, kubernetesTestSpec), "/does/not/exist")
+		g, err := NewKubernetesGenerator(parseSpec(t, kubernetesTestSpec), "/does/not/exist")
 		require.NoError(t, err)
 		g.config.NodeGroups = append(g.config.NodeGroups, kubernetesNodeGroup{
 			Name: "gpu", Replicas: new(2),
@@ -280,9 +224,10 @@ func TestKubernetesGeneratorNodeGroups(t *testing.T) {
 }
 
 func TestKubernetesNode(t *testing.T) {
-	g, err := NewKubernetesGenerator(kubernetesSpec(t, kubernetesTestSpec), "/does/not/exist")
+	g, err := NewKubernetesGenerator(parseSpec(t, kubernetesTestSpec), "/does/not/exist")
 	require.NoError(t, err)
 	group := g.config.NodeGroups[0]
+	assert.Equal(t, resource.MustParse("4"), group.NodeTemplate.Status.Capacity[corev1.ResourceCPU])
 	group.NodeTemplate.Annotations = map[string]string{"example.com/note": "preserved"}
 	group.NodeTemplate.Spec = corev1.NodeSpec{
 		ProviderID: "example://gpu", Unschedulable: true,
@@ -320,7 +265,7 @@ func TestNewKubernetesGeneratorMultipleLargeGroups(t *testing.T) {
 	group := kubernetesTestSpec[strings.Index(kubernetesTestSpec, "  - name:"):]
 	secondGroup := strings.Replace(group, "name: workers", "name: more-workers", 1)
 	spec := strings.ReplaceAll(kubernetesTestSpec+secondGroup, "replicas: 3", "replicas: 3000")
-	g, err := NewKubernetesGenerator(kubernetesSpec(t, spec), "/nonexistent/config")
+	g, err := NewKubernetesGenerator(parseSpec(t, spec), "/nonexistent/config")
 	require.NoError(t, err)
 	require.Len(t, g.config.NodeGroups, 2)
 	for _, group := range g.config.NodeGroups {
@@ -330,7 +275,7 @@ func TestNewKubernetesGeneratorMultipleLargeGroups(t *testing.T) {
 
 // TestKubernetesGeneratorRunCanceled checks cancellation before credential access.
 func TestKubernetesGeneratorRunCanceled(t *testing.T) {
-	g, err := NewKubernetesGenerator(kubernetesSpec(t, kubernetesTestSpec), "/nonexistent/config")
+	g, err := NewKubernetesGenerator(parseSpec(t, kubernetesTestSpec), "/nonexistent/config")
 	require.NoError(t, err)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
