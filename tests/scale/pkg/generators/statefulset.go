@@ -68,7 +68,7 @@ func NewStatefulSetGenerator(spec yaml.Node, kubeconfig string) (*StatefulSetGen
 // when all replicas are Ready again, allowing replacement during the run.
 // Cancellation and API failures stop the run. Cleanup removes owned resources
 // and has its own five-minute timeout. Run returns both run and cleanup errors.
-func (g *StatefulSetGenerator) Run(ctx context.Context) (err error) {
+func (g *StatefulSetGenerator) Run(ctx context.Context) error {
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
@@ -97,6 +97,12 @@ func (g *StatefulSetGenerator) Run(ctx context.Context) (err error) {
 	if err != nil {
 		return fmt.Errorf("create Service client: %w", err)
 	}
+	return g.run(ctx, apps, core)
+}
+
+// run requires the cancellation and replica checks performed by Run and typed
+// clients configured for the target cluster.
+func (g *StatefulSetGenerator) run(ctx context.Context, apps appsclient.AppsV1Interface, core coreclient.CoreV1Interface) (err error) {
 	// workload carries ownership before Create so a lost response can be cleaned up.
 	workload := newStatefulSet(g.config)
 	// sets confines controller operations to the template's namespace.

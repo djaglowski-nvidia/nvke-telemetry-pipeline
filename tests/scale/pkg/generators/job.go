@@ -5,7 +5,6 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
-	"io"
 	"path/filepath"
 	"strings"
 	"time"
@@ -27,9 +26,6 @@ const (
 
 	// jobCleanupTimeout gives resource deletion its own budget after cancellation.
 	jobCleanupTimeout = 30 * time.Second
-
-	// jobDiagnosticsTimeout limits failure inspection before cleanup starts.
-	jobDiagnosticsTimeout = 5 * time.Second
 )
 
 // JobGenerator runs a native Pod template to completion in a Kubernetes Job.
@@ -76,15 +72,13 @@ func NewJobGenerator(spec yaml.Node, kubeconfig string) (*JobGenerator, error) {
 }
 
 // Run submits a Job and waits for all configured completions or a failure.
-// The context must have a deadline. Run collects failure diagnostics and finishes
-// cleanup of owned resources before returning. Diagnostics and cleanup may take
-// up to 35 seconds after cancellation.
-func (g *JobGenerator) Run(ctx context.Context) (err error) {
+// The context must have a deadline. Run finishes cleanup of owned resources
+// before returning, with up to 30 seconds for cleanup after cancellation.
+func (g *JobGenerator) Run(ctx context.Context) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	deadline, ok := ctx.Deadline()
-	if !ok {
+	if _, ok := ctx.Deadline(); !ok {
 		return errors.New("job execution requires a context deadline")
 	}
 	kubeconfig, err := clientcmd.LoadFromFile(g.kubeconfig)
@@ -104,16 +98,17 @@ func (g *JobGenerator) Run(ctx context.Context) (err error) {
 	if err != nil {
 		return fmt.Errorf("create Pod client: %w", err)
 	}
+	return g.run(ctx, batch, core)
+}
+
+// run requires the context deadline checked by Run.
+func (g *JobGenerator) run(ctx context.Context, batch batchclient.BatchV1Interface, core coreclient.CoreV1Interface) (err error) {
+	deadline, _ := ctx.Deadline()
 	job := g.manifest(deadline)
 	jobs, pods := batch.Jobs(job.Namespace), core.Pods(job.Namespace)
 	// Install cleanup before Create: a failed response can still mean that the
 	// API server accepted the Job. Its unique name and label allow reconciliation.
 	defer func() {
-		if err != nil && job.UID != "" {
-			diagnosticsCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), jobDiagnosticsTimeout)
-			err = errors.Join(err, jobDiagnostics(diagnosticsCtx, pods, job))
-			cancel()
-		}
 		cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), jobCleanupTimeout)
 		defer cancel()
 		err = errors.Join(err, cleanupJob(cleanupCtx, jobs, pods, job), ctx.Err())
@@ -231,45 +226,4 @@ func cleanupJob(ctx context.Context, jobs batchclient.JobInterface, pods corecli
 		return fmt.Errorf("wait for Job %s/%s cleanup: %w", job.Namespace, job.Name, err)
 	}
 	return nil
-}
-
-// jobDiagnostics gathers bounded status and first-container logs from owned Pods.
-// The caller must supply a Job with a known UID and a context with a deadline.
-// Call it before cleanup. Collected details and collection errors are returned
-// together for inclusion in the original run failure.
-func jobDiagnostics(ctx context.Context, pods coreclient.PodInterface, job *batchv1.Job) error {
-	list, err := pods.List(ctx, metav1.ListOptions{LabelSelector: "batch.kubernetes.io/controller-uid=" + string(job.UID), Limit: 3})
-	if err != nil {
-		return fmt.Errorf("list generator Pods for diagnostics: %w", err)
-	}
-	var details []error
-	for _, pod := range list.Items[:min(len(list.Items), 3)] {
-		if !metav1.IsControlledBy(&pod, job) {
-			continue
-		}
-		details = append(details, fmt.Errorf("Pod %s phase=%s: %s", pod.Name, pod.Status.Phase, pod.Status.Message))
-		unscheduled := false
-		for _, condition := range pod.Status.Conditions {
-			if condition.Type == corev1.PodScheduled && condition.Status == corev1.ConditionFalse {
-				details = append(details, fmt.Errorf("Pod %s %s=%s reason=%s: %s", pod.Name, condition.Type, condition.Status, condition.Reason, condition.Message))
-				unscheduled = true
-			}
-		}
-		for _, status := range pod.Status.ContainerStatuses {
-			details = append(details, fmt.Errorf("container %s: %+v", status.Name, status.State))
-		}
-		if unscheduled || len(pod.Spec.Containers) == 0 {
-			continue
-		}
-		lines, limit := int64(40), int64(8192)
-		stream, err := pods.GetLogs(pod.Name, &corev1.PodLogOptions{Container: pod.Spec.Containers[0].Name, TailLines: &lines, LimitBytes: &limit}).Stream(ctx)
-		if err != nil {
-			details = append(details, fmt.Errorf("read Pod %s logs: %w", pod.Name, err))
-			continue
-		}
-		data, readErr := io.ReadAll(io.LimitReader(stream, limit))
-		closeErr := stream.Close()
-		details = append(details, fmt.Errorf("Pod %s logs: %s", pod.Name, data), readErr, closeErr)
-	}
-	return errors.Join(details...)
 }
