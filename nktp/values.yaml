@@ -1415,6 +1415,13 @@ otel-lgtm:
     registry: "" # Empty pulls from the image's default registry (Docker Hub for this repository).
     repository: grafana/otel-lgtm
     tag: 0.32.0
+  # Container resource requests/limits and Pod placement.
+  resources: {}
+  nodeSelector: {}
+  tolerations: []
+  # Append Kubernetes volumes and mounts, for example for backend ConfigMaps.
+  extraVolumes: []
+  extraVolumeMounts: []
 
 # Kubernetes object state metrics, partitioned by resource type.
 kube-state-metrics:

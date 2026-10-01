@@ -624,6 +624,39 @@ Container resource tables show requests and limits for up to three
 containers per component. The dashboard also
 shows allocator allocation duration, KSM shard coverage and node-exporter diagnostics.
 
+Configure the bundled backend under `otel-lgtm`:
+
+| Value | Default | Purpose |
+| --- | --- | --- |
+| `resources` | `{}` | Container resource requests and limits. |
+| `nodeSelector` | `{}` | Pod node selection. |
+| `tolerations` | `[]` | Pod taint tolerations. |
+| `extraVolumes` | `[]` | Kubernetes volumes appended to the built-in volumes. |
+| `extraVolumeMounts` | `[]` | Container mounts appended to the built-in mounts. |
+
+For custom backend configuration, create a ConfigMap in the release namespace
+and mount its files at the paths used by the image. For example:
+
+```yaml
+otel-lgtm:
+  extraVolumes:
+    - name: backend-config
+      configMap:
+        name: my-lgtm-config
+  extraVolumeMounts:
+    - name: backend-config
+      mountPath: /otel-lgtm/loki-config.yaml
+      subPath: loki-config.yaml
+      readOnly: true
+```
+
+Use unique volume names and mount paths so the built-in dashboard and storage
+mounts remain intact. Restart LGTM after changing a ConfigMap mounted with
+`subPath`; those changes do not automatically roll the Deployment or update the
+mounted files. Storage remains temporary. The scale profiles use these settings
+to configure bundled LGTM and retain its dashboards without replacement
+Service or Deployment definitions.
+
 **Note:** This container is intended for kicking the tires only. It will not support substantial scale and MUST be disabled for production use:
 
 ```yaml

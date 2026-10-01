@@ -404,6 +404,101 @@ tests:
           path: spec.template.spec.containers[0].image
           value: mirror.example.com/grafana/otel-lgtm:0.32.0
 
+  - it: applies backend resources and placement
+    set:
+      otel-lgtm:
+        resources:
+          requests: {cpu: "8", memory: 16Gi}
+          limits: {cpu: "16", memory: 32Gi}
+        nodeSelector:
+          nodeGroup: system-cpu
+        tolerations:
+          - key: dedicated
+            operator: Equal
+            value: system-workload
+    documentSelector:
+      path: kind
+      value: Deployment
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].resources
+          value:
+            requests: {cpu: "8", memory: 16Gi}
+            limits: {cpu: "16", memory: 32Gi}
+      - equal:
+          path: spec.template.spec.nodeSelector
+          value:
+            nodeGroup: system-cpu
+      - equal:
+          path: spec.template.spec.tolerations
+          value:
+            - key: dedicated
+              operator: Equal
+              value: system-workload
+
+  - it: mounts backend configuration alongside built-in dashboards and storage
+    set:
+      otel-lgtm:
+        extraVolumes:
+          - name: backend-config
+            configMap:
+              name: custom-lgtm-config
+        extraVolumeMounts:
+          - name: backend-config
+            mountPath: /otel-lgtm/otelcol-config.yaml
+            subPath: otelcol-config.yaml
+            readOnly: true
+          - name: backend-config
+            mountPath: /otel-lgtm/loki-config.yaml
+            subPath: loki-config.yaml
+            readOnly: true
+    documentSelector:
+      path: kind
+      value: Deployment
+    asserts:
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: backend-config
+            configMap:
+              name: custom-lgtm-config
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: backend-config
+            mountPath: /otel-lgtm/otelcol-config.yaml
+            subPath: otelcol-config.yaml
+            readOnly: true
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: backend-config
+            mountPath: /otel-lgtm/loki-config.yaml
+            subPath: loki-config.yaml
+            readOnly: true
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: dashboard-provider
+            configMap:
+              name: lgtm-dashboard-provider
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: dashboard-provider
+            mountPath: /otel-lgtm/grafana/conf/provisioning/dashboards/nktp.yaml
+            subPath: nktp.yaml
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: p8s-storage
+            emptyDir: {}
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: p8s-storage
+            mountPath: /data/prometheus
+
   - it: enables anonymous admin access to Grafana
     documentSelector:
       path: kind

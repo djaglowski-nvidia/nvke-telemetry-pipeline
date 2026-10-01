@@ -1,7 +1,29 @@
 # Watchdog throughput test with an independent sink for synthetic logs.
-# This profile supplies LGTM with explicit placement and resource budgets below.
+# Configure the bundled LGTM backend for this test.
 otel-lgtm:
-  enabled: false
+  enabled: true
+  resources:
+    requests: {cpu: "48", memory: 96Gi}
+    limits: {cpu: "48", memory: 96Gi}
+  nodeSelector:
+    nodeGroup: system-cpu
+  tolerations:
+    - key: dedicated
+      operator: Equal
+      value: system-workload
+  extraVolumes:
+    - name: watchdog-test-config
+      configMap:
+        name: nktp-watchdog-lgtm-config
+  extraVolumeMounts:
+    - name: watchdog-test-config
+      mountPath: /otel-lgtm/otelcol-config.yaml
+      subPath: otelcol-config.yaml
+      readOnly: true
+    - name: watchdog-test-config
+      mountPath: /otel-lgtm/loki-config.yaml
+      subPath: loki-config.yaml
+      readOnly: true
 opentelemetry-kube-stack:
   extraObjects:
   - apiVersion: v1
@@ -276,111 +298,6 @@ opentelemetry-kube-stack:
               - otlp_grpc/profiles
               processors:
               - memory_limiter
-  - apiVersion: v1
-    kind: Service
-    metadata:
-      name: lgtm
-      namespace: '{{ .Release.Namespace }}'
-    spec:
-      ports:
-      - name: prometheus
-        port: 9090
-        targetPort: 9090
-      - name: grafana
-        port: 3000
-        targetPort: 3000
-      - name: otlp-grpc
-        port: 4317
-        targetPort: 4317
-      - name: otlp-http
-        port: 4318
-        targetPort: 4318
-      selector:
-        app: lgtm
-  - apiVersion: apps/v1
-    kind: Deployment
-    metadata:
-      name: lgtm
-      namespace: '{{ .Release.Namespace }}'
-    spec:
-      replicas: 1
-      selector:
-        matchLabels:
-          app: lgtm
-      template:
-        metadata:
-          labels:
-            app: lgtm
-        spec:
-          containers:
-          - env:
-            - name: GF_AUTH_ANONYMOUS_ENABLED
-              value: 'true'
-            - name: GF_AUTH_ANONYMOUS_ORG_ROLE
-              value: Admin
-            - name: PROMETHEUS_EXTRA_ARGS
-              value: --enable-feature=otlp-deltatocumulative
-            - name: ENABLE_LOGS_OTELCOL
-              value: 'true'
-            - name: ENABLE_LOGS_LOKI
-              value: 'true'
-            image: grafana/otel-lgtm:0.32.0
-            name: lgtm
-            readinessProbe:
-              exec:
-                command:
-                - cat
-                - /tmp/ready
-            resources:
-              limits:
-                cpu: '48'
-                memory: 96Gi
-              requests:
-                cpu: '48'
-                memory: 96Gi
-            volumeMounts:
-            - mountPath: /data/tempo
-              name: tempo
-            - mountPath: /data/grafana
-              name: grafana
-            - mountPath: /data/loki
-              name: loki
-            - mountPath: /loki
-              name: loki-storage
-            - mountPath: /data/prometheus
-              name: prometheus
-            - mountPath: /data/pyroscope
-              name: pyroscope
-            - mountPath: /otel-lgtm/otelcol-config.yaml
-              name: watchdog-test-config
-              readOnly: true
-              subPath: otelcol-config.yaml
-            - mountPath: /otel-lgtm/loki-config.yaml
-              name: watchdog-test-config
-              readOnly: true
-              subPath: loki-config.yaml
-          nodeSelector:
-            nodeGroup: system-cpu
-          tolerations:
-          - key: dedicated
-            operator: Equal
-            value: system-workload
-          volumes:
-          - emptyDir: {}
-            name: tempo
-          - emptyDir: {}
-            name: grafana
-          - emptyDir: {}
-            name: loki
-          - emptyDir: {}
-            name: loki-storage
-          - emptyDir: {}
-            name: prometheus
-          - emptyDir: {}
-            name: pyroscope
-          - configMap:
-              name: nktp-watchdog-lgtm-config
-            name: watchdog-test-config
 watchdog:
   otelcol:
     config:

@@ -70,9 +70,14 @@ kube-state-metrics:
     cluster:
       kubernetes: *systemPlacement
 
-# This profile supplies LGTM with explicit placement and resource budgets below.
+# Configure the bundled LGTM backend for this test.
 otel-lgtm:
-  enabled: false
+  enabled: true
+  resources:
+    requests: {cpu: "8", memory: 16Gi}
+    limits: {cpu: "16", memory: 32Gi}
+  nodeSelector: *systemSelector
+  tolerations: *systemTolerations
 
 opentelemetry-kube-stack:
   opentelemetry-operator:
@@ -215,62 +220,6 @@ opentelemetry-kube-stack:
                 receivers: [otlp]
                 processors: [memory_limiter]
                 exporters: [nop]
-
-    - apiVersion: v1
-      kind: Service
-      metadata:
-        name: lgtm
-        namespace: '{{ .Release.Namespace }}'
-      spec:
-        selector: {app: lgtm}
-        ports:
-          - {name: prometheus, port: 9090, targetPort: 9090}
-          - {name: grafana, port: 3000, targetPort: 3000}
-          - {name: otlp-grpc, port: 4317, targetPort: 4317}
-          - {name: otlp-http, port: 4318, targetPort: 4318}
-    - apiVersion: apps/v1
-      kind: Deployment
-      metadata:
-        name: lgtm
-        namespace: '{{ .Release.Namespace }}'
-      spec:
-        replicas: 1
-        selector:
-          matchLabels: {app: lgtm}
-        template:
-          metadata:
-            labels: {app: lgtm}
-          spec:
-            nodeSelector: *systemSelector
-            tolerations: *systemTolerations
-            containers:
-              - name: lgtm
-                image: grafana/otel-lgtm:0.32.0
-                resources:
-                  requests: {cpu: "8", memory: 16Gi}
-                  limits: {cpu: "16", memory: 32Gi}
-                env:
-                  - {name: GF_AUTH_ANONYMOUS_ENABLED, value: "true"}
-                  - {name: GF_AUTH_ANONYMOUS_ORG_ROLE, value: Admin}
-                  - name: PROMETHEUS_EXTRA_ARGS
-                    value: --enable-feature=otlp-deltatocumulative
-                readinessProbe:
-                  exec:
-                    command: [cat, /tmp/ready]
-                volumeMounts:
-                  - {name: tempo, mountPath: /data/tempo}
-                  - {name: grafana, mountPath: /data/grafana}
-                  - {name: loki, mountPath: /data/loki}
-                  - {name: loki-storage, mountPath: /loki}
-                  - {name: prometheus, mountPath: /data/prometheus}
-                  - {name: pyroscope, mountPath: /data/pyroscope}
-            volumes:
-              - {name: tempo, emptyDir: {}}
-              - {name: grafana, emptyDir: {}}
-              - {name: loki, emptyDir: {}}
-              - {name: loki-storage, emptyDir: {}}
-              - {name: prometheus, emptyDir: {}}
-              - {name: pyroscope, emptyDir: {}}
 
     # Test support is installed with the profile. Workload Jobs are created by the plan.
     - apiVersion: v1

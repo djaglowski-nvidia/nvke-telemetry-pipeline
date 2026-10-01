@@ -8,8 +8,13 @@ bodies, offering **8,333 points/s and 8,333 logs/s**, or **814 MiB/s of log bodi
 
 The [profile](watchdog-values.yaml) uses the chart's watchdog resource and
 exporter defaults. Synthetic logs pass through watchdog to four overprovisioned
-blackhole collectors. The profile also supplies an overprovisioned LGTM backend
-for metrics and performance observations.
+blackhole collectors. The profile also configures the bundled LGTM backend with
+the experiment's resource budget for metrics and performance observations.
+Its Collector and Loki settings remain in the profile's
+`nktp-watchdog-lgtm-config` ConfigMap, mounted through `otel-lgtm.extraVolumes`
+and `otel-lgtm.extraVolumeMounts`. Bundled NKTP dashboards are available again.
+The former replacement Deployment's `ENABLE_LOGS_OTELCOL` and `ENABLE_LOGS_LOKI`
+overrides are omitted; LGTM's own diagnostic logging uses the image defaults.
 
 Use workers labeled `nodeGroup=customer-cpu` for generators and nodes labeled
 `nodeGroup=system-cpu` for blackhole and LGTM. Adapt the labels and tolerations to
@@ -23,10 +28,12 @@ NKTP and its autoscaling. A healthy Metrics Server is required. KWOK is not need
 ## Run
 
 Stop other generators. Combine [watchdog-values.yaml](watchdog-values.yaml) with
-your cluster configuration, keeping unrelated `extraObjects`. Replace existing
-custom LGTM objects with the profile's versions. If cert-manager also needs node
-selectors or tolerations, provide its Helm values separately through
-`CERT_MANAGER_VALUES_FILE`.
+your cluster configuration, keeping unrelated `extraObjects` and the profile's
+backend ConfigMap. Configure bundled LGTM through `otel-lgtm` and remove any
+custom `lgtm` Service or Deployment from the combined `extraObjects` to avoid
+duplicate resources. Restart LGTM after changing the mounted backend ConfigMap.
+If cert-manager also needs node selectors or tolerations, provide its Helm values
+separately through `CERT_MANAGER_VALUES_FILE`.
 
 From the repository root, select your kubeconfig and install the combined values:
 
