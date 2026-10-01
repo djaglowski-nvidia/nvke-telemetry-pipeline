@@ -1,0 +1,125 @@
+# Use ../10k-pods-values.yaml. Run guide: ../10k-pods.md.
+name: pod-churn-10k
+timeout: 45m
+stages:
+- name: churn
+  generator:
+    type: pod
+    spec:
+      replicas: 1
+      podTemplate:
+        metadata:
+          namespace: nktp-churn-10k
+          labels:
+            app: churn-runner
+            scale.nktp.io/driver-run-id: '{{ .Args.runId }}'
+        spec:
+          restartPolicy: Never
+          serviceAccountName: churn-runner
+          activeDeadlineSeconds: 2400
+          terminationGracePeriodSeconds: 10
+          nodeSelector:
+            nodeGroup: system-cpu
+          tolerations:
+          - key: dedicated
+            operator: Equal
+            value: system-workload
+          containers:
+          - name: kube-burner
+            image: quay.io/kube-burner/kube-burner:v2.8.6@sha256:340a8e1428bf042e944e605487bd9d1c9d5195d0f9c2599b4d31ca114b1864ae
+            command:
+            - /bin/kube-burner
+            args:
+            - init
+            - --config=/etc/kube-burner/config.yaml
+            - --uuid=$(POD_UID)
+            - --timeout=39m
+            - --skip-log-file
+            workingDir: /etc/kube-burner
+            resources:
+              requests:
+                cpu: 250m
+                memory: 256Mi
+              limits:
+                cpu: '2'
+                memory: 2Gi
+            volumeMounts:
+            - name: config
+              mountPath: /etc/kube-burner
+              readOnly: true
+            env:
+            - name: POD_UID
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.uid
+            - name: CHURN_RUN_ID
+              value: '{{ .Args.runId }}'
+          volumes:
+          - name: config
+            configMap:
+              name: churn-runner
+  measurement:
+    type: prometheus
+    spec:
+      endpoint: http://127.0.0.1:9090
+      duration: 35m
+      interval: 30s
+      query_timeout: 15s
+      queries:
+        churn_phases: >-
+          sum by (phase) (
+            max by (namespace,pod,phase) (
+              kube_pod_status_phase{namespace="nktp-churn-10k"}
+              and (time() - timestamp(kube_pod_status_phase{namespace="nktp-churn-10k"}) < 90)
+            )
+            and on (namespace,pod) max by (namespace,pod) (
+              kube_pod_labels{namespace="nktp-churn-10k",label_scale_nktp_io_run_id="{{ .Args.runId }}"}
+              and (time() - timestamp(kube_pod_labels{namespace="nktp-churn-10k",label_scale_nktp_io_run_id="{{ .Args.runId }}"}) < 90)
+            )
+          )
+        churn_ksm_inventory_by_node: >-
+          count by (node) (
+            max by (namespace,pod,node) (
+              kube_pod_info{namespace="nktp-churn-10k"}
+              and (time() - timestamp(kube_pod_info{namespace="nktp-churn-10k"}) < 90)
+            )
+            and on (namespace,pod) max by (namespace,pod) (
+              kube_pod_labels{namespace="nktp-churn-10k",label_scale_nktp_io_run_id="{{ .Args.runId }}"}
+              and (time() - timestamp(kube_pod_labels{namespace="nktp-churn-10k",label_scale_nktp_io_run_id="{{ .Args.runId }}"}) < 90)
+            )
+          )
+        component_cpu_cores: sum by(pod,container)(rate(container_cpu_usage_seconds_total{namespace="nktp",container!="",container!="POD"}[2m]))
+        component_working_set_bytes: max by(pod,container)(container_memory_working_set_bytes{namespace="nktp",container!="",container!="POD"})
+        component_data_age_seconds: max by(pod,container)(time()-timestamp(container_memory_working_set_bytes{namespace="nktp",container!="",container!="POD"}))
+        component_restarts: kube_pod_container_status_restarts_total{namespace="nktp"}
+        queue_utilization_ratio: otelcol_exporter_queue_size{job=~"nktp-.*"} / otelcol_exporter_queue_capacity{job=~"nktp-.*"}
+        accepted_metrics_s: rate(otelcol_receiver_accepted_metric_points_total{job=~"nktp-.*"}[2m])
+        sent_metrics_s: rate(otelcol_exporter_sent_metric_points_total{job=~"nktp-.*"}[2m])
+        refused_metrics_s: rate(otelcol_receiver_refused_metric_points_total{job=~"nktp-.*"}[2m])
+        enqueue_failed_metrics_s: rate(otelcol_exporter_enqueue_failed_metric_points_total{job=~"nktp-.*"}[2m])
+        send_failed_metrics_s: rate(otelcol_exporter_send_failed_metric_points_total{job=~"nktp-.*"}[2m])
+        ksm_up: up{job=~"nktp/nktp-ksm-.*"} and (time() - timestamp(up{job=~"nktp/nktp-ksm-.*"}) < 90)
+        ksm_scrape_seconds: scrape_duration_seconds{job=~"nktp/nktp-ksm-.*"}
+        ksm_scrape_samples: scrape_samples_scraped{job=~"nktp/nktp-ksm-.*"}
+        ksm_watch_errors_s: rate(kube_state_metrics_watch_total{result="error"}[2m])
+        ksm_list_errors_s: rate(kube_state_metrics_list_total{result="error"}[2m])
+        api_requests_s: sum by(resource,verb,code)(rate(apiserver_request_total{resource=~"pods|jobs|events"}[2m]))
+      units:
+        churn_phases: pods
+        churn_ksm_inventory_by_node: pods
+        component_cpu_cores: cores
+        component_working_set_bytes: bytes
+        component_data_age_seconds: s
+        component_restarts: restarts
+        queue_utilization_ratio: ratio
+        accepted_metrics_s: points/s
+        sent_metrics_s: points/s
+        refused_metrics_s: points/s
+        enqueue_failed_metrics_s: points/s
+        send_failed_metrics_s: points/s
+        ksm_up: ratio
+        ksm_scrape_seconds: s
+        ksm_scrape_samples: samples
+        ksm_watch_errors_s: errors/s
+        ksm_list_errors_s: errors/s
+        api_requests_s: requests/s

@@ -11,6 +11,9 @@ performance.
 For the mixed 100M Avalanche workload with node-local and large-target scraping,
 see the [Avalanche 100M guide](avalanche-100m.md).
 
+For 10,000 real Pods with continuous replacement, see the
+[Pod churn guide](10k-pods.md).
+
 For Kubernetes Event load through the scale harness, see the
 [kube-burner plan and profile](kube-burner-events.md).
 

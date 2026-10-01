@@ -1,0 +1,431 @@
+# 10,000 real Pod churn with default NKTP resources and autoscaling.
+watchdog:
+  kubernetes:
+    nodeSelector: &systemSelector
+      nodeGroup: system-cpu
+    tolerations: &systemTolerations
+      - key: dedicated
+        operator: Equal
+        value: system-workload
+    targetAllocator: &allocatorPlacement
+      nodeSelector: *systemSelector
+      tolerations: *systemTolerations
+
+daemonset:
+  kubernetes:
+    targetAllocator: *allocatorPlacement
+
+gateway_logs:
+  kubernetes:
+    nodeSelector: *systemSelector
+    tolerations: *systemTolerations
+  otelcol:
+    config:
+      exporters:
+        otlp_http:
+          endpoint: http://nktp-10k-pods-blackhole-collector:4318
+
+gateway_metrics:
+  kubernetes:
+    nodeSelector: *systemSelector
+    tolerations: *systemTolerations
+  otelcol:
+    config:
+      exporters:
+        otlp_http:
+          endpoint: http://nktp-10k-pods-blackhole-collector:4318
+
+gateway_traces:
+  kubernetes:
+    nodeSelector: *systemSelector
+    tolerations: *systemTolerations
+
+large_target_metrics:
+  kubernetes:
+    nodeSelector: *systemSelector
+    tolerations: *systemTolerations
+    targetAllocator: *allocatorPlacement
+
+cluster_events:
+  kubernetes:
+    nodeSelector: *systemSelector
+    tolerations: *systemTolerations
+
+kube-state-metrics:
+  metricLabelsAllowlist:
+    - pods=[scale.nktp.io/run-id]
+  deployments:
+    unscheduled-pods:
+      kubernetes: &systemPlacement
+        nodeSelector: *systemSelector
+        tolerations: *systemTolerations
+    workloads:
+      kubernetes: *systemPlacement
+    networking:
+      kubernetes: *systemPlacement
+    storage:
+      kubernetes: *systemPlacement
+    configuration:
+      kubernetes: *systemPlacement
+    cluster:
+      kubernetes: *systemPlacement
+
+# This profile supplies LGTM with explicit placement and resource budgets below.
+otel-lgtm:
+  enabled: false
+
+opentelemetry-kube-stack:
+  opentelemetry-operator:
+    admissionWebhooks:
+      certManager:
+        enabled: false
+      autoGenerateCert:
+        enabled: true
+        recreate: false
+    nodeSelector: *systemSelector
+    tolerations: *systemTolerations
+  extraObjects:
+    # Preserve operator policies and permit discovery through this EKS API service.
+    - apiVersion: networking.k8s.io/v1
+      kind: NetworkPolicy
+      metadata:
+        name: nktp-10k-pods-api-access
+        namespace: '{{ .Release.Namespace }}'
+      spec:
+        podSelector:
+          matchLabels:
+            app.kubernetes.io/name: opentelemetry-operator
+            app.kubernetes.io/component: controller-manager
+        policyTypes: [Egress]
+        egress: &apiEgress
+          - to:
+              - ipBlock:
+                  cidr: 172.20.0.1/32
+            ports:
+              - {protocol: TCP, port: 443}
+    - apiVersion: networking.k8s.io/v1
+      kind: NetworkPolicy
+      metadata:
+        name: nktp-10k-pods-allocator-api-access
+        namespace: '{{ .Release.Namespace }}'
+      spec:
+        podSelector:
+          matchLabels:
+            app.kubernetes.io/component: opentelemetry-targetallocator
+        policyTypes: [Egress]
+        egress: *apiEgress
+
+    # Retain KSM evaluation metrics after NKTP processing and discard the rest.
+    # Other metrics continue to LGTM. Test logs are discarded.
+    - apiVersion: opentelemetry.io/v1beta1
+      kind: OpenTelemetryCollector
+      metadata:
+        name: nktp-10k-pods-blackhole
+        labels:
+          helm.sh/chart: '{{ include "opentelemetry-kube-stack.chart" . }}'
+        namespace: '{{ .Release.Namespace }}'
+      spec:
+        image: otel/opentelemetry-collector-k8s:0.159.0
+        mode: deployment
+        replicas: 4
+        nodeSelector: *systemSelector
+        tolerations: *systemTolerations
+        resources:
+          requests: {cpu: "4", memory: 4Gi}
+          limits: {cpu: "16", memory: 16Gi}
+        env:
+          - {name: GOMEMLIMIT, value: 14GiB}
+          - {name: GOGC, value: "50"}
+        topologySpreadConstraints:
+          - maxSkew: 1
+            topologyKey: kubernetes.io/hostname
+            whenUnsatisfiable: DoNotSchedule
+            nodeAffinityPolicy: Honor
+            nodeTaintsPolicy: Honor
+            labelSelector:
+              matchLabels:
+                app.kubernetes.io/name: nktp-10k-pods-blackhole-collector
+        config:
+          extensions:
+            health_check:
+              endpoint: 0.0.0.0:13133
+          receivers:
+            otlp:
+              protocols:
+                http:
+                  endpoint: 0.0.0.0:4318
+          processors:
+            memory_limiter:
+              check_interval: 500ms
+              limit_percentage: 80
+              spike_limit_percentage: 25
+            filter/ksm_evaluation:
+              error_mode: propagate
+              metrics:
+                metric:
+                - IsMatch(name, "^kube_") and not IsMatch(name, "^(kube_state_metrics_.+|kube_pod_info|kube_pod_labels|kube_pod_status_phase|kube_pod_status_ready|kube_node_info|kube_node_status_condition|kube_node_status_allocatable|kube_pod_container_(resource_requests|resource_limits|status_restarts_total|status_last_terminated_reason)|kube_horizontalpodautoscaler_(status_current_replicas|status_desired_replicas|spec_min_replicas|spec_max_replicas|status_condition))$")
+                datapoint:
+                - IsMatch(metric.name, "^(kube_pod_container_(resource_requests|resource_limits|status_restarts_total|status_last_terminated_reason)|kube_horizontalpodautoscaler_.+)$")
+                  and attributes["namespace"] != "nktp"
+          exporters:
+            nop: {}
+            otlp_http/evaluation:
+              endpoint: http://lgtm:4318
+              retry_on_failure:
+                max_elapsed_time: 30m
+              sending_queue:
+                sizer: bytes
+                queue_size: 67108864
+                num_consumers: 8
+                block_on_overflow: true
+                batch:
+                  sizer: bytes
+                  min_size: 1048576
+                  max_size: 2097152
+                  flush_timeout: 1s
+          service:
+            extensions: [health_check]
+            telemetry:
+              resource:
+                service.name: nktp-10k-pods-blackhole
+              metrics:
+                readers:
+                  - periodic:
+                      exporter:
+                        otlp:
+                          protocol: http/protobuf
+                          endpoint: http://nktp-watchdog-collector:4318
+              logs:
+                processors:
+                  - batch:
+                      exporter:
+                        otlp:
+                          protocol: http/protobuf
+                          endpoint: http://nktp-watchdog-collector:4318
+            pipelines:
+              metrics:
+                receivers:
+                - otlp
+                processors:
+                - memory_limiter
+                - filter/ksm_evaluation
+                exporters:
+                - otlp_http/evaluation
+              logs:
+                receivers: [otlp]
+                processors: [memory_limiter]
+                exporters: [nop]
+
+    - apiVersion: v1
+      kind: Service
+      metadata:
+        name: lgtm
+        namespace: '{{ .Release.Namespace }}'
+      spec:
+        selector: {app: lgtm}
+        ports:
+          - {name: prometheus, port: 9090, targetPort: 9090}
+          - {name: grafana, port: 3000, targetPort: 3000}
+          - {name: otlp-grpc, port: 4317, targetPort: 4317}
+          - {name: otlp-http, port: 4318, targetPort: 4318}
+    - apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: lgtm
+        namespace: '{{ .Release.Namespace }}'
+      spec:
+        replicas: 1
+        selector:
+          matchLabels: {app: lgtm}
+        template:
+          metadata:
+            labels: {app: lgtm}
+          spec:
+            nodeSelector: *systemSelector
+            tolerations: *systemTolerations
+            containers:
+              - name: lgtm
+                image: grafana/otel-lgtm:0.32.0
+                resources:
+                  requests: {cpu: "8", memory: 16Gi}
+                  limits: {cpu: "16", memory: 32Gi}
+                env:
+                  - {name: GF_AUTH_ANONYMOUS_ENABLED, value: "true"}
+                  - {name: GF_AUTH_ANONYMOUS_ORG_ROLE, value: Admin}
+                  - name: PROMETHEUS_EXTRA_ARGS
+                    value: --enable-feature=otlp-deltatocumulative
+                readinessProbe:
+                  exec:
+                    command: [cat, /tmp/ready]
+                volumeMounts:
+                  - {name: tempo, mountPath: /data/tempo}
+                  - {name: grafana, mountPath: /data/grafana}
+                  - {name: loki, mountPath: /data/loki}
+                  - {name: loki-storage, mountPath: /loki}
+                  - {name: prometheus, mountPath: /data/prometheus}
+                  - {name: pyroscope, mountPath: /data/pyroscope}
+            volumes:
+              - {name: tempo, emptyDir: {}}
+              - {name: grafana, emptyDir: {}}
+              - {name: loki, emptyDir: {}}
+              - {name: loki-storage, emptyDir: {}}
+              - {name: prometheus, emptyDir: {}}
+              - {name: pyroscope, emptyDir: {}}
+
+    # Test support is installed with the profile. Workload Jobs are created by the plan.
+    - apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: nktp-churn-10k
+        labels:
+          scale.nktp.io/workload: pod-churn
+    - apiVersion: v1
+      kind: ServiceAccount
+      metadata:
+        name: churn-runner
+        namespace: nktp-churn-10k
+    - apiVersion: rbac.authorization.k8s.io/v1
+      kind: Role
+      metadata:
+        name: churn-runner
+        namespace: nktp-churn-10k
+      rules:
+      - apiGroups:
+        - batch
+        resources:
+        - jobs
+        verbs:
+        - create
+        - get
+        - list
+        - watch
+      - apiGroups:
+        - ''
+        resources:
+        - pods
+        verbs:
+        - get
+        - list
+        - watch
+    - apiVersion: rbac.authorization.k8s.io/v1
+      kind: RoleBinding
+      metadata:
+        name: churn-runner
+        namespace: nktp-churn-10k
+      roleRef:
+        apiGroup: rbac.authorization.k8s.io
+        kind: Role
+        name: churn-runner
+      subjects:
+      - kind: ServiceAccount
+        name: churn-runner
+        namespace: nktp-churn-10k
+    - apiVersion: v1
+      kind: ResourceQuota
+      metadata:
+        name: bounded-churn
+        namespace: nktp-churn-10k
+      spec:
+        hard:
+          pods: '11500'
+          count/jobs.batch: '110'
+          requests.cpu: '150'
+          requests.memory: 450Gi
+    - apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: churn-runner
+        namespace: nktp-churn-10k
+      data:
+        config.yaml: |
+          global:
+            gc: false
+            clusterHealth: false
+            waitWhenFinished: false
+            requestTimeout: 30s
+            measurements: []
+          jobs:
+          - name: pod-churn-10k
+            jobType: create
+            namespace: nktp-churn-10k
+            namespacedIterations: false
+            jobIterations: 100
+            qps: 1
+            burst: 1
+            cleanup: false
+            preLoadImages: false
+            podWait: false
+            waitWhenFinished: false
+            verifyObjects: false
+            jobPause: 33m
+            objects:
+            - objectTemplate: job.yaml
+              replicas: 1
+              wait: false
+              inputVars:
+                runID: '{{`{{ env "CHURN_RUN_ID" }}`}}'
+        job.yaml: |
+          apiVersion: batch/v1
+          kind: Job
+          metadata:
+            name: churn-{{`{{ .UUID }}`}}-{{`{{ .Iteration }}`}}
+            namespace: nktp-churn-10k
+            labels:
+              scale.nktp.io/workload: pod-churn
+              scale.nktp.io/run-id: '{{`{{ .runID }}`}}'
+          spec:
+            completionMode: NonIndexed
+            parallelism: 100
+            completions: 400
+            backoffLimit: 6
+            activeDeadlineSeconds: 2700
+            ttlSecondsAfterFinished: 300
+            template:
+              metadata:
+                labels:
+                  scale.nktp.io/workload: pod-churn
+                  scale.nktp.io/run-id: '{{`{{ .runID }}`}}'
+              spec:
+                restartPolicy: Never
+                automountServiceAccountToken: false
+                terminationGracePeriodSeconds: 5
+                nodeSelector:
+                  nodeGroup: customer-cpu
+                tolerations:
+                - key: skyhook.nvidia.com
+                  operator: Equal
+                  value: runtime-required
+                  effect: NoSchedule
+                topologySpreadConstraints:
+                - maxSkew: 1
+                  topologyKey: kubernetes.io/hostname
+                  whenUnsatisfiable: ScheduleAnyway
+                  labelSelector:
+                    matchLabels:
+                      scale.nktp.io/workload: pod-churn
+                      scale.nktp.io/run-id: '{{`{{ .runID }}`}}'
+                securityContext:
+                  runAsNonRoot: true
+                  runAsUser: 65534
+                  seccompProfile:
+                    type: RuntimeDefault
+                containers:
+                - name: sleeper
+                  image: public.ecr.aws/docker/library/busybox:1.37.0@sha256:66a6306db78bf2dbf3487f293aa8d6990d8e506fdffab9cc43fe422becf886e4
+                  imagePullPolicy: IfNotPresent
+                  command:
+                  - /bin/sleep
+                  - '600'
+                  resources:
+                    requests:
+                      cpu: 10m
+                      memory: 32Mi
+                    limits:
+                      cpu: 100m
+                      memory: 64Mi
+                  securityContext:
+                    allowPrivilegeEscalation: false
+                    readOnlyRootFilesystem: true
+                    capabilities:
+                      drop:
+                      - ALL
