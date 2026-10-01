@@ -17,7 +17,6 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	coreclient "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/tools/clientcmd"
-	kyaml "sigs.k8s.io/yaml"
 )
 
 const (
@@ -66,12 +65,8 @@ type kubernetesNodeGroup struct {
 // Each group defaults to 1000 replicas. Kubernetes validates the nodes on creation.
 // The supplied kubeconfig determines the cluster and is only read during Run.
 func NewKubernetesGenerator(spec yaml.Node, kubeconfig string) (*KubernetesGenerator, error) {
-	data, err := yaml.Marshal(&spec)
-	if err != nil {
-		return nil, fmt.Errorf("encode kubernetes spec: %w", err)
-	}
 	var cfg kubernetesConfig
-	if err := kyaml.UnmarshalStrict(data, &cfg); err != nil {
+	if err := decodeSpec(spec, &cfg); err != nil {
 		return nil, fmt.Errorf("decode kubernetes spec: %w", err)
 	}
 	if cfg.Duration.Duration <= 0 {

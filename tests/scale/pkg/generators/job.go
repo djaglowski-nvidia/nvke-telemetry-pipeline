@@ -1,13 +1,11 @@
 package generators
 
 import (
-	"bytes"
 	"context"
 	"crypto/rand"
 	"errors"
 	"fmt"
 	"io"
-	"maps"
 	"path/filepath"
 	"strings"
 	"time"
@@ -17,7 +15,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/util/validation"
 	"k8s.io/apimachinery/pkg/util/wait"
 	batchclient "k8s.io/client-go/kubernetes/typed/batch/v1"
 	coreclient "k8s.io/client-go/kubernetes/typed/core/v1"
@@ -25,10 +22,6 @@ import (
 )
 
 const (
-	// jobOwnerLabel records the generated Job name so cleanup can verify ownership
-	// even when the Create response is lost and the UID is unknown.
-	jobOwnerLabel = "scale.nktp.io/generator"
-
 	// jobPollInterval spaces Job status and cleanup checks.
 	jobPollInterval = time.Second
 
@@ -39,7 +32,7 @@ const (
 	jobDiagnosticsTimeout = 5 * time.Second
 )
 
-// JobGenerator runs one finite binary in a Kubernetes Job. Construct it with NewJobGenerator.
+// JobGenerator runs a native Pod template to completion in a Kubernetes Job.
 type JobGenerator struct {
 	// kubeconfig names the explicit credential file shared by the plan.
 	kubeconfig string
@@ -50,87 +43,34 @@ type JobGenerator struct {
 // jobConfig is the plan's Job specification. Kubeconfig selection is supplied
 // separately so it can be shared across the plan.
 type jobConfig struct {
-	Context   string   `yaml:"context"`
-	Namespace string   `yaml:"namespace"`
-	Image     string   `yaml:"image"`
-	Cmd       []string `yaml:"cmd"`
-	Args      []string `yaml:"args"`
-	// Parallelism is both the requested concurrency and required successful pod count.
-	Parallelism int32 `yaml:"parallelism"`
-	// PodLabels select generated pods for discovery without changing Job ownership.
-	PodLabels map[string]string `yaml:"pod_labels"`
+	Context string `json:"context"`
+	// Parallelism is both the concurrency and required successful Pod count.
+	Parallelism int32                  `json:"parallelism"`
+	PodTemplate corev1.PodTemplateSpec `json:"podTemplate"`
 }
 
-// NewJobGenerator validates a Job specification without reading credentials or
-// contacting Kubernetes. Kubeconfig must be an absolute path. Image and namespace
-// are required in spec. Context defaults to that file's current context. Cmd and
-// Args are optional string arrays. Omitting Cmd uses the image entrypoint.
-// Parallelism defaults to one and must be positive. PodLabels accepts Kubernetes
-// labels other than the reserved Job controller and harness ownership labels.
+// NewJobGenerator parses a native Pod template without reading credentials or
+// contacting Kubernetes. Kubeconfig must be absolute. Context defaults to that
+// file's current context. Parallelism defaults to one and must be positive.
+// Run defaults the namespace to default. Kubernetes validates native Pod fields.
 func NewJobGenerator(spec yaml.Node, kubeconfig string) (*JobGenerator, error) {
 	if spec.Kind != yaml.MappingNode {
 		return nil, errors.New("job spec must be a mapping")
 	}
-	data, err := yaml.Marshal(&spec)
-	if err != nil {
-		return nil, fmt.Errorf("encode job spec: %w", err)
-	}
 	cfg := jobConfig{Parallelism: 1}
-	decoder := yaml.NewDecoder(bytes.NewReader(data))
-	decoder.KnownFields(true)
-	if err := decoder.Decode(&cfg); err != nil {
+	if err := decodeSpec(spec, &cfg); err != nil {
 		return nil, fmt.Errorf("decode job spec: %w", err)
 	}
-	// yaml permits scalar coercion to strings. Require literal string values so
-	// flags such as "true" and "10" must be quoted, and reject aliases/merge keys.
-	for i := 0; i < len(spec.Content); i += 2 {
-		key, value := spec.Content[i], spec.Content[i+1]
-		values := []*yaml.Node{value}
-		switch key.Value {
-		case "parallelism":
-			if value.Kind != yaml.ScalarNode || value.Tag != "!!int" || cfg.Parallelism < 1 {
-				return nil, errors.New("parallelism must be a positive integer")
-			}
-			continue
-		case "pod_labels":
-			if value.Kind != yaml.MappingNode {
-				return nil, errors.New("pod_labels must be a string mapping")
-			}
-			values = value.Content
-		case "cmd", "args":
-			if value.Kind != yaml.SequenceNode {
-				return nil, fmt.Errorf("%s must be a string array", key.Value)
-			}
-			values = value.Content
-		}
-		for _, v := range values {
-			if v.Kind != yaml.ScalarNode || v.Tag != "!!str" {
-				return nil, fmt.Errorf("%s must contain only strings", key.Value)
-			}
-		}
+	if cfg.Parallelism < 1 {
+		return nil, errors.New("parallelism must be positive")
 	}
-	for key, value := range cfg.PodLabels {
-		if key == jobOwnerLabel || key == "job-name" || key == "controller-uid" || strings.HasPrefix(key, "batch.kubernetes.io/") {
+	for key := range cfg.PodTemplate.Labels {
+		if key == generatorOwnerLabel || key == "job-name" || key == "controller-uid" || strings.HasPrefix(key, "batch.kubernetes.io/") {
 			return nil, fmt.Errorf("pod label %q is reserved for Job ownership", key)
-		}
-		if errs := validation.IsQualifiedName(key); len(errs) != 0 {
-			return nil, fmt.Errorf("pod label key %q: %s", key, strings.Join(errs, ", "))
-		}
-		if errs := validation.IsValidLabelValue(value); len(errs) != 0 {
-			return nil, fmt.Errorf("pod label %q value %q: %s", key, value, strings.Join(errs, ", "))
 		}
 	}
 	if !filepath.IsAbs(kubeconfig) {
 		return nil, errors.New("job requires an absolute kubeconfig path")
-	}
-	if strings.TrimSpace(cfg.Image) == "" {
-		return nil, errors.New("job requires an image")
-	}
-	if errs := validation.IsDNS1123Label(cfg.Namespace); len(errs) != 0 {
-		return nil, fmt.Errorf("namespace %q: %s", cfg.Namespace, strings.Join(errs, ", "))
-	}
-	if len(cfg.Cmd) > 0 && strings.TrimSpace(cfg.Cmd[0]) == "" {
-		return nil, errors.New("cmd executable must not be empty")
 	}
 	return &JobGenerator{kubeconfig: kubeconfig, config: cfg}, nil
 }
@@ -164,8 +104,8 @@ func (g *JobGenerator) Run(ctx context.Context) (err error) {
 	if err != nil {
 		return fmt.Errorf("create Pod client: %w", err)
 	}
-	jobs, pods := batch.Jobs(g.config.Namespace), core.Pods(g.config.Namespace)
 	job := g.manifest(deadline)
+	jobs, pods := batch.Jobs(job.Namespace), core.Pods(job.Namespace)
 	// Install cleanup before Create: a failed response can still mean that the
 	// API server accepted the Job. Its unique name and label allow reconciliation.
 	defer func() {
@@ -214,36 +154,34 @@ func (g *JobGenerator) Run(ctx context.Context) (err error) {
 // and TTL let the controllers stop and remove the Job if the harness crashes.
 func (g *JobGenerator) manifest(deadline time.Time) *batchv1.Job {
 	name := "scale-" + strings.ToLower(rand.Text())
+	template := preparePodTemplate(g.config.PodTemplate, name)
+	if template.Spec.RestartPolicy == "" {
+		template.Spec.RestartPolicy = corev1.RestartPolicyNever
+	}
+	if template.Spec.AutomountServiceAccountToken == nil {
+		noToken := false
+		template.Spec.AutomountServiceAccountToken = &noToken
+	}
+	if template.Spec.TopologySpreadConstraints == nil {
+		honor := corev1.NodeInclusionPolicyHonor
+		template.Spec.TopologySpreadConstraints = []corev1.TopologySpreadConstraint{{
+			MaxSkew: 1, TopologyKey: "kubernetes.io/hostname", WhenUnsatisfiable: corev1.DoNotSchedule,
+			NodeAffinityPolicy: &honor, NodeTaintsPolicy: &honor,
+			LabelSelector: &metav1.LabelSelector{MatchLabels: map[string]string{generatorOwnerLabel: name}},
+		}}
+	}
 	parallelism, zero := g.config.Parallelism, int32(0)
-	noToken := false
 	// Controller bounds also cover a lost Create response or a crashed harness.
 	activeSeconds := max(int64(1), int64(time.Until(deadline).Seconds())+1)
 	ttlSeconds := int32(60)
-	job := &batchv1.Job{
-		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: g.config.Namespace, Labels: map[string]string{jobOwnerLabel: name}},
+	return &batchv1.Job{
+		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: template.Namespace, Labels: map[string]string{generatorOwnerLabel: name}},
 		Spec: batchv1.JobSpec{
 			Parallelism: &parallelism, Completions: &parallelism, BackoffLimit: &zero,
 			ActiveDeadlineSeconds: &activeSeconds, TTLSecondsAfterFinished: &ttlSeconds,
-			Template: corev1.PodTemplateSpec{
-				ObjectMeta: metav1.ObjectMeta{Labels: maps.Clone(g.config.PodLabels)},
-				Spec: corev1.PodSpec{
-					RestartPolicy: corev1.RestartPolicyNever, AutomountServiceAccountToken: &noToken,
-					Containers: []corev1.Container{{Name: "generator", Image: g.config.Image, Command: g.config.Cmd, Args: g.config.Args}},
-				},
-			},
+			Template: template,
 		},
 	}
-	if job.Spec.Template.Labels == nil {
-		job.Spec.Template.Labels = make(map[string]string)
-	}
-	job.Spec.Template.Labels[jobOwnerLabel] = name
-	honor := corev1.NodeInclusionPolicyHonor
-	job.Spec.Template.Spec.TopologySpreadConstraints = []corev1.TopologySpreadConstraint{{
-		MaxSkew: 1, TopologyKey: "kubernetes.io/hostname", WhenUnsatisfiable: corev1.DoNotSchedule,
-		NodeAffinityPolicy: &honor, NodeTaintsPolicy: &honor,
-		LabelSelector: &metav1.LabelSelector{MatchLabels: map[string]string{jobOwnerLabel: name}},
-	}}
-	return job
 }
 
 // cleanupJob checks the ownership label and any known UID before deleting the Job,
@@ -260,7 +198,7 @@ func cleanupJob(ctx context.Context, jobs batchclient.JobInterface, pods corecli
 	}
 	uid := job.UID
 	if err == nil {
-		if current.Labels[jobOwnerLabel] != job.Name || (uid != "" && current.UID != uid) {
+		if current.Labels[generatorOwnerLabel] != job.Name || (uid != "" && current.UID != uid) {
 			return fmt.Errorf("refuse to delete unowned Job %s/%s", job.Namespace, job.Name)
 		}
 		uid = current.UID
@@ -295,7 +233,7 @@ func cleanupJob(ctx context.Context, jobs batchclient.JobInterface, pods corecli
 	return nil
 }
 
-// jobDiagnostics gathers bounded status and logs from Pods owned by job.
+// jobDiagnostics gathers bounded status and first-container logs from owned Pods.
 // The caller must supply a Job with a known UID and a context with a deadline.
 // Call it before cleanup. Collected details and collection errors are returned
 // together for inclusion in the original run failure.
@@ -320,11 +258,11 @@ func jobDiagnostics(ctx context.Context, pods coreclient.PodInterface, job *batc
 		for _, status := range pod.Status.ContainerStatuses {
 			details = append(details, fmt.Errorf("container %s: %+v", status.Name, status.State))
 		}
-		if unscheduled {
+		if unscheduled || len(pod.Spec.Containers) == 0 {
 			continue
 		}
 		lines, limit := int64(40), int64(8192)
-		stream, err := pods.GetLogs(pod.Name, &corev1.PodLogOptions{Container: "generator", TailLines: &lines, LimitBytes: &limit}).Stream(ctx)
+		stream, err := pods.GetLogs(pod.Name, &corev1.PodLogOptions{Container: pod.Spec.Containers[0].Name, TailLines: &lines, LimitBytes: &limit}).Stream(ctx)
 		if err != nil {
 			details = append(details, fmt.Errorf("read Pod %s logs: %w", pod.Name, err))
 			continue

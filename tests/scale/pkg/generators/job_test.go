@@ -10,7 +10,6 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
-	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -29,57 +28,49 @@ import (
 	batchclient "k8s.io/client-go/kubernetes/typed/batch/v1"
 )
 
-// TestNewJobGenerator checks strict workload configuration without accessing credentials.
+const jobTestSpec = `context: scale
+podTemplate:
+  metadata:
+    namespace: load
+    labels:
+      scale.nktp.io/workload: avalanche
+  spec:
+    containers:
+    - name: load
+      image: example:test
+      command: [/binary]
+      args: [metrics, '--rate', '10']
+`
+
 func TestNewJobGenerator(t *testing.T) {
-	const valid = "context: scale\nnamespace: load\nimage: example:test\n"
 	for _, test := range []struct {
-		name      string
-		spec      string
-		wantError bool
+		name        string
+		spec        string
+		parallelism int32
+		wantError   bool
 	}{
-		{name: "inert constructor", spec: valid},
-		{name: "command arrays", spec: valid + "cmd: [/binary]\nargs: [metrics, '--rate', '10']"},
-		{name: "empty arrays", spec: valid + "cmd: []\nargs: []"},
-		{name: "parallelism", spec: valid + "parallelism: 3"},
-		{name: "zero parallelism", spec: valid + "parallelism: 0", wantError: true},
-		{name: "negative parallelism", spec: valid + "parallelism: -1", wantError: true},
-		{name: "string parallelism", spec: valid + "parallelism: '3'", wantError: true},
-		{name: "float parallelism", spec: valid + "parallelism: 3.0", wantError: true},
-		{name: "null parallelism", spec: valid + "parallelism: null", wantError: true},
-		{name: "overflow parallelism", spec: valid + "parallelism: 2147483648", wantError: true},
-		{name: "alias parallelism", spec: valid + "pod_labels: {count: &count '3'}\nparallelism: *count", wantError: true},
-		{name: "labels", spec: valid + "pod_labels: {scale.nktp.io/workload: avalanche, empty: ''}"},
-		{name: "empty labels", spec: valid + "pod_labels: {}"},
-		{name: "null labels", spec: valid + "pod_labels: null", wantError: true},
-		{name: "numeric label value", spec: valid + "pod_labels: {count: 3}", wantError: true},
-		{name: "numeric label key", spec: valid + "pod_labels: {3: value}", wantError: true},
-		{name: "alias labels", spec: valid + "cmd: [&label avalanche]\npod_labels: {app: *label}", wantError: true},
-		{name: "duplicate label", spec: valid + "pod_labels: {app: a, app: b}", wantError: true},
-		{name: "invalid label key", spec: valid + "pod_labels: {'bad key': value}", wantError: true},
-		{name: "invalid label value", spec: valid + "pod_labels: {app: 'bad value'}", wantError: true},
-		{name: "controller label", spec: valid + "pod_labels: {batch.kubernetes.io/job-name: foreign}", wantError: true},
-		{name: "legacy controller label", spec: valid + "pod_labels: {controller-uid: foreign}", wantError: true},
-		{name: "ownership label", spec: valid + "pod_labels: {scale.nktp.io/generator: foreign}", wantError: true},
-		{name: "unknown field", spec: valid + "replicas: 2", wantError: true},
-		{name: "duplicate field", spec: valid + "image: other:test", wantError: true},
-		{name: "missing image", spec: strings.ReplaceAll(valid, "image: example:test\n", ""), wantError: true},
-		{name: "default context", spec: strings.ReplaceAll(valid, "context: scale\n", "")},
-		{name: "invalid namespace", spec: strings.ReplaceAll(valid, "namespace: load", "namespace: Invalid"), wantError: true},
-		{name: "scalar args", spec: valid + "args: metrics", wantError: true},
-		{name: "numeric argument", spec: valid + "args: [metrics, 10]", wantError: true},
-		{name: "boolean argument", spec: valid + "args: [true]", wantError: true},
-		{name: "null args", spec: valid + "args: null", wantError: true},
-		{name: "empty executable", spec: valid + "cmd: ['']", wantError: true},
-		{name: "merge key", spec: valid + "<<: {cmd: [/binary]}", wantError: true},
+		{name: "defaults", spec: "{}", parallelism: 1},
+		{name: "native template", spec: jobTestSpec, parallelism: 1},
+		{name: "parallelism", spec: jobTestSpec + "parallelism: 3", parallelism: 3},
+		{name: "zero parallelism", spec: "parallelism: 0", wantError: true},
+		{name: "negative parallelism", spec: "parallelism: -1", wantError: true},
+		{name: "overflow parallelism", spec: "parallelism: 2147483648", wantError: true},
+		{name: "unknown generator field", spec: "replicas: 2", wantError: true},
+		{name: "unknown Pod field", spec: "podTemplate: {spec: {imag: typo}}", wantError: true},
+		{name: "controller label", spec: "podTemplate: {metadata: {labels: {batch.kubernetes.io/job-name: foreign}}}", wantError: true},
+		{name: "legacy controller label", spec: "podTemplate: {metadata: {labels: {controller-uid: foreign}}}", wantError: true},
+		{name: "ownership label", spec: "podTemplate: {metadata: {labels: {scale.nktp.io/generator: foreign}}}", wantError: true},
+		{name: "API validates fields", spec: "podTemplate: {spec: {restartPolicy: invalid}}", parallelism: 1},
 		{name: "nonmapping", spec: "[]", wantError: true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			_, err := NewJobGenerator(jobSpec(t, test.spec), "/does/not/exist")
+			g, err := NewJobGenerator(jobSpec(t, test.spec), "/does/not/exist")
 			if test.wantError {
 				assert.Error(t, err, "NewJobGenerator()")
-			} else {
-				assert.NoError(t, err, "NewJobGenerator()")
+				return
 			}
+			require.NoError(t, err, "NewJobGenerator()")
+			assert.Equal(t, test.parallelism, g.config.Parallelism, "parallelism")
 		})
 	}
 }
@@ -92,45 +83,50 @@ func jobSpec(t *testing.T, data string) yaml.Node {
 	return *document.Content[0]
 }
 
-// TestJobTopologySpread isolates placement by generated Job and preserves other pod labels.
 func TestJobTopologySpread(t *testing.T) {
-	for _, podLabels := range []string{"", "pod_labels: {scale.nktp.io/workload: avalanche}\n"} {
-		t.Run(podLabels, func(t *testing.T) {
-			g, err := NewJobGenerator(jobSpec(t, "namespace: load\nimage: example:test\n"+podLabels), "/does/not/exist")
-			require.NoError(t, err)
-			first := g.manifest(time.Now().Add(time.Minute))
-			second := g.manifest(time.Now().Add(time.Minute))
-			require.NotEqual(t, first.Name, second.Name, "independent Job names")
-			for _, job := range []*batchv1.Job{first, second} {
-				assert.Equal(t, job.Name, job.Labels[jobOwnerLabel], "Job ownership unchanged")
-				assert.Equal(t, job.Name, job.Spec.Template.Labels[jobOwnerLabel], "Pod spread group")
-				assert.Nil(t, job.Spec.Selector, "Job controller still assigns its selector")
-				require.Len(t, job.Spec.Template.Spec.TopologySpreadConstraints, 1)
-				spread := job.Spec.Template.Spec.TopologySpreadConstraints[0]
-				assert.Equal(t, int32(1), spread.MaxSkew)
-				assert.Equal(t, "kubernetes.io/hostname", spread.TopologyKey)
-				assert.Equal(t, corev1.DoNotSchedule, spread.WhenUnsatisfiable)
-				require.NotNil(t, spread.NodeAffinityPolicy)
-				require.NotNil(t, spread.NodeTaintsPolicy)
-				assert.Equal(t, corev1.NodeInclusionPolicyHonor, *spread.NodeAffinityPolicy)
-				assert.Equal(t, corev1.NodeInclusionPolicyHonor, *spread.NodeTaintsPolicy)
-				assert.Nil(t, spread.MinDomains, "use the eligible nodes, not a fixed node count")
-				selector, err := metav1.LabelSelectorAsSelector(spread.LabelSelector)
-				require.NoError(t, err)
-				assert.True(t, selector.Matches(labels.Set(job.Spec.Template.Labels)), "count this Job's pods")
-				other := first
-				if job == first {
-					other = second
-				}
-				assert.False(t, selector.Matches(labels.Set(other.Spec.Template.Labels)), "ignore another Job's pods")
-				assert.Equal(t, g.config.PodLabels["scale.nktp.io/workload"], job.Spec.Template.Labels["scale.nktp.io/workload"], "discovery label retained")
-			}
-			assert.NotContains(t, g.config.PodLabels, jobOwnerLabel, "manifest does not alter configuration")
-			first.Spec.Template.Labels["scale.nktp.io/workload"] = "changed"
-			assert.NotEqual(t, "changed", second.Spec.Template.Labels["scale.nktp.io/workload"], "manifests do not share labels")
-			assert.NotEqual(t, "changed", g.config.PodLabels["scale.nktp.io/workload"], "configuration does not share labels")
-		})
+	g, err := NewJobGenerator(jobSpec(t, jobTestSpec), "/does/not/exist")
+	require.NoError(t, err, "NewJobGenerator()")
+	first := g.manifest(time.Now().Add(time.Minute))
+	second := g.manifest(time.Now().Add(time.Minute))
+	require.NotEqual(t, first.Name, second.Name, "independent Job names")
+	honor := corev1.NodeInclusionPolicyHonor
+	for _, job := range []*batchv1.Job{first, second} {
+		want := []corev1.TopologySpreadConstraint{{
+			MaxSkew: 1, TopologyKey: "kubernetes.io/hostname", WhenUnsatisfiable: corev1.DoNotSchedule,
+			NodeAffinityPolicy: &honor, NodeTaintsPolicy: &honor,
+			LabelSelector: &metav1.LabelSelector{MatchLabels: map[string]string{generatorOwnerLabel: job.Name}},
+		}}
+		require.Equal(t, want, job.Spec.Template.Spec.TopologySpreadConstraints, "topology spread")
+		assert.Nil(t, job.Spec.Selector, "Job controller assigns its selector")
+		selector, err := metav1.LabelSelectorAsSelector(want[0].LabelSelector)
+		require.NoError(t, err, "parse selector")
+		other := first
+		if job == first {
+			other = second
+		}
+		assert.True(t, selector.Matches(labels.Set(job.Spec.Template.Labels)), "count this Job's Pods")
+		assert.False(t, selector.Matches(labels.Set(other.Spec.Template.Labels)), "ignore another Job's Pods")
 	}
+}
+
+func TestJobManifestPreservesTemplate(t *testing.T) {
+	g, err := NewJobGenerator(jobSpec(t, jobTestSpec+`    restartPolicy: OnFailure
+    automountServiceAccountToken: true
+    topologySpreadConstraints: []
+    nodeSelector: {pool: load}
+    volumes:
+    - name: scratch
+      emptyDir: {}
+`), "/does/not/exist")
+	require.NoError(t, err, "NewJobGenerator()")
+	source := g.config.PodTemplate.DeepCopy()
+	job := g.manifest(time.Now().Add(time.Minute))
+	want := source.DeepCopy()
+	want.Labels[generatorOwnerLabel] = job.Name
+	assert.Equal(t, *want, job.Spec.Template, "native Pod template preserved")
+	job.Spec.Template.Labels["scale.nktp.io/workload"] = "changed"
+	job.Spec.Template.Spec.Containers[0].Image = "changed"
+	assert.Equal(t, *source, g.config.PodTemplate, "manifest does not mutate configuration")
 }
 
 // TestJobGeneratorRun checks completion, failures and cleanup through the Kubernetes API.
@@ -176,12 +172,12 @@ func TestJobGeneratorRun(t *testing.T) {
 				config = strings.ReplaceAll(config, "current-context: wrong", "current-context: scale")
 			}
 			require.NoError(t, os.WriteFile(path, []byte(config), 0600), "write kubeconfig")
-			spec := "context: scale\nnamespace: load\nimage: example:test\ncmd: [/binary]\nargs: [metrics, '--rate', '10']"
+			spec := jobTestSpec
 			if test.name == "current context" || test.name == "missing current context" {
 				spec = strings.ReplaceAll(spec, "context: scale\n", "")
 			}
 			if test.parallelism > 1 {
-				spec += fmt.Sprintf("\nparallelism: %d\npod_labels: {scale.nktp.io/workload: avalanche}", test.parallelism)
+				spec += fmt.Sprintf("parallelism: %d\n", test.parallelism)
 			}
 			g, err := NewJobGenerator(jobSpec(t, spec), path)
 			require.NoError(t, err, "NewJobGenerator()")
@@ -265,7 +261,7 @@ func (a *jobTestAPI) serveHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		assert.Equal(a.t, "load", job.Namespace, "Job namespace")
-		assert.Equal(a.t, job.Name, job.Labels[jobOwnerLabel], "Job ownership label")
+		assert.Equal(a.t, job.Name, job.Labels[generatorOwnerLabel], "Job ownership label")
 		assert.Equal(a.t, a.parallelism, *job.Spec.Parallelism, "Job parallelism")
 		assert.Equal(a.t, a.parallelism, *job.Spec.Completions, "Job completions")
 		assert.Zero(a.t, *job.Spec.BackoffLimit, "Job retries")
@@ -273,14 +269,15 @@ func (a *jobTestAPI) serveHTTP(w http.ResponseWriter, r *http.Request) {
 		if a.parallelism > 1 {
 			assert.Equal(a.t, "avalanche", job.Spec.Template.Labels["scale.nktp.io/workload"], "workload selection label")
 		}
-		assert.Equal(a.t, job.Name, job.Spec.Template.Labels[jobOwnerLabel], "default spread selector label reaches the API")
+		assert.Equal(a.t, job.Name, job.Spec.Template.Labels[generatorOwnerLabel], "default spread selector label reaches the API")
 		assert.Len(a.t, job.Spec.Template.Spec.TopologySpreadConstraints, 1, "default spread constraint reaches the API")
 		assert.Positive(a.t, *job.Spec.ActiveDeadlineSeconds, "Job controller deadline")
 		assert.Positive(a.t, *job.Spec.TTLSecondsAfterFinished, "Job cleanup fallback")
 		container := job.Spec.Template.Spec.Containers[0]
-		if container.Image != "example:test" || !reflect.DeepEqual(container.Command, []string{"/binary"}) || !reflect.DeepEqual(container.Args, []string{"metrics", "--rate", "10"}) {
-			a.t.Errorf("container = %+v, want configured executable and args", container)
-		}
+		assert.Equal(a.t, "load", container.Name, "container name")
+		assert.Equal(a.t, "example:test", container.Image, "container image")
+		assert.Equal(a.t, []string{"/binary"}, container.Command, "container command")
+		assert.Equal(a.t, []string{"metrics", "--rate", "10"}, container.Args, "container args")
 		job.UID = "owned"
 		job.TypeMeta = metav1.TypeMeta{APIVersion: "batch/v1", Kind: "Job"}
 		condition := batchv1.JobComplete
@@ -324,7 +321,7 @@ func (a *jobTestAPI) serveHTTP(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			if a.mode == "ownership changed" && a.gets > 1 {
-				a.job.Labels[jobOwnerLabel] = "someone-else"
+				a.job.Labels[generatorOwnerLabel] = "someone-else"
 			}
 			if a.mode == "replaced" {
 				a.job.UID = "replacement"
@@ -362,7 +359,7 @@ func (a *jobTestAPI) serveHTTP(w http.ResponseWriter, r *http.Request) {
 		list := corev1.PodList{TypeMeta: metav1.TypeMeta{APIVersion: "v1", Kind: "PodList"}}
 		if a.job != nil && a.job.UID == "owned" {
 			controller := true
-			list.Items = []corev1.Pod{{ObjectMeta: metav1.ObjectMeta{Name: "generator-pod", OwnerReferences: []metav1.OwnerReference{{UID: "owned", Controller: &controller}}}, Status: corev1.PodStatus{Phase: corev1.PodRunning}}}
+			list.Items = []corev1.Pod{{ObjectMeta: metav1.ObjectMeta{Name: "generator-pod", OwnerReferences: []metav1.OwnerReference{{UID: "owned", Controller: &controller}}}, Spec: a.job.Spec.Template.Spec, Status: corev1.PodStatus{Phase: corev1.PodRunning}}}
 			if a.mode == "unschedulable" {
 				list.Items[0].Status = corev1.PodStatus{
 					Phase: corev1.PodPending,
@@ -387,9 +384,9 @@ func (a *jobTestAPI) serveHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method == http.MethodGet && r.URL.Path == podsPath+"/generator-pod/log" {
-		if r.URL.Query().Get("limitBytes") != "8192" || r.URL.Query().Get("tailLines") != "40" || r.URL.Query().Get("container") != "generator" {
-			a.t.Errorf("log options = %s, want bounded generator logs", r.URL.RawQuery)
-		}
+		assert.Equal(a.t, "8192", r.URL.Query().Get("limitBytes"), "log byte limit")
+		assert.Equal(a.t, "40", r.URL.Query().Get("tailLines"), "log line limit")
+		assert.Equal(a.t, "load", r.URL.Query().Get("container"), "log container name")
 		a.logsRead = true
 		w.Header().Set("Content-Type", "text/plain")
 		fmt.Fprint(w, "export failed\n", strings.Repeat("x", 16384))
@@ -400,23 +397,17 @@ func (a *jobTestAPI) serveHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func TestJobRunRequiresDeadline(t *testing.T) {
-	g, err := NewJobGenerator(jobSpec(t, "context: scale\nnamespace: load\nimage: example:test"), "/does/not/exist")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := g.Run(t.Context()); err == nil || !strings.Contains(err.Error(), "deadline") {
-		t.Errorf("Run() error = %v, want missing deadline before credential access", err)
-	}
+	g, err := NewJobGenerator(jobSpec(t, jobTestSpec), "/does/not/exist")
+	require.NoError(t, err, "NewJobGenerator()")
+	assert.ErrorContains(t, g.Run(t.Context()), "deadline", "missing deadline before credential access")
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
-	if err := g.Run(ctx); !errors.Is(err, context.Canceled) {
-		t.Errorf("Run() error = %v, want cancellation before credential access", err)
-	}
+	assert.ErrorIs(t, g.Run(ctx), context.Canceled, "cancellation before credential access")
 }
 
 func TestJobCleanupWaitIsBounded(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		job := &batchv1.Job{ObjectMeta: metav1.ObjectMeta{Name: "owned", UID: "uid", Labels: map[string]string{jobOwnerLabel: "owned"}}}
+		job := &batchv1.Job{ObjectMeta: metav1.ObjectMeta{Name: "owned", UID: "uid", Labels: map[string]string{generatorOwnerLabel: "owned"}}}
 		client := &stuckJobClient{job: job}
 		ctx, cancel := context.WithTimeout(t.Context(), jobCleanupTimeout)
 		defer cancel()
@@ -443,10 +434,8 @@ func (*stuckJobClient) Delete(context.Context, string, metav1.DeleteOptions) err
 func TestNewJobGeneratorRequiresKubeconfig(t *testing.T) {
 	for _, path := range []string{"", "relative/kubeconfig"} {
 		t.Run(path, func(t *testing.T) {
-			_, err := NewJobGenerator(jobSpec(t, "namespace: load\nimage: example:test"), path)
-			if err == nil {
-				t.Errorf("NewJobGenerator() succeeded with kubeconfig %q, want absolute path required", path)
-			}
+			_, err := NewJobGenerator(jobSpec(t, jobTestSpec), path)
+			assert.Error(t, err, "NewJobGenerator() requires an absolute kubeconfig path")
 		})
 	}
 }

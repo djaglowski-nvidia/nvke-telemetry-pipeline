@@ -198,10 +198,15 @@ Plans are Go `text/template` templates. Use `{{ .Args.name }}` to make a value
 configurable. For example, in your plan's Job spec:
 
 ```yaml
-args:
-  - "--rate={{ .Args.rate }}"
-  - "--duration={{ .Args.duration }}"
-  - '--telemetry-attributes=test_run_id="{{ .Args.runId }}"'
+podTemplate:
+  spec:
+    containers:
+      - name: generator
+        image: example/telemetrygen:version
+        args:
+          - "--rate={{ .Args.rate }}"
+          - "--duration={{ .Args.duration }}"
+          - '--telemetry-attributes=test_run_id="{{ .Args.runId }}"'
 ```
 
 Run that plan from the repository root, supplying values with repeated
@@ -326,13 +331,53 @@ The telemetrygen plan uses namespace `nktp` and the NKTP services installed by
 `task scale:install`. When using another cluster, adjust the plan namespace and
 endpoints as needed. The test harness itself does not provision a cluster.
 
-Jobs spread their pods evenly across eligible nodes. Each Job spreads
-independently, with pod counts differing by at most one. Pods remain Pending when
-the placement constraint cannot be satisfied. Running pods are not automatically
-rebalanced.
-
 **Jobs and pods are cleaned up before the test returns**, including after failure
 or cancellation. Workload and cleanup errors fail the test.
+
+## Jobs
+
+The Job generator runs a finite workload from a native Kubernetes Pod template.
+The [telemetrygen example](plans/telemetrygen.yaml) sends metrics, logs and traces
+to the NKTP collectors.
+
+```yaml
+generator:
+  type: job
+  spec:
+    parallelism: 3
+    podTemplate:
+      metadata:
+        namespace: nktp
+        labels:
+          run_id: '{{ .Args.runId }}'
+      spec:
+        containers:
+        - name: load
+          image: ghcr.io/open-telemetry/opentelemetry-collector-contrib/telemetrygen:v0.159.0
+          command: [/telemetrygen]
+          args:
+          - metrics
+          - --otlp-endpoint=nktp-gateway-metrics-collector.nktp.svc:4317
+          - --otlp-insecure
+          - --duration=1m
+          - --rate=10
+```
+
+`parallelism` defaults to one and must be positive. It sets both the concurrent
+Pod count and required successful completions. The namespace comes from
+`podTemplate.metadata.namespace`, defaults to `default`, and must already exist.
+The generator uses the plan's kubeconfig. The optional `context` selects a context
+in that file. The run succeeds when the Job completes. The plan timeout bounds
+scheduling and execution. Failed Jobs are not retried.
+
+Use binaries that exit successfully within the plan timeout. Restart policy
+defaults to `Never`, and service-account token mounting defaults to false.
+By default, each Job spreads Pods evenly across eligible nodes. Pods wait when
+the spread constraint cannot be satisfied. Explicit native Pod settings,
+including resources and scheduling constraints, are preserved. Names and the
+`scale.nktp.io/generator` label are assigned per run. Job controller labels and
+the ownership label are reserved. The Job and its Pods are cleaned up on
+completion, failure or cancellation.
 
 ## KWOK nodes
 

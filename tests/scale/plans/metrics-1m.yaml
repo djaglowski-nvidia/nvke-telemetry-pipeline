@@ -10,28 +10,33 @@ stages:
     generator:
       type: job
       spec:
-        namespace: nktp
         # The scale profile adds a client-address label at the metrics gateway.
         parallelism: 3
-        image: ghcr.io/open-telemetry/opentelemetry-collector-contrib/telemetrygen:v0.159.0@sha256:bad7fde3119476a9177cc4b9f04307c9876fca5b5584e009aebd7123d7557658
-        cmd: [/telemetrygen]
-        args:
-          - metrics
-          - --otlp-endpoint=nktp-gateway-metrics-collector.nktp.svc:4317
-          - --otlp-insecure
-          - --otlp-metric-name=nktp_scale_e2e
-          - --metric-type=Gauge
-          - --duration=10m
-          - --workers=128
-          - --rate=22
-          - --unique-timeseries
-          # Longer than the run: the first uniqueness timer never resets.
-          - --unique-timeseries-duration=24h
-          - --batch
-          - --batch-size=100
-          - --allow-export-failures
-          - '--telemetry-attributes=test_run_id="{{ .Args.runId }}"'
-          - '--telemetry-attributes=load_generator="telemetrygen"'
+        podTemplate:
+          metadata:
+            namespace: nktp
+          spec:
+            containers:
+              - name: generator
+                image: ghcr.io/open-telemetry/opentelemetry-collector-contrib/telemetrygen:v0.159.0@sha256:bad7fde3119476a9177cc4b9f04307c9876fca5b5584e009aebd7123d7557658
+                command: [/telemetrygen]
+                args:
+                  - metrics
+                  - --otlp-endpoint=nktp-gateway-metrics-collector.nktp.svc:4317
+                  - --otlp-insecure
+                  - --otlp-metric-name=nktp_scale_e2e
+                  - --metric-type=Gauge
+                  - --duration=10m
+                  - --workers=128
+                  - --rate=22
+                  - --unique-timeseries
+                  # Longer than the run: the first uniqueness timer never resets.
+                  - --unique-timeseries-duration=24h
+                  - --batch
+                  - --batch-size=100
+                  - --allow-export-failures
+                  - '--telemetry-attributes=test_run_id="{{ .Args.runId }}"'
+                  - '--telemetry-attributes=load_generator="telemetrygen"'
     measurement:
       type: prometheus
       spec:
@@ -96,45 +101,50 @@ stages:
     generator:
       type: job
       spec:
-        namespace: nktp
         parallelism: 5
-        pod_labels:
-          scale.nktp.io/workload: avalanche
-        image: quay.io/prometheuscommunity/avalanche:v0.7.0@sha256:ea02e9599fcbb59a6fc7396656434faf200db7f1c259802e3dbb38cec81bd12a
-        cmd: [/bin/sh, -c]
-        args:
-          - |
-            "$@" --const-label="generator_instance=$(hostname)" &
-            generator=$!
-            # cleanup stops and reaps Avalanche on every exit path.
-            cleanup() {
-              kill "$generator" 2>/dev/null || true
-              wait "$generator" 2>/dev/null || true
-            }
-            trap cleanup EXIT
-            trap 'exit 143' TERM
-            trap 'exit 130' INT
-            for second in $(seq 600)
-            do
-              sleep 1
-              if ! kill -0 "$generator" 2>/dev/null
-              then
-                wait "$generator" || exit "$?"
-                echo "Avalanche exited before the duration elapsed" >&2
-                exit 1
-              fi
-            done
-            # A live workload reaching the duration is the only successful exit.
-            exit 0
-          - avalanche
-          - /bin/avalanche
-          - --port=9001
-          - --gauge-metric-count=100
-          - --series-count=1000
-          - --series-interval=0
-          - --metric-interval=0
-          - --series-operation-mode=disabled
-          - --const-label=test_run_id={{ .Args.runId }}
-          - --const-label=load_generator=avalanche
+        podTemplate:
+          metadata:
+            namespace: nktp
+            labels:
+              scale.nktp.io/workload: avalanche
+          spec:
+            containers:
+              - name: generator
+                image: quay.io/prometheuscommunity/avalanche:v0.7.0@sha256:ea02e9599fcbb59a6fc7396656434faf200db7f1c259802e3dbb38cec81bd12a
+                command: [/bin/sh, -c]
+                args:
+                  - |
+                    "$@" --const-label="generator_instance=$(hostname)" &
+                    generator=$!
+                    # cleanup stops and reaps Avalanche on every exit path.
+                    cleanup() {
+                      kill "$generator" 2>/dev/null || true
+                      wait "$generator" 2>/dev/null || true
+                    }
+                    trap cleanup EXIT
+                    trap 'exit 143' TERM
+                    trap 'exit 130' INT
+                    for second in $(seq 600)
+                    do
+                      sleep 1
+                      if ! kill -0 "$generator" 2>/dev/null
+                      then
+                        wait "$generator" || exit "$?"
+                        echo "Avalanche exited before the duration elapsed" >&2
+                        exit 1
+                      fi
+                    done
+                    # A live workload reaching the duration is the only successful exit.
+                    exit 0
+                  - avalanche
+                  - /bin/avalanche
+                  - --port=9001
+                  - --gauge-metric-count=100
+                  - --series-count=1000
+                  - --series-interval=0
+                  - --metric-interval=0
+                  - --series-operation-mode=disabled
+                  - --const-label=test_run_id={{ .Args.runId }}
+                  - --const-label=load_generator=avalanche
     measurement:
       type: noop

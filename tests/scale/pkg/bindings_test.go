@@ -294,13 +294,18 @@ stages:
     generator:
       type: job
       spec:
-        namespace: '{{ .Args.namespace }}'
-        image: example:test
-        args:
-          - '{{ .Args.runId }}'
-          - '--telemetry-attributes=test_run_id="{{ .Args.runId }}"'
-          - '{{ .Args.message }}'
-          - '${OTHER} $RUN_ID $(echo untouched)'
+        podTemplate:
+          metadata:
+            namespace: '{{ .Args.namespace }}'
+          spec:
+            containers:
+              - name: generator
+                image: example:test
+                args:
+                  - '{{ .Args.runId }}'
+                  - '--telemetry-attributes=test_run_id="{{ .Args.runId }}"'
+                  - '{{ .Args.message }}'
+                  - '${OTHER} $RUN_ID $(echo untouched)'
     measurement: {type: noop}
 `)
 	flags := []string{"namespace=load", "message={{ .Args.keep-literal }}"}

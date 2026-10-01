@@ -18,12 +18,9 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	coreclient "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/tools/clientcmd"
-	k8syaml "sigs.k8s.io/yaml"
 )
 
 const (
-	// podOwnerLabel identifies the invocation responsible for a Pod.
-	podOwnerLabel = "scale.nktp.io/generator"
 	// podPollInterval spaces completion and cleanup checks.
 	podPollInterval = time.Second
 	// podReadAttempts bounds consecutive transient failures of one Pod read.
@@ -49,24 +46,15 @@ type podConfig struct {
 }
 
 // NewPodGenerator parses a native Pod template without reading credentials or
-// contacting Kubernetes. Replicas default to one and namespace to default.
+// contacting Kubernetes. Replicas default to one. Run defaults the namespace to default.
 // Zero replicas creates no Pods. Kubernetes validates the submitted Pod fields.
 func NewPodGenerator(spec yaml.Node, kubeconfig string) (*PodGenerator, error) {
-	// data bridges the plan's YAML representation and Kubernetes JSON field names.
-	data, err := yaml.Marshal(&spec)
-	if err != nil {
-		return nil, fmt.Errorf("encode pod spec: %w", err)
-	}
-	// cfg supplies only harness defaults, leaving PodSpec defaults to Kubernetes.
 	cfg := podConfig{Replicas: 1}
-	if err := k8syaml.UnmarshalStrict(data, &cfg); err != nil {
+	if err := decodeSpec(spec, &cfg); err != nil {
 		return nil, fmt.Errorf("decode pod spec: %w", err)
 	}
 	if cfg.Replicas < 0 {
 		return nil, errors.New("replicas must not be negative")
-	}
-	if cfg.PodTemplate.Namespace == "" {
-		cfg.PodTemplate.Namespace = "default"
 	}
 	return &PodGenerator{kubeconfig: kubeconfig, config: cfg}, nil
 }
@@ -100,10 +88,10 @@ func (g *PodGenerator) Run(ctx context.Context) (err error) {
 	if err != nil {
 		return fmt.Errorf("create Pod client: %w", err)
 	}
-	// pods scopes all operations to the template's namespace.
-	pods := core.Pods(g.config.PodTemplate.Namespace)
 	// owner separates concurrent invocations, including those sharing run_id.
 	owner := "scale-" + strings.ToLower(rand.Text())
+	template := preparePodTemplate(g.config.PodTemplate, owner)
+	pods := core.Pods(template.Namespace)
 	// owned records attempted creates so cleanup can recover a lost response.
 	var owned []*corev1.Pod
 	defer func() {
@@ -113,16 +101,12 @@ func (g *PodGenerator) Run(ctx context.Context) (err error) {
 		err = errors.Join(err, cleanupPods(cleanupCtx, pods, owner, owned), ctx.Err())
 	}()
 	for i := 0; i < g.config.Replicas; i++ {
-		// template isolates per-Pod identity changes from the configured template.
-		template := g.config.PodTemplate.DeepCopy()
+		// Each replica has independent metadata and native Pod fields.
+		replica := template.DeepCopy()
 		// pod preserves native settings while assigning invocation-owned identity.
-		pod := &corev1.Pod{ObjectMeta: template.ObjectMeta, Spec: template.Spec}
+		pod := &corev1.Pod{ObjectMeta: replica.ObjectMeta, Spec: replica.Spec}
 		pod.Name = fmt.Sprintf("%s-%d", owner, i)
 		pod.GenerateName = ""
-		if pod.Labels == nil {
-			pod.Labels = make(map[string]string)
-		}
-		pod.Labels[podOwnerLabel] = owner
 		owned = append(owned, pod)
 		// created includes the API-assigned UID needed to detect replacement.
 		created, err := pods.Create(ctx, pod, metav1.CreateOptions{})
@@ -144,7 +128,7 @@ func waitForPods(ctx context.Context, pods coreclient.PodInterface, owner string
 		err := retryPodRead(ctx, func(ctx context.Context) error {
 			// readErr belongs to this attempt, independently of the polling result.
 			var readErr error
-			list, readErr = pods.List(ctx, metav1.ListOptions{LabelSelector: podOwnerLabel + "=" + owner})
+			list, readErr = pods.List(ctx, metav1.ListOptions{LabelSelector: generatorOwnerLabel + "=" + owner})
 			return readErr
 		})
 		if err != nil {
@@ -197,7 +181,7 @@ func cleanupPods(ctx context.Context, pods coreclient.PodInterface, owner string
 			errs = append(errs, fmt.Errorf("find Pod %s for cleanup: %w", expected.Name, err))
 			continue
 		}
-		if current.Labels[podOwnerLabel] != owner || (expected.UID != "" && current.UID != expected.UID) {
+		if current.Labels[generatorOwnerLabel] != owner || (expected.UID != "" && current.UID != expected.UID) {
 			errs = append(errs, fmt.Errorf("refuse to delete unowned Pod %s/%s", current.Namespace, current.Name))
 			continue
 		}

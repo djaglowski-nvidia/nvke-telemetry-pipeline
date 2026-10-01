@@ -7,17 +7,22 @@ stages:
     generator:
       type: job
       spec:
-        namespace: nktp
-        image: ghcr.io/open-telemetry/opentelemetry-collector-contrib/telemetrygen:v0.159.0@sha256:bad7fde3119476a9177cc4b9f04307c9876fca5b5584e009aebd7123d7557658
-        cmd: [/telemetrygen]
-        args:
-          - metrics
-          - --otlp-endpoint=nktp-gateway-metrics-collector.nktp.svc:4317
-          - --otlp-insecure
-          - --duration=3m
-          - --rate=10
-          - --workers=1
-          - '--telemetry-attributes=test_run_id="{{ .Args.runId }}"'
+        podTemplate:
+          metadata:
+            namespace: nktp
+          spec:
+            containers:
+              - name: generator
+                image: ghcr.io/open-telemetry/opentelemetry-collector-contrib/telemetrygen:v0.159.0@sha256:bad7fde3119476a9177cc4b9f04307c9876fca5b5584e009aebd7123d7557658
+                command: [/telemetrygen]
+                args:
+                  - metrics
+                  - --otlp-endpoint=nktp-gateway-metrics-collector.nktp.svc:4317
+                  - --otlp-insecure
+                  - --duration=3m
+                  - --rate=10
+                  - --workers=1
+                  - '--telemetry-attributes=test_run_id="{{ .Args.runId }}"'
     measurement:
       type: prometheus
       spec:
@@ -48,17 +53,22 @@ stages:
     generator:
       type: job
       spec:
-        namespace: nktp
-        image: ghcr.io/open-telemetry/opentelemetry-collector-contrib/telemetrygen:v0.159.0@sha256:bad7fde3119476a9177cc4b9f04307c9876fca5b5584e009aebd7123d7557658
-        cmd: [/telemetrygen]
-        args:
-          - logs
-          - --otlp-endpoint=nktp-gateway-logs-collector.nktp.svc:4317
-          - --otlp-insecure
-          - --duration=3m
-          - --rate=10
-          - --workers=1
-          - '--telemetry-attributes=test_run_id="{{ .Args.runId }}"'
+        podTemplate:
+          metadata:
+            namespace: nktp
+          spec:
+            containers:
+              - name: generator
+                image: ghcr.io/open-telemetry/opentelemetry-collector-contrib/telemetrygen:v0.159.0@sha256:bad7fde3119476a9177cc4b9f04307c9876fca5b5584e009aebd7123d7557658
+                command: [/telemetrygen]
+                args:
+                  - logs
+                  - --otlp-endpoint=nktp-gateway-logs-collector.nktp.svc:4317
+                  - --otlp-insecure
+                  - --duration=3m
+                  - --rate=10
+                  - --workers=1
+                  - '--telemetry-attributes=test_run_id="{{ .Args.runId }}"'
     measurement:
       type: noop
       spec:
@@ -70,17 +80,22 @@ stages:
     generator:
       type: job
       spec:
-        namespace: nktp
-        image: ghcr.io/open-telemetry/opentelemetry-collector-contrib/telemetrygen:v0.159.0@sha256:bad7fde3119476a9177cc4b9f04307c9876fca5b5584e009aebd7123d7557658
-        cmd: [/telemetrygen]
-        args:
-          - traces
-          - --otlp-endpoint=nktp-gateway-traces-collector.nktp.svc:4317
-          - --otlp-insecure
-          - --duration=3m
-          - --rate=10
-          - --workers=1
-          - '--telemetry-attributes=test_run_id="{{ .Args.runId }}"'
+        podTemplate:
+          metadata:
+            namespace: nktp
+          spec:
+            containers:
+              - name: generator
+                image: ghcr.io/open-telemetry/opentelemetry-collector-contrib/telemetrygen:v0.159.0@sha256:bad7fde3119476a9177cc4b9f04307c9876fca5b5584e009aebd7123d7557658
+                command: [/telemetrygen]
+                args:
+                  - traces
+                  - --otlp-endpoint=nktp-gateway-traces-collector.nktp.svc:4317
+                  - --otlp-insecure
+                  - --duration=3m
+                  - --rate=10
+                  - --workers=1
+                  - '--telemetry-attributes=test_run_id="{{ .Args.runId }}"'
     measurement:
       type: noop
       spec:

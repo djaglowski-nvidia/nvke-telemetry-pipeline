@@ -15,6 +15,7 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/stretchr/testify/assert"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -85,9 +86,9 @@ func TestNewStatefulSetGenerator(t *testing.T) {
 			if err != nil {
 				t.Fatalf("NewStatefulSetGenerator(): %v", err)
 			}
-			if g.config.Replicas != test.wantReplicas || g.config.PodTemplate.Namespace != "default" {
-				t.Errorf("NewStatefulSetGenerator() config = %+v, want replicas=%d and default namespace", g.config, test.wantReplicas)
-			}
+			workload := newStatefulSet(g.config)
+			assert.Equal(t, test.wantReplicas, g.config.Replicas, "replicas")
+			assert.Equal(t, "default", workload.Namespace, "namespace")
 			if test.wantReplicas == 0 {
 				err = g.Run(t.Context())
 				if err != nil {
@@ -231,14 +232,16 @@ func (a *statefulSetTestAPI) serveHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		// want preserves every user field with only the reserved label assigned.
 		want := a.template.DeepCopy()
-		want.Labels[statefulSetOwnerLabel] = workload.Name
+		want.Labels[generatorOwnerLabel] = workload.Name
 		// diff catches changes to native Pod settings and labels.
 		diff := cmp.Diff(*want, workload.Spec.Template)
 		if diff != "" {
 			a.t.Errorf("submitted StatefulSet template mismatch (-want +got):\n%s", diff)
 		}
-		if workload.Spec.ServiceName != workload.Name || workload.Labels[statefulSetOwnerLabel] != workload.Name || workload.Spec.Selector == nil || workload.Spec.Selector.MatchLabels[statefulSetOwnerLabel] != workload.Name {
-			a.t.Errorf("StatefulSet %q does not isolate its Service, selector and ownership", workload.Name)
+		assert.Equal(a.t, workload.Name, workload.Spec.ServiceName, "StatefulSet Service name")
+		assert.Equal(a.t, workload.Name, workload.Labels[generatorOwnerLabel], "StatefulSet ownership label")
+		if assert.NotNil(a.t, workload.Spec.Selector, "StatefulSet selector") {
+			assert.Equal(a.t, workload.Name, workload.Spec.Selector.MatchLabels[generatorOwnerLabel], "StatefulSet ownership selector")
 		}
 		if workload.Spec.Replicas == nil || *workload.Spec.Replicas != 3 || workload.Spec.PodManagementPolicy != appsv1.ParallelPodManagement {
 			a.t.Errorf("StatefulSet spec = %+v, want three parallel replicas", workload.Spec)
@@ -260,9 +263,9 @@ func (a *statefulSetTestAPI) serveHTTP(w http.ResponseWriter, r *http.Request) {
 		if !a.decode(w, r, &service) {
 			return
 		}
-		if service.Name != a.workload.Name || service.Spec.ClusterIP != corev1.ClusterIPNone || service.Spec.Selector[statefulSetOwnerLabel] != a.workload.Name {
-			a.t.Errorf("Service = %+v, want a headless Service selecting only owned Pods", service)
-		}
+		assert.Equal(a.t, a.workload.Name, service.Name, "Service name")
+		assert.Equal(a.t, corev1.ClusterIPNone, service.Spec.ClusterIP, "headless Service")
+		assert.Equal(a.t, a.workload.Name, service.Spec.Selector[generatorOwnerLabel], "Service ownership selector")
 		if len(service.OwnerReferences) != 1 || service.OwnerReferences[0].UID != a.workload.UID || service.OwnerReferences[0].BlockOwnerDeletion == nil || !*service.OwnerReferences[0].BlockOwnerDeletion {
 			a.t.Errorf("Service owner references = %v, want controller UID with deletion blocked", service.OwnerReferences)
 		}
@@ -320,7 +323,7 @@ func (a *statefulSetTestAPI) serveHTTP(w http.ResponseWriter, r *http.Request) {
 					a.workload.UID = "replacement"
 				}
 				if a.mode == "foreign owner" {
-					a.workload.Labels[statefulSetOwnerLabel] = "another-run"
+					a.workload.Labels[generatorOwnerLabel] = "another-run"
 				}
 			}
 			write(a.workload)

@@ -17,12 +17,9 @@ import (
 	appsclient "k8s.io/client-go/kubernetes/typed/apps/v1"
 	coreclient "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/tools/clientcmd"
-	k8syaml "sigs.k8s.io/yaml"
 )
 
 const (
-	// statefulSetOwnerLabel isolates each run's controller and Pods.
-	statefulSetOwnerLabel = "scale.nktp.io/generator"
 	// statefulSetPollInterval spaces readiness and deletion observations.
 	statefulSetPollInterval = time.Second
 	// statefulSetCleanupTimeout bounds cleanup after the run context expires.
@@ -49,18 +46,12 @@ type statefulSetConfig struct {
 }
 
 // NewStatefulSetGenerator parses a native Pod template without accessing a cluster.
-// Replicas default to one and namespace to default. Zero replicas creates nothing.
+// Replicas default to one. Run defaults the namespace to default.
+// Zero replicas creates nothing.
 // Duration must be positive. Kubernetes validates submitted Pod fields.
 func NewStatefulSetGenerator(spec yaml.Node, kubeconfig string) (*StatefulSetGenerator, error) {
-	// data bridges plan YAML nodes and Kubernetes JSON field names.
-	data, err := yaml.Marshal(&spec)
-	if err != nil {
-		return nil, fmt.Errorf("encode statefulset spec: %w", err)
-	}
-	// cfg supplies only generator defaults, leaving Pod defaults to Kubernetes.
 	cfg := statefulSetConfig{Replicas: 1}
-	err = k8syaml.UnmarshalStrict(data, &cfg)
-	if err != nil {
+	if err := decodeSpec(spec, &cfg); err != nil {
 		return nil, fmt.Errorf("decode statefulset spec: %w", err)
 	}
 	if cfg.Replicas < 0 {
@@ -68,9 +59,6 @@ func NewStatefulSetGenerator(spec yaml.Node, kubeconfig string) (*StatefulSetGen
 	}
 	if cfg.Duration.Duration <= 0 {
 		return nil, errors.New("duration must be positive")
-	}
-	if cfg.PodTemplate.Namespace == "" {
-		cfg.PodTemplate.Namespace = "default"
 	}
 	return &StatefulSetGenerator{kubeconfig: kubeconfig, config: cfg}, nil
 }
@@ -133,7 +121,7 @@ func (g *StatefulSetGenerator) Run(ctx context.Context) (err error) {
 		},
 		Spec: corev1.ServiceSpec{
 			ClusterIP: corev1.ClusterIPNone,
-			Selector:  map[string]string{statefulSetOwnerLabel: workload.Name},
+			Selector:  map[string]string{generatorOwnerLabel: workload.Name},
 		},
 	}
 	_, err = core.Services(workload.Namespace).Create(ctx, service, metav1.CreateOptions{})
@@ -146,24 +134,19 @@ func (g *StatefulSetGenerator) Run(ctx context.Context) (err error) {
 // newStatefulSet isolates the template and assigns a unique controller identity.
 // Parallel management lets replicas start independently as resources permit.
 func newStatefulSet(cfg statefulSetConfig) *appsv1.StatefulSet {
-	// template protects the configuration from per-run metadata changes.
-	template := cfg.PodTemplate.DeepCopy()
 	// name separates concurrent runs, even when their user labels match.
 	name := "scale-" + strings.ToLower(rand.Text())
-	if template.Labels == nil {
-		template.Labels = make(map[string]string)
-	}
-	template.Labels[statefulSetOwnerLabel] = name
+	template := preparePodTemplate(cfg.PodTemplate, name)
 	return &appsv1.StatefulSet{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: name, Namespace: template.Namespace,
-			Labels: map[string]string{statefulSetOwnerLabel: name},
+			Labels: map[string]string{generatorOwnerLabel: name},
 		},
 		Spec: appsv1.StatefulSetSpec{
 			Replicas: &cfg.Replicas, ServiceName: name,
 			PodManagementPolicy: appsv1.ParallelPodManagement,
-			Selector:            &metav1.LabelSelector{MatchLabels: map[string]string{statefulSetOwnerLabel: name}},
-			Template:            *template,
+			Selector:            &metav1.LabelSelector{MatchLabels: map[string]string{generatorOwnerLabel: name}},
+			Template:            template,
 		},
 	}
 }
@@ -208,7 +191,7 @@ func cleanupStatefulSet(ctx context.Context, sets appsclient.StatefulSetInterfac
 	if err != nil {
 		return fmt.Errorf("find StatefulSet %s/%s for cleanup: %w", owned.Namespace, owned.Name, err)
 	}
-	if current.Labels[statefulSetOwnerLabel] != owned.Name || (owned.UID != "" && current.UID != owned.UID) {
+	if current.Labels[generatorOwnerLabel] != owned.Name || (owned.UID != "" && current.UID != owned.UID) {
 		return fmt.Errorf("refuse to delete unowned StatefulSet %s/%s", owned.Namespace, owned.Name)
 	}
 	// propagation keeps the controller present until its Pods and Service are gone.

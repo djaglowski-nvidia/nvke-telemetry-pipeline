@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/stretchr/testify/assert"
 	"go.yaml.in/yaml/v3"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -106,9 +107,7 @@ func TestNewPodGenerator(t *testing.T) {
 			if err != nil {
 				t.Fatalf("NewPodGenerator(): %v", err)
 			}
-			if g.config.Replicas != test.replicas || g.config.PodTemplate.Namespace != "default" {
-				t.Errorf("config = %+v, want replicas=%d and default namespace", g.config, test.replicas)
-			}
+			assert.Equal(t, test.replicas, g.config.Replicas, "replicas")
 			if test.name == "defaults" && g.config.PodTemplate.Spec.RestartPolicy != "" {
 				t.Error("constructor injected a restart policy")
 			}
@@ -131,7 +130,8 @@ func TestNewPodGenerator(t *testing.T) {
 func TestPodGeneratorRun(t *testing.T) {
 	for _, test := range []struct {
 		// mode selects the API behavior exercised by the case.
-		mode string
+		mode      string
+		namespace string
 		// wantError is a diagnostic fragment, empty on success.
 		wantError string
 		// wantDeleted counts only resources that this invocation owns.
@@ -146,6 +146,7 @@ func TestPodGeneratorRun(t *testing.T) {
 		wantGets map[string]int
 	}{
 		{mode: "mixed phases", wantDeleted: 3},
+		{mode: "explicit namespace", namespace: "load", wantDeleted: 3},
 		{mode: "failed", wantError: "WorkloadExited: load failed", wantDeleted: 3},
 		{mode: "partial create", wantError: "create Pod", wantDeleted: 1},
 		{mode: "lost create response", wantError: "create Pod", wantDeleted: 2},
@@ -183,9 +184,13 @@ func TestPodGeneratorRun(t *testing.T) {
 			// ctx represents the plan lifetime, independent of deferred cleanup.
 			ctx, cancel := context.WithTimeout(t.Context(), timeout)
 			defer cancel()
+			namespace := test.namespace
+			if namespace == "" {
+				namespace = "default"
+			}
 			// api provides the real typed client with deterministic HTTP responses.
 			api := &podTestAPI{
-				t: t, mode: test.mode, cancel: cancel,
+				t: t, mode: test.mode, cancel: cancel, namespace: namespace,
 				pods: make(map[string]*corev1.Pod), deleted: make(map[string]bool),
 				listCodes: test.listCodes, getCodes: test.getCodes, gets: make(map[string]int),
 			}
@@ -200,7 +205,11 @@ func TestPodGeneratorRun(t *testing.T) {
 				t.Fatalf("write kubeconfig: %v", err)
 			}
 			// g exercises construction and Run through the public API.
-			g, err := NewPodGenerator(podSpec(t, podTestSpec), path)
+			spec := podTestSpec
+			if test.namespace != "" {
+				spec = strings.Replace(spec, "metadata:\n", "metadata:\n    namespace: "+test.namespace+"\n", 1)
+			}
+			g, err := NewPodGenerator(podSpec(t, spec), path)
 			if err != nil {
 				t.Fatalf("NewPodGenerator(): %v", err)
 			}
@@ -241,6 +250,7 @@ func TestPodGeneratorRun(t *testing.T) {
 
 // podTestAPI models the Pod endpoints used by the generator and delayed deletion.
 type podTestAPI struct {
+	namespace string
 	// t reports malformed or unexpected requests.
 	t *testing.T
 	// mu protects state shared by HTTP handlers and the test goroutine.
@@ -272,8 +282,8 @@ func (a *podTestAPI) serveHTTP(w http.ResponseWriter, r *http.Request) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	w.Header().Set("Content-Type", "application/json")
-	// base enforces default namespace even when the kubeconfig namespace differs.
-	const base = "/api/v1/namespaces/default/pods"
+	// base verifies the effective namespace independently of kubeconfig defaults.
+	base := "/api/v1/namespaces/" + a.namespace + "/pods"
 	// write encodes native API responses and reports transport errors to the test.
 	write := func(value any) {
 		if err := json.NewEncoder(w).Encode(value); err != nil {
@@ -299,17 +309,15 @@ func (a *podTestAPI) serveHTTP(w http.ResponseWriter, r *http.Request) {
 		if diff := cmp.Diff(a.template.Annotations, pod.Annotations); diff != "" {
 			a.t.Errorf("submitted Pod %q annotations mismatch (-want +got):\n%s", pod.Name, diff)
 		}
-		if pod.Namespace != a.template.Namespace {
-			a.t.Errorf("submitted Pod %q namespace = %q, want %q", pod.Name, pod.Namespace, a.template.Namespace)
-		}
+		assert.Equal(a.t, a.namespace, pod.Namespace, "submitted Pod %q namespace", pod.Name)
 		for key, value := range a.template.Labels {
 			if pod.Labels[key] != value {
 				a.t.Errorf("Pod label %s = %q, want %q", key, pod.Labels[key], value)
 			}
 		}
-		if pod.Labels[podOwnerLabel] == "" || !strings.HasPrefix(pod.Name, pod.Labels[podOwnerLabel]+"-") || a.pods[pod.Name] != nil {
-			a.t.Errorf("Pod %s lacks unique invocation identity", pod.Name)
-		}
+		assert.NotEmpty(a.t, pod.Labels[generatorOwnerLabel], "Pod ownership label")
+		assert.True(a.t, strings.HasPrefix(pod.Name, pod.Labels[generatorOwnerLabel]+"-"), "Pod name includes invocation identity")
+		assert.Nil(a.t, a.pods[pod.Name], "Pod name is unique")
 		pod.UID = types.UID(fmt.Sprintf("uid-%d", a.creates))
 		pod.TypeMeta = metav1.TypeMeta{APIVersion: "v1", Kind: "Pod"}
 		a.pods[pod.Name] = &pod
@@ -363,7 +371,7 @@ func (a *podTestAPI) serveHTTP(w http.ResponseWriter, r *http.Request) {
 				case "replaced":
 					pod.UID = "replacement"
 				case "foreign owner":
-					pod.Labels[podOwnerLabel] = "another-invocation"
+					pod.Labels[generatorOwnerLabel] = "another-invocation"
 				}
 			}
 			if selector.Matches(labels.Set(pod.Labels)) {
@@ -423,9 +431,8 @@ func (a *podTestAPI) serveHTTP(w http.ResponseWriter, r *http.Request) {
 			if options.Preconditions == nil || options.Preconditions.UID == nil || *options.Preconditions.UID != pod.UID {
 				a.t.Error("DELETE lacks matching UID precondition")
 			}
-			if pod.UID == "replacement" || pod.Labels[podOwnerLabel] == "another-invocation" {
-				a.t.Error("DELETE targeted a foreign or replaced Pod")
-			}
+			assert.NotEqual(a.t, types.UID("replacement"), pod.UID, "DELETE must not target a replaced Pod")
+			assert.NotEqual(a.t, "another-invocation", pod.Labels[generatorOwnerLabel], "DELETE must not target a foreign Pod")
 			if a.mode == "delete failed" && pod.UID == "uid-1" {
 				http.Error(w, "delete forbidden", http.StatusForbidden)
 				return

@@ -23,11 +23,19 @@ func TestExamplePlans(t *testing.T) {
 			if filepath.Base(path) == "telemetrygen.yaml" {
 				for _, stage := range plan.Stages {
 					var spec struct {
-						Args []string `yaml:"args"`
+						PodTemplate struct {
+							Spec struct {
+								Containers []struct {
+									Args []string `yaml:"args"`
+								} `yaml:"containers"`
+							} `yaml:"spec"`
+						} `yaml:"podTemplate"`
 					}
 					require.NoError(t, stage.Generator.Spec.Decode(&spec), "Decode()")
 					want := `--telemetry-attributes=test_run_id="example-run"`
-					assert.Contains(t, spec.Args, want, "stage %q args = %v, want attribute %q", stage.Name, spec.Args, want)
+					containers := spec.PodTemplate.Spec.Containers
+					require.Len(t, containers, 1, "stage %q containers", stage.Name)
+					assert.Contains(t, containers[0].Args, want, "stage %q telemetry attribute", stage.Name)
 					var measurementSpec struct {
 						Queries  map[string]string `yaml:"queries"`
 						Endpoint string            `yaml:"endpoint"`
