@@ -96,7 +96,7 @@ func NewKubernetesGenerator(spec yaml.Node, kubeconfig string) (*KubernetesGener
 // Run creates the nodes, waits for readiness, keeps them for duration and deletes
 // them. Cleanup runs even after cancellation with a timeout sized for the nodes.
 // The returned error includes both run and cleanup failures.
-func (g *KubernetesGenerator) Run(ctx context.Context) (err error) {
+func (g *KubernetesGenerator) Run(ctx context.Context) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -115,7 +115,11 @@ func (g *KubernetesGenerator) Run(ctx context.Context) (err error) {
 	if err != nil {
 		return fmt.Errorf("create Node client: %w", err)
 	}
-	nodes := client.Nodes()
+	return g.run(ctx, client.Nodes())
+}
+
+// run requires the cancellation check performed by Run.
+func (g *KubernetesGenerator) run(ctx context.Context, nodes coreclient.NodeInterface) (err error) {
 	// owner isolates repeated runs that use the same templates and labels.
 	owner := "scale-" + strings.ToLower(rand.Text())
 	// owned includes attempted creates so cleanup can recover lost responses.

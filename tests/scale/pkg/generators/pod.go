@@ -63,7 +63,7 @@ func NewPodGenerator(spec yaml.Node, kubeconfig string) (*PodGenerator, error) {
 // disappearance or replacement of a Pod fails the run. Pending Pods wait for
 // scheduling without checking Nodes. Owned Pods are removed before returning,
 // with up to five minutes for cleanup after cancellation.
-func (g *PodGenerator) Run(ctx context.Context) (err error) {
+func (g *PodGenerator) Run(ctx context.Context) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -88,6 +88,11 @@ func (g *PodGenerator) Run(ctx context.Context) (err error) {
 	if err != nil {
 		return fmt.Errorf("create Pod client: %w", err)
 	}
+	return g.run(ctx, core)
+}
+
+// run requires the cancellation and replica checks performed by Run.
+func (g *PodGenerator) run(ctx context.Context, core coreclient.CoreV1Interface) (err error) {
 	// owner separates concurrent invocations, including those sharing run_id.
 	owner := "scale-" + strings.ToLower(rand.Text())
 	template := preparePodTemplate(g.config.PodTemplate, owner)
