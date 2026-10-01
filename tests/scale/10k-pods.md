@@ -1,8 +1,10 @@
 # 10,000 Pod churn
 
-The [plan](plans/10k-pods.yaml) runs 100 Jobs with 100 concurrent Pods each.
+The [plan](plans/10k-pods.yaml) starts 100 Jobs together with 100 concurrent Pods each.
 Pods sleep for 600 seconds before replacement, offering about 16.7 replacements/s
-at full occupancy. Measurements cover 35 minutes.
+at full occupancy. Replacements can arrive in bursts. Measurements cover the first
+35 minutes. Allow about 40 minutes plus startup for each Job to finish 400 Pods.
+The plan times out after 45 minutes.
 
 The [profile](10k-pods-values.yaml) uses default NKTP resources and autoscaling.
 KSM metrics pass through collectors and the metrics gateway to four blackhole
@@ -53,20 +55,14 @@ KSM scrape health, throughput, queues and failures during churn.
 
 ## Cleanup and limitations
 
-After measurement or cancellation, delete this run's Jobs and wait for their Pods
-to disappear. Do not start another run until the prior workload Pods are gone:
+The framework attempts to remove each Job and its Pods after completion, failure
+or cancellation, allowing 30 seconds for cleanup. If cleanup reports an error,
+verify the remaining workload Pods are gone before starting another run.
 
-```sh
-kubectl --kubeconfig "$KUBECONFIG" -n nktp-churn-10k delete jobs \
-  -l "scale.nktp.io/workload=pod-churn,scale.nktp.io/run-id=$RUN_ID" \
-  --cascade=foreground --wait=true --timeout=10m
-```
-
-- Jobs stop after 400 completions or 45 minutes. The framework removes its runner,
-  but workload Jobs require the cleanup above.
+- A failed Pod fails the run without retries.
 - 10,000 is a target. Startup, replacement, controller throughput, scheduling and
   Pod IP allocation can reduce achieved concurrency.
-- Completed Pods remain until garbage collection. Churn also grows LGTM series.
+- Completed Pods can accumulate until their Job is removed. Churn also grows LGTM series.
   Stop if retained Pods or backend memory exceed available capacity. LGTM storage
   is temporary.
 - Queries do not enforce thresholds. Missing data is not zero, scrapes can miss

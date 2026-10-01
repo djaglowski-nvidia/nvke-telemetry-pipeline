@@ -1,13 +1,14 @@
 # 5,000 sources each send 100 metric points/minute and 100 logs/minute with 100 KiB bodies.
 name: watchdog-5000
-execution: parallel
 timeout: 45m
 stages:
-  - name: node-collectors-1
-    generator: &sources
-      type: pod
+  - name: node-collectors
+    generator:
+      type: statefulset
       spec:
+        count: 5
         replicas: 1000
+        duration: 30m
         podTemplate:
           metadata:
             namespace: nktp
@@ -15,9 +16,7 @@ stages:
               scale.nktp.io/workload: watchdog-5000
               scale.nktp.io/run-id: '{{ .Args.runId }}'
           spec:
-            restartPolicy: Never
-            activeDeadlineSeconds: 2700
-            terminationGracePeriodSeconds: 90
+            restartPolicy: Always
             automountServiceAccountToken: false
             nodeSelector:
               nodeGroup: customer-cpu
@@ -45,7 +44,7 @@ stages:
                   - --otlp-endpoint=nktp-watchdog-collector.nktp.svc:4318
                   - --otlp-http
                   - --otlp-insecure
-                  - --duration=30m
+                  - --duration=1h
                   - --workers=1
                   - --rate=1.6666666666666667
                   - --batch
@@ -81,7 +80,7 @@ stages:
                   - --otlp-endpoint=nktp-watchdog-collector.nktp.svc:4318
                   - --otlp-http
                   - --otlp-insecure
-                  - --duration=30m
+                  - --duration=1h
                   - --workers=1
                   - --rate=1.6666666666666667
                   - --batch
@@ -182,19 +181,3 @@ stages:
           send_failed_metrics: 'sum by (instance) (rate(otelcol_exporter_send_failed_metric_points_total{job="nktp-watchdog"}[5m]))'
           send_failed_logs: 'sum by (instance, exporter) (rate(otelcol_exporter_send_failed_log_records_total{job="nktp-watchdog"}[5m]))'
           send_failed_traces: 'sum by (instance) (rate(otelcol_exporter_send_failed_spans_total{job="nktp-watchdog"}[5m]))'
-  - name: node-collectors-2
-    generator: *sources
-    measurement:
-      type: noop
-  - name: node-collectors-3
-    generator: *sources
-    measurement:
-      type: noop
-  - name: node-collectors-4
-    generator: *sources
-    measurement:
-      type: noop
-  - name: node-collectors-5
-    generator: *sources
-    measurement:
-      type: noop

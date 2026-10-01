@@ -39,22 +39,22 @@ type PodGenerator struct {
 
 // podConfig repeats one native Pod template without controller semantics.
 type podConfig struct {
-	// Replicas is the number of Pods created once, without replacement.
-	Replicas int `json:"replicas"`
+	// Count is the number of Pods created once, without replacement.
+	Count int `json:"count"`
 	// PodTemplate supplies Pod metadata, containers and scheduling settings.
 	PodTemplate corev1.PodTemplateSpec `json:"podTemplate"`
 }
 
 // NewPodGenerator parses a native Pod template without reading credentials or
-// contacting Kubernetes. Replicas default to one. Run defaults the namespace to default.
-// Zero replicas creates no Pods. Kubernetes validates the submitted Pod fields.
+// contacting Kubernetes. Count defaults to one. Run defaults the namespace to default.
+// A zero count creates no Pods. Kubernetes validates the submitted Pod fields.
 func NewPodGenerator(spec yaml.Node, kubeconfig string) (*PodGenerator, error) {
-	cfg := podConfig{Replicas: 1}
+	cfg := podConfig{Count: 1}
 	if err := decodeSpec(spec, &cfg); err != nil {
 		return nil, fmt.Errorf("decode pod spec: %w", err)
 	}
-	if cfg.Replicas < 0 {
-		return nil, errors.New("replicas must not be negative")
+	if cfg.Count < 0 {
+		return nil, errors.New("count must not be negative")
 	}
 	return &PodGenerator{kubeconfig: kubeconfig, config: cfg}, nil
 }
@@ -67,7 +67,7 @@ func (g *PodGenerator) Run(ctx context.Context) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if g.config.Replicas == 0 {
+	if g.config.Count == 0 {
 		return nil
 	}
 	// kubeconfig selects the supplied file's current context.
@@ -91,7 +91,7 @@ func (g *PodGenerator) Run(ctx context.Context) error {
 	return g.run(ctx, core)
 }
 
-// run requires the cancellation and replica checks performed by Run.
+// run requires the cancellation and count checks performed by Run.
 func (g *PodGenerator) run(ctx context.Context, core coreclient.CoreV1Interface) (err error) {
 	// owner separates concurrent invocations, including those sharing run_id.
 	owner := "scale-" + strings.ToLower(rand.Text())
@@ -105,7 +105,7 @@ func (g *PodGenerator) run(ctx context.Context, core coreclient.CoreV1Interface)
 		defer cancel()
 		err = errors.Join(err, cleanupPods(cleanupCtx, pods, owner, owned), ctx.Err())
 	}()
-	for i := 0; i < g.config.Replicas; i++ {
+	for i := 0; i < g.config.Count; i++ {
 		// Each replica has independent metadata and native Pod fields.
 		replica := template.DeepCopy()
 		// pod preserves native settings while assigning invocation-owned identity.

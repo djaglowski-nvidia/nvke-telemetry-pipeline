@@ -24,20 +24,20 @@ func TestDecodeSpec(t *testing.T) {
 		want      podConfig
 		wantError bool
 	}{
-		{name: "preserve defaults", spec: "{}", want: podConfig{Replicas: 1}},
+		{name: "preserve defaults", spec: "{}", want: podConfig{Count: 1}},
 		{
 			name: "native JSON fields",
-			spec: "replicas: 3\npodTemplate: {spec: {terminationGracePeriodSeconds: 7}}",
-			want: podConfig{Replicas: 3, PodTemplate: corev1.PodTemplateSpec{
+			spec: "count: 3\npodTemplate: {spec: {terminationGracePeriodSeconds: 7}}",
+			want: podConfig{Count: 3, PodTemplate: corev1.PodTemplateSpec{
 				Spec: corev1.PodSpec{TerminationGracePeriodSeconds: new(int64(7))},
 			}},
 		},
 		{name: "unknown native field", spec: "podTemplate: {spec: {imag: typo}}", wantError: true},
-		{name: "duplicate field", spec: "replicas: 1\nreplicas: 2", wantError: true},
-		{name: "wrong type", spec: "replicas: many", wantError: true},
+		{name: "duplicate field", spec: "count: 1\ncount: 2", wantError: true},
+		{name: "wrong type", spec: "count: many", wantError: true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			got := podConfig{Replicas: 1}
+			got := podConfig{Count: 1}
 			err := decodeSpec(parseSpec(t, test.spec), &got)
 			if test.wantError {
 				assert.Error(t, err)

@@ -4,60 +4,61 @@ timeout: 45m
 stages:
 - name: churn
   generator:
-    type: pod
+    type: job
     spec:
-      replicas: 1
+      count: 100
+      parallelism: 100
+      completions: 400
       podTemplate:
         metadata:
           namespace: nktp-churn-10k
           labels:
-            app: churn-runner
-            scale.nktp.io/driver-run-id: '{{ .Args.runId }}'
+            scale.nktp.io/workload: pod-churn
+            scale.nktp.io/run-id: '{{ .Args.runId }}'
         spec:
           restartPolicy: Never
-          serviceAccountName: churn-runner
-          activeDeadlineSeconds: 2400
-          terminationGracePeriodSeconds: 10
+          automountServiceAccountToken: false
+          terminationGracePeriodSeconds: 5
           nodeSelector:
-            nodeGroup: system-cpu
+            nodeGroup: customer-cpu
           tolerations:
-          - key: dedicated
+          - key: skyhook.nvidia.com
             operator: Equal
-            value: system-workload
+            value: runtime-required
+            effect: NoSchedule
+          topologySpreadConstraints:
+          - maxSkew: 1
+            topologyKey: kubernetes.io/hostname
+            whenUnsatisfiable: ScheduleAnyway
+            labelSelector:
+              matchLabels:
+                scale.nktp.io/workload: pod-churn
+                scale.nktp.io/run-id: '{{ .Args.runId }}'
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65534
+            seccompProfile:
+              type: RuntimeDefault
           containers:
-          - name: kube-burner
-            image: quay.io/kube-burner/kube-burner:v2.8.6@sha256:340a8e1428bf042e944e605487bd9d1c9d5195d0f9c2599b4d31ca114b1864ae
+          - name: sleeper
+            image: public.ecr.aws/docker/library/busybox:1.37.0@sha256:66a6306db78bf2dbf3487f293aa8d6990d8e506fdffab9cc43fe422becf886e4
+            imagePullPolicy: IfNotPresent
             command:
-            - /bin/kube-burner
-            args:
-            - init
-            - --config=/etc/kube-burner/config.yaml
-            - --uuid=$(POD_UID)
-            - --timeout=39m
-            - --skip-log-file
-            workingDir: /etc/kube-burner
+            - /bin/sleep
+            - '600'
             resources:
               requests:
-                cpu: 250m
-                memory: 256Mi
+                cpu: 10m
+                memory: 32Mi
               limits:
-                cpu: '2'
-                memory: 2Gi
-            volumeMounts:
-            - name: config
-              mountPath: /etc/kube-burner
-              readOnly: true
-            env:
-            - name: POD_UID
-              valueFrom:
-                fieldRef:
-                  fieldPath: metadata.uid
-            - name: CHURN_RUN_ID
-              value: '{{ .Args.runId }}'
-          volumes:
-          - name: config
-            configMap:
-              name: churn-runner
+                cpu: 100m
+                memory: 64Mi
+            securityContext:
+              allowPrivilegeEscalation: false
+              readOnlyRootFilesystem: true
+              capabilities:
+                drop:
+                - ALL
   measurement:
     type: prometheus
     spec:

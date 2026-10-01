@@ -49,12 +49,17 @@ func TestNewStatefulSetGenerator(t *testing.T) {
 		name         string
 		spec         string
 		wantReplicas int32
+		wantCount    int
 		wantErr      bool
 	}{
-		{name: "defaults", spec: "duration: 1s", wantReplicas: 1},
-		{name: "zero", spec: "duration: 1s\nreplicas: 0"},
-		{name: "no scale ceiling", spec: "duration: 1s\nreplicas: 100000", wantReplicas: 100000},
-		{name: "Kubernetes validates Pod fields", spec: "duration: 1s\npodTemplate: {spec: {restartPolicy: invalid}}", wantReplicas: 1},
+		{name: "defaults", spec: "duration: 1s", wantReplicas: 1, wantCount: 1},
+		{name: "zero", spec: "duration: 1s\nreplicas: 0", wantCount: 1},
+		{name: "no scale ceiling", spec: "duration: 1s\nreplicas: 100000", wantReplicas: 100000, wantCount: 1},
+		{name: "Kubernetes validates Pod fields", spec: "duration: 1s\npodTemplate: {spec: {restartPolicy: invalid}}", wantReplicas: 1, wantCount: 1},
+		{name: "multiple sets", spec: "duration: 1s\ncount: 2\nreplicas: 3", wantCount: 2, wantReplicas: 3},
+		{name: "zero count", spec: "duration: 1s\ncount: 0", wantReplicas: 1},
+		{name: "negative count", spec: "duration: 1s\ncount: -1", wantErr: true},
+		{name: "fractional count", spec: "duration: 1s\ncount: 1.5", wantErr: true},
 		{name: "negative replicas", spec: "duration: 1s\nreplicas: -1", wantErr: true},
 		{name: "missing duration", spec: "{}", wantErr: true},
 		{name: "zero duration", spec: "duration: 0s", wantErr: true},
@@ -69,6 +74,7 @@ func TestNewStatefulSetGenerator(t *testing.T) {
 			}
 			require.NoError(t, err)
 			assert.Equal(t, test.wantReplicas, g.config.Replicas)
+			assert.Equal(t, test.wantCount, g.config.Count)
 		})
 	}
 }
@@ -78,6 +84,8 @@ func TestStatefulSetRunWithoutCredentials(t *testing.T) {
 	require.NoError(t, err)
 	assert.NoError(t, g.Run(t.Context()))
 	g.config.Replicas = 1
+	g.config.Count = 0
+	assert.NoError(t, g.Run(t.Context()))
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 	assert.ErrorIs(t, g.Run(ctx), context.Canceled)
@@ -265,4 +273,67 @@ func TestStatefulSetCleanupWaitIsBounded(t *testing.T) {
 		err := cleanupStatefulSet(ctx, client.AppsV1().StatefulSets(workload.Namespace), workload)
 		assert.ErrorIs(t, err, context.DeadlineExceeded)
 	})
+}
+
+func TestStatefulSetGeneratorCount(t *testing.T) {
+	for _, failCreate := range []bool{false, true} {
+		name := "complete"
+		if failCreate {
+			name = "partial create"
+		}
+		t.Run(name, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				g, err := NewStatefulSetGenerator(parseSpec(t, "count: 2\n"+statefulSetTestSpec), "/does/not/exist")
+				require.NoError(t, err)
+				ctx, cancel := context.WithTimeout(t.Context(), time.Minute)
+				defer cancel()
+				client := fake.NewClientset()
+				resource := appsv1.SchemeGroupVersion.WithResource("statefulsets")
+				createErr := errors.New("create rejected")
+				var created []*appsv1.StatefulSet
+				attempts := 0
+				client.PrependReactor("create", "statefulsets", func(action ktesting.Action) (bool, runtime.Object, error) {
+					attempts++
+					if failCreate && attempts == 2 {
+						return true, nil, createErr
+					}
+					set := action.(ktesting.CreateAction).GetObject().(*appsv1.StatefulSet).DeepCopy()
+					set.UID = types.UID(set.Name)
+					created = append(created, set)
+					return true, set, client.Tracker().Create(resource, set, set.Namespace)
+				})
+				client.PrependReactor("get", "statefulsets", func(action ktesting.Action) (bool, runtime.Object, error) {
+					obj, err := client.Tracker().Get(resource, action.GetNamespace(), action.(ktesting.GetAction).GetName())
+					if err != nil {
+						return true, nil, err
+					}
+					set := obj.(*appsv1.StatefulSet)
+					if !failCreate && len(created) == g.config.Count {
+						set.Status.ReadyReplicas = *set.Spec.Replicas
+					}
+					return true, set, nil
+				})
+
+				err = g.run(ctx, client.AppsV1(), client.CoreV1())
+				if failCreate {
+					assert.ErrorIs(t, err, createErr)
+					assert.NotEmpty(t, created)
+				} else {
+					assert.NoError(t, err)
+					require.Len(t, created, 2, "both sets started before readiness")
+					assert.NotEqual(t, created[0].Name, created[1].Name)
+					for _, set := range created {
+						assert.Equal(t, int32(3), *set.Spec.Replicas)
+						service, err := client.CoreV1().Services(set.Namespace).Get(t.Context(), set.Name, metav1.GetOptions{})
+						require.NoError(t, err)
+						assert.Equal(t, set.Spec.Selector.MatchLabels, service.Spec.Selector)
+						assert.True(t, metav1.IsControlledBy(service, set), "each set owns its Service for garbage collection")
+					}
+				}
+				remaining, err := client.AppsV1().StatefulSets("workloads").List(t.Context(), metav1.ListOptions{})
+				require.NoError(t, err)
+				assert.Empty(t, remaining.Items, "every started StatefulSet is cleaned up")
+			})
+		})
+	}
 }

@@ -28,7 +28,7 @@ const (
 	jobCleanupTimeout = 30 * time.Second
 )
 
-// JobGenerator runs a native Pod template to completion in a Kubernetes Job.
+// JobGenerator runs a native Pod template to completion in Kubernetes Jobs.
 type JobGenerator struct {
 	// kubeconfig names the explicit credential file shared by the plan.
 	kubeconfig string
@@ -40,25 +40,38 @@ type JobGenerator struct {
 // separately so it can be shared across the plan.
 type jobConfig struct {
 	Context string `json:"context"`
-	// Parallelism is both the concurrency and required successful Pod count.
-	Parallelism int32                  `json:"parallelism"`
+	Count   int    `json:"count"`
+	// Parallelism limits concurrent Pods in each Job.
+	Parallelism int32 `json:"parallelism"`
+	// Completions defaults to Parallelism when omitted.
+	Completions *int32                 `json:"completions"`
 	PodTemplate corev1.PodTemplateSpec `json:"podTemplate"`
 }
 
 // NewJobGenerator parses a native Pod template without reading credentials or
 // contacting Kubernetes. Kubeconfig must be absolute. Context defaults to that
-// file's current context. Parallelism defaults to one and must be positive.
+// file's current context. Count defaults to one, and zero creates no Jobs.
+// Parallelism and completions must be positive.
 // Run defaults the namespace to default. Kubernetes validates native Pod fields.
 func NewJobGenerator(spec yaml.Node, kubeconfig string) (*JobGenerator, error) {
 	if spec.Kind != yaml.MappingNode {
 		return nil, errors.New("job spec must be a mapping")
 	}
-	cfg := jobConfig{Parallelism: 1}
+	cfg := jobConfig{Count: 1, Parallelism: 1}
 	if err := decodeSpec(spec, &cfg); err != nil {
 		return nil, fmt.Errorf("decode job spec: %w", err)
 	}
+	if cfg.Count < 0 {
+		return nil, errors.New("count must not be negative")
+	}
 	if cfg.Parallelism < 1 {
 		return nil, errors.New("parallelism must be positive")
+	}
+	if cfg.Completions == nil {
+		cfg.Completions = new(cfg.Parallelism)
+	}
+	if *cfg.Completions < 1 {
+		return nil, errors.New("completions must be positive")
 	}
 	for key := range cfg.PodTemplate.Labels {
 		if key == generatorOwnerLabel || key == "job-name" || key == "controller-uid" || strings.HasPrefix(key, "batch.kubernetes.io/") {
@@ -71,12 +84,15 @@ func NewJobGenerator(spec yaml.Node, kubeconfig string) (*JobGenerator, error) {
 	return &JobGenerator{kubeconfig: kubeconfig, config: cfg}, nil
 }
 
-// Run submits a Job and waits for all configured completions or a failure.
+// Run submits Jobs and waits for their completions or a failure.
 // The context must have a deadline. Run finishes cleanup of owned resources
 // before returning, with up to 30 seconds for cleanup after cancellation.
 func (g *JobGenerator) Run(ctx context.Context) error {
 	if err := ctx.Err(); err != nil {
 		return err
+	}
+	if g.config.Count == 0 {
+		return nil
 	}
 	if _, ok := ctx.Deadline(); !ok {
 		return errors.New("job execution requires a context deadline")
@@ -90,6 +106,8 @@ func (g *JobGenerator) Run(ctx context.Context) error {
 		return fmt.Errorf("configure Kubernetes client: %w", err)
 	}
 	config.Timeout = 10 * time.Second
+	// Match the other generators when observing and cleaning up many workloads.
+	config.QPS, config.Burst = -1, -1
 	batch, err := batchclient.NewForConfig(config)
 	if err != nil {
 		return fmt.Errorf("create Job client: %w", err)
@@ -102,7 +120,13 @@ func (g *JobGenerator) Run(ctx context.Context) error {
 }
 
 // run requires the context deadline checked by Run.
-func (g *JobGenerator) run(ctx context.Context, batch batchclient.BatchV1Interface, core coreclient.CoreV1Interface) (err error) {
+func (g *JobGenerator) run(ctx context.Context, batch batchclient.BatchV1Interface, core coreclient.CoreV1Interface) error {
+	return runInstances(ctx, g.config.Count, func(ctx context.Context) error {
+		return g.runJob(ctx, batch, core)
+	})
+}
+
+func (g *JobGenerator) runJob(ctx context.Context, batch batchclient.BatchV1Interface, core coreclient.CoreV1Interface) (err error) {
 	deadline, _ := ctx.Deadline()
 	job := g.manifest(deadline)
 	jobs, pods := batch.Jobs(job.Namespace), core.Pods(job.Namespace)
@@ -165,14 +189,14 @@ func (g *JobGenerator) manifest(deadline time.Time) *batchv1.Job {
 			LabelSelector: &metav1.LabelSelector{MatchLabels: map[string]string{generatorOwnerLabel: name}},
 		}}
 	}
-	parallelism, zero := g.config.Parallelism, int32(0)
+	parallelism, completions, zero := g.config.Parallelism, *g.config.Completions, int32(0)
 	// Controller bounds also cover a lost Create response or a crashed harness.
 	activeSeconds := max(int64(1), int64(time.Until(deadline).Seconds())+1)
 	ttlSeconds := int32(60)
 	return &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: template.Namespace, Labels: map[string]string{generatorOwnerLabel: name}},
 		Spec: batchv1.JobSpec{
-			Parallelism: &parallelism, Completions: &parallelism, BackoffLimit: &zero,
+			Parallelism: &parallelism, Completions: &completions, BackoffLimit: &zero,
 			ActiveDeadlineSeconds: &activeSeconds, TTLSecondsAfterFinished: &ttlSeconds,
 			Template: template,
 		},

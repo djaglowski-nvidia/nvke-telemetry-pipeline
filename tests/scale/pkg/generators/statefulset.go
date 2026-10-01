@@ -35,8 +35,9 @@ type StatefulSetGenerator struct {
 	config statefulSetConfig
 }
 
-// statefulSetConfig describes one StatefulSet and its run duration.
+// statefulSetConfig describes StatefulSets and their run duration.
 type statefulSetConfig struct {
+	Count int `json:"count"`
 	// Replicas is the number of Pods maintained by the StatefulSet.
 	Replicas int32 `json:"replicas"`
 	// Duration starts when every replica first becomes Ready.
@@ -46,13 +47,16 @@ type statefulSetConfig struct {
 }
 
 // NewStatefulSetGenerator parses a native Pod template without accessing a cluster.
-// Replicas default to one. Run defaults the namespace to default.
-// Zero replicas creates nothing.
+// Count and replicas default to one. Run defaults the namespace to default.
+// A zero count or zero replicas creates nothing.
 // Duration must be positive. Kubernetes validates submitted Pod fields.
 func NewStatefulSetGenerator(spec yaml.Node, kubeconfig string) (*StatefulSetGenerator, error) {
-	cfg := statefulSetConfig{Replicas: 1}
+	cfg := statefulSetConfig{Count: 1, Replicas: 1}
 	if err := decodeSpec(spec, &cfg); err != nil {
 		return nil, fmt.Errorf("decode statefulset spec: %w", err)
+	}
+	if cfg.Count < 0 {
+		return nil, errors.New("count must not be negative")
 	}
 	if cfg.Replicas < 0 {
 		return nil, errors.New("replicas must not be negative")
@@ -63,16 +67,16 @@ func NewStatefulSetGenerator(spec yaml.Node, kubeconfig string) (*StatefulSetGen
 	return &StatefulSetGenerator{kubeconfig: kubeconfig, config: cfg}, nil
 }
 
-// Run creates a StatefulSet and headless Service, then observes its replicas.
-// Duration starts once all replicas are Ready. A run succeeds after that duration
-// when all replicas are Ready again, allowing replacement during the run.
+// Run creates StatefulSets with headless Services and observes their replicas.
+// Each StatefulSet runs for Duration after its replicas first become Ready and
+// must be Ready again before completion, allowing replacement during the run.
 // Cancellation and API failures stop the run. Cleanup removes owned resources
 // and has its own five-minute timeout. Run returns both run and cleanup errors.
 func (g *StatefulSetGenerator) Run(ctx context.Context) error {
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
-	if g.config.Replicas == 0 {
+	if g.config.Count == 0 || g.config.Replicas == 0 {
 		return nil
 	}
 	// credentials selects the supplied file's current context.
@@ -100,9 +104,15 @@ func (g *StatefulSetGenerator) Run(ctx context.Context) error {
 	return g.run(ctx, apps, core)
 }
 
-// run requires the cancellation and replica checks performed by Run and typed
+// run requires the cancellation, count and replica checks performed by Run and typed
 // clients configured for the target cluster.
-func (g *StatefulSetGenerator) run(ctx context.Context, apps appsclient.AppsV1Interface, core coreclient.CoreV1Interface) (err error) {
+func (g *StatefulSetGenerator) run(ctx context.Context, apps appsclient.AppsV1Interface, core coreclient.CoreV1Interface) error {
+	return runInstances(ctx, g.config.Count, func(ctx context.Context) error {
+		return g.runStatefulSet(ctx, apps, core)
+	})
+}
+
+func (g *StatefulSetGenerator) runStatefulSet(ctx context.Context, apps appsclient.AppsV1Interface, core coreclient.CoreV1Interface) (err error) {
 	// workload carries ownership before Create so a lost response can be cleaned up.
 	workload := newStatefulSet(g.config)
 	// sets confines controller operations to the template's namespace.

@@ -15,6 +15,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/fake"
 	ktesting "k8s.io/client-go/testing"
 )
@@ -38,18 +39,27 @@ func TestNewJobGenerator(t *testing.T) {
 		name        string
 		spec        string
 		parallelism int32
+		count       int
+		completions int32
 		wantError   bool
 	}{
-		{name: "defaults", spec: "{}", parallelism: 1},
-		{name: "native template", spec: jobTestSpec, parallelism: 1},
-		{name: "parallelism", spec: jobTestSpec + "parallelism: 3", parallelism: 3},
+		{name: "defaults", spec: "{}", parallelism: 1, count: 1, completions: 1},
+		{name: "native template", spec: jobTestSpec, parallelism: 1, count: 1, completions: 1},
+		{name: "parallelism", spec: jobTestSpec + "parallelism: 3", parallelism: 3, count: 1, completions: 3},
+		{name: "multiple jobs", spec: "count: 3", parallelism: 1, count: 3, completions: 1},
+		{name: "zero count", spec: "count: 0", parallelism: 1, completions: 1},
+		{name: "negative count", spec: "count: -1", wantError: true},
+		{name: "fractional count", spec: "count: 1.5", wantError: true},
+		{name: "independent completions", spec: "parallelism: 3\ncompletions: 12", parallelism: 3, count: 1, completions: 12},
+		{name: "zero completions", spec: "completions: 0", wantError: true},
+		{name: "negative completions", spec: "completions: -1", wantError: true},
 		{name: "zero parallelism", spec: "parallelism: 0", wantError: true},
 		{name: "negative parallelism", spec: "parallelism: -1", wantError: true},
 		{name: "unknown generator field", spec: "replicas: 2", wantError: true},
 		{name: "controller label", spec: "podTemplate: {metadata: {labels: {batch.kubernetes.io/job-name: foreign}}}", wantError: true},
 		{name: "legacy controller label", spec: "podTemplate: {metadata: {labels: {controller-uid: foreign}}}", wantError: true},
 		{name: "ownership label", spec: "podTemplate: {metadata: {labels: {scale.nktp.io/generator: foreign}}}", wantError: true},
-		{name: "API validates fields", spec: "podTemplate: {spec: {restartPolicy: invalid}}", parallelism: 1},
+		{name: "API validates fields", spec: "podTemplate: {spec: {restartPolicy: invalid}}", parallelism: 1, count: 1, completions: 1},
 		{name: "nonmapping", spec: "[]", wantError: true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -60,6 +70,8 @@ func TestNewJobGenerator(t *testing.T) {
 			}
 			require.NoError(t, err, "NewJobGenerator()")
 			assert.Equal(t, test.parallelism, g.config.Parallelism, "parallelism")
+			assert.Equal(t, test.count, g.config.Count, "count")
+			assert.Equal(t, test.completions, *g.config.Completions, "completions")
 		})
 	}
 }
@@ -254,6 +266,9 @@ func TestJobRunRequiresDeadline(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 	assert.ErrorIs(t, g.Run(ctx), context.Canceled)
+	g.config.Count = 0
+	assert.NoError(t, g.Run(t.Context()), "zero count needs neither credentials nor a deadline")
+	assert.ErrorIs(t, g.Run(ctx), context.Canceled)
 }
 
 func TestJobCleanupWaitIsBounded(t *testing.T) {
@@ -275,6 +290,71 @@ func TestNewJobGeneratorRequiresKubeconfig(t *testing.T) {
 		t.Run(path, func(t *testing.T) {
 			_, err := NewJobGenerator(parseSpec(t, jobTestSpec), path)
 			assert.Error(t, err, "NewJobGenerator() requires an absolute kubeconfig path")
+		})
+	}
+}
+
+func TestJobGeneratorCount(t *testing.T) {
+	for _, failCreate := range []bool{false, true} {
+		name := "complete"
+		if failCreate {
+			name = "partial create"
+		}
+		t.Run(name, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				g, err := NewJobGenerator(parseSpec(t, jobTestSpec+"count: 3\nparallelism: 2\ncompletions: 8"), "/does/not/exist")
+				require.NoError(t, err)
+				ctx, cancel := context.WithTimeout(t.Context(), time.Minute)
+				defer cancel()
+				foreign := &batchv1.Job{ObjectMeta: metav1.ObjectMeta{Name: "foreign", Namespace: "load"}}
+				client := fake.NewClientset(foreign)
+				resource := batchv1.SchemeGroupVersion.WithResource("jobs")
+				createErr := errors.New("create rejected")
+				var created []*batchv1.Job
+				attempts := 0
+				client.PrependReactor("create", "jobs", func(action ktesting.Action) (bool, runtime.Object, error) {
+					attempts++
+					if failCreate && attempts == 2 {
+						return true, nil, createErr
+					}
+					job := action.(ktesting.CreateAction).GetObject().(*batchv1.Job).DeepCopy()
+					job.UID = types.UID(job.Name)
+					created = append(created, job)
+					return true, job, client.Tracker().Create(resource, job, job.Namespace)
+				})
+				client.PrependReactor("get", "jobs", func(action ktesting.Action) (bool, runtime.Object, error) {
+					obj, err := client.Tracker().Get(resource, action.GetNamespace(), action.(ktesting.GetAction).GetName())
+					if err != nil {
+						return true, nil, err
+					}
+					job := obj.(*batchv1.Job)
+					if !failCreate && len(created) == g.config.Count {
+						job.Status.Conditions = []batchv1.JobCondition{{Type: batchv1.JobComplete, Status: corev1.ConditionTrue}}
+					}
+					return true, job, nil
+				})
+
+				err = g.run(ctx, client.BatchV1(), client.CoreV1())
+				if failCreate {
+					assert.ErrorIs(t, err, createErr)
+					assert.NotEmpty(t, created, "a sibling started before the failure")
+				} else {
+					assert.NoError(t, err)
+					assert.Len(t, created, 3, "all Jobs started before any completed")
+				}
+				names := make(map[string]bool)
+				for _, job := range created {
+					assert.False(t, names[job.Name], "Job names must be unique")
+					names[job.Name] = true
+					assert.Equal(t, job.Name, job.Labels[generatorOwnerLabel])
+					assert.Equal(t, job.Name, job.Spec.Template.Labels[generatorOwnerLabel])
+					assert.Equal(t, int32(2), *job.Spec.Parallelism)
+					assert.Equal(t, int32(8), *job.Spec.Completions)
+				}
+				remaining, err := client.BatchV1().Jobs("load").List(t.Context(), metav1.ListOptions{})
+				require.NoError(t, err)
+				assert.Equal(t, []batchv1.Job{*foreign}, remaining.Items, "clean up every owned Job, including after partial startup")
+			})
 		})
 	}
 }

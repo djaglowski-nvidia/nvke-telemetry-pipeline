@@ -330,6 +330,12 @@ The harness can be extended with additional generators and measurements.
 - **Kubernetes emulator (`kubernetes`)** creates KWOK nodes, holds them while
   measurements run, then deletes them. See the [node plan](plans/kwok-nodes.yaml).
 
+For `pod`, `job` and `statefulset`, `count` sets how many workload objects to create.
+It defaults to one, accepts zero to create nothing and must be a nonnegative integer.
+Job `parallelism` and StatefulSet `replicas` control Pods per object.
+Multiple Jobs and StatefulSets run concurrently. A failure cancels the others
+and waits for their cleanup.
+
 The telemetrygen plan uses namespace `nktp` and the NKTP services installed by
 `task scale:install`. When using another cluster, adjust the plan namespace and
 endpoints as needed. The test harness itself does not provision a cluster.
@@ -347,6 +353,7 @@ to the NKTP collectors.
 generator:
   type: job
   spec:
+    count: 2
     parallelism: 3
     podTemplate:
       metadata:
@@ -366,11 +373,13 @@ generator:
           - --rate=10
 ```
 
-`parallelism` defaults to one and must be positive. It sets both the concurrent
-Pod count and required successful completions. The namespace comes from
-`podTemplate.metadata.namespace`, defaults to `default`, and must already exist.
+`parallelism` limits concurrent Pods per Job and defaults to one. `completions`
+sets successful Pods required per Job and defaults to `parallelism`. Both must be
+positive. Set `completions` higher to replace successful Pods until that total is
+reached. The namespace comes from `podTemplate.metadata.namespace`, defaults to
+`default`, and must already exist.
 The generator uses the plan's kubeconfig. The optional `context` selects a context
-in that file. The run succeeds when the Job completes. The plan timeout bounds
+in that file. The run succeeds when every Job completes. The plan timeout bounds
 scheduling and execution. Failed Jobs are not retried.
 
 Use binaries that exit successfully within the plan timeout. Restart policy
@@ -445,7 +454,7 @@ The [KWOK example](plans/kwok-pods.yaml) simulates 1,000 Pods that complete afte
 generator:
   type: pod
   spec:
-    replicas: 1000
+    count: 1000
     podTemplate:
       metadata:
         labels:
@@ -479,7 +488,7 @@ task scale:test TEST_TIMEOUT=30m -- -plan "$PWD/tests/scale/plans/kwok-pods.yaml
 
 The test timeout allows for the plan's 20-minute deadline and cleanup.
 
-Replicas default to one, and zero creates no Pods. The namespace comes from
+`count` defaults to one, and zero creates no Pods. The namespace comes from
 `podTemplate.metadata.namespace`, defaults to `default`, and must already exist.
 Pods start as scheduling permits, including when nodes become available later.
 The run succeeds when all Pods succeed. Failure, disappearance or plan timeout
@@ -500,6 +509,7 @@ template. It keeps each replica's name when Kubernetes replaces its Pod.
 generator:
   type: statefulset
   spec:
+    count: 2
     replicas: 3
     duration: 3m
     podTemplate:
@@ -515,9 +525,9 @@ generator:
 
 Replicas default to one, and zero creates no resources. The namespace comes from
 `podTemplate.metadata.namespace`, defaults to `default`, and must already exist.
-`duration` must be positive and starts when all replicas first become Ready.
-Replicas start independently as scheduling permits. The run succeeds after the
-duration when all replicas are Ready. Replacement does not restart the timer.
+`duration` must be positive. Each StatefulSet starts its own duration when all
+its replicas first become Ready. The run succeeds when every StatefulSet finishes
+its duration and is Ready again. Replacement does not restart a set's timer.
 The plan timeout bounds startup and recovery as well as the configured duration.
 
 Kubernetes restarts containers and replaces deleted Pods. Use long-lived binaries

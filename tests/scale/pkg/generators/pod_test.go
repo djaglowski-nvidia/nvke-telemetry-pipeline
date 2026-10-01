@@ -24,7 +24,7 @@ import (
 )
 
 // podTestSpec exercises native fields that must survive template replication.
-const podTestSpec = `replicas: 3
+const podTestSpec = `count: 3
 podTemplate:
   metadata:
     labels:
@@ -57,15 +57,17 @@ func TestNewPodGenerator(t *testing.T) {
 	for _, test := range []struct {
 		name      string
 		spec      string
-		replicas  int
+		count     int
 		wantError bool
 	}{
-		{name: "defaults", spec: "{}", replicas: 1},
-		{name: "native template", spec: podTestSpec, replicas: 3},
-		{name: "zero", spec: "replicas: 0"},
-		{name: "no scale ceiling", spec: "replicas: 100000", replicas: 100000},
-		{name: "API validates fields", spec: "podTemplate: {spec: {restartPolicy: invalid}}", replicas: 1},
-		{name: "negative", spec: "replicas: -1", wantError: true},
+		{name: "defaults", spec: "{}", count: 1},
+		{name: "native template", spec: podTestSpec, count: 3},
+		{name: "zero", spec: "count: 0"},
+		{name: "no scale ceiling", spec: "count: 100000", count: 100000},
+		{name: "API validates fields", spec: "podTemplate: {spec: {restartPolicy: invalid}}", count: 1},
+		{name: "negative", spec: "count: -1", wantError: true},
+		{name: "fractional", spec: "count: 1.5", wantError: true},
+		{name: "old replicas field", spec: "replicas: 3", wantError: true},
 		{name: "unknown generator field", spec: "duration: 1m", wantError: true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -75,7 +77,7 @@ func TestNewPodGenerator(t *testing.T) {
 				return
 			}
 			require.NoError(t, err)
-			assert.Equal(t, test.replicas, g.config.Replicas)
+			assert.Equal(t, test.count, g.config.Count)
 			if test.name == "native template" {
 				assert.Equal(t, new(int64(7)), g.config.PodTemplate.Spec.TerminationGracePeriodSeconds)
 			}
@@ -87,13 +89,13 @@ func TestNewPodGenerator(t *testing.T) {
 }
 
 func TestPodRunWithoutCredentials(t *testing.T) {
-	g, err := NewPodGenerator(parseSpec(t, "replicas: 0"), "/does/not/exist")
+	g, err := NewPodGenerator(parseSpec(t, "count: 0"), "/does/not/exist")
 	require.NoError(t, err)
 	assert.NoError(t, g.Run(t.Context()))
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 	assert.ErrorIs(t, g.Run(ctx), context.Canceled)
-	g.config.Replicas = 1
+	g.config.Count = 1
 	assert.ErrorIs(t, g.Run(ctx), context.Canceled)
 }
 

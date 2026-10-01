@@ -1,7 +1,10 @@
 package generators
 
 import (
+	"context"
+	"errors"
 	"fmt"
+	"sync"
 
 	"go.yaml.in/yaml/v3"
 	corev1 "k8s.io/api/core/v1"
@@ -33,4 +36,33 @@ func preparePodTemplate(src corev1.PodTemplateSpec, owner string) corev1.PodTemp
 	}
 	template.Labels[generatorOwnerLabel] = owner
 	return *template
+}
+
+// runInstances runs independent resource lifecycles and waits for their cleanup.
+// An error cancels the remaining instances.
+func runInstances(ctx context.Context, count int, run func(context.Context) error) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if count == 1 {
+		return run(ctx)
+	}
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	var wg sync.WaitGroup
+	errs := make([]error, count)
+	for i := range count {
+		wg.Go(func() {
+			if err := ctx.Err(); err != nil {
+				errs[i] = err
+				return
+			}
+			errs[i] = run(ctx)
+			if errs[i] != nil {
+				cancel()
+			}
+		})
+	}
+	wg.Wait()
+	return errors.Join(errs...)
 }

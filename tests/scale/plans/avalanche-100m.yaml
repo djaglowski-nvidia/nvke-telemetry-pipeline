@@ -8,7 +8,7 @@ stages:
   generator:
     type: pod
     spec:
-      replicas: 7960
+      count: 7960
       podTemplate:
         metadata:
           labels:
@@ -97,7 +97,7 @@ stages:
   generator:
     type: pod
     spec:
-      replicas: 7604
+      count: 7604
       podTemplate:
         metadata:
           labels:
@@ -186,7 +186,7 @@ stages:
   generator:
     type: pod
     spec:
-      replicas: 40
+      count: 40
       podTemplate:
         metadata:
           labels:
@@ -275,7 +275,7 @@ stages:
   generator:
     type: pod
     spec:
-      replicas: 24
+      count: 24
       podTemplate:
         metadata:
           labels:
@@ -364,7 +364,7 @@ stages:
   generator:
     type: pod
     spec:
-      replicas: 24
+      count: 24
       podTemplate:
         metadata:
           labels:
@@ -453,7 +453,7 @@ stages:
   generator:
     type: pod
     spec:
-      replicas: 6
+      count: 6
       podTemplate:
         metadata:
           labels:

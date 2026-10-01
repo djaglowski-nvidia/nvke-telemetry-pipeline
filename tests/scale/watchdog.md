@@ -1,8 +1,10 @@
 # Watchdog load
 
-The [plan](plans/watchdog-5000.yaml) runs 5,000 Pods for 30 minutes. Each sends
-100 metric points and 100 log records per minute with 100 KiB log bodies,
-offering **8,333 points/s and 8,333 logs/s**, or **814 MiB/s of log bodies**.
+The [plan](plans/watchdog-5000.yaml) creates five StatefulSets concurrently in one
+stage, with 1,000 Pods each. Each set runs for 30 minutes after all its Pods first
+become Ready.
+Each Pod sends 100 metric points and 100 log records per minute with 100 KiB log
+bodies, offering **8,333 points/s and 8,333 logs/s**, or **814 MiB/s of log bodies**.
 
 The [profile](watchdog-values.yaml) uses the chart's watchdog resource and
 exporter defaults. Synthetic logs pass through watchdog to four overprovisioned
@@ -44,21 +46,20 @@ task scale:test KUBECONFIG="$KUBECONFIG" TEST_TIMEOUT=55m -- \
   -arg run-id="$RUN_ID"
 ```
 
-Require all 5,000 Pods with both containers Ready within ten minutes. Allow five
-minutes to settle, then assess 15 common minutes before any generator stops.
-Compare throughput, CPU, memory, queues, replicas, failures and observation
-freshness for every watchdog and source.
+Require all 5,000 Pods with both containers Ready within ten minutes. Once all
+sets are Ready, allow five minutes to settle and assess 15 minutes before the
+earliest set finishes. Each set has its own timer, so use their overlapping load
+interval. Compare throughput, CPU, memory, queues, replicas, failures and data
+freshness. Container restarts do not fail the test by themselves. Check
+`producer_restarts`, `fresh_sources` and throughput for load interruptions.
+Telemetrygen runs until the framework removes its StatefulSet.
 
 ## Cleanup and limitations
 
-The harness cleans up generator Pods, but cleanup can time out at this scale.
-After the harness stops, remove any remaining Pods from this run:
-
-```sh
-kubectl --kubeconfig "$KUBECONFIG" -n nktp delete pod \
-  -l "scale.nktp.io/workload=watchdog-5000,scale.nktp.io/run-id=$RUN_ID" \
-  --wait=true --timeout=15m
-```
+The harness removes each StatefulSet, its Pods and its headless Service, allowing
+five minutes for cleanup. If cleanup fails, delete only the StatefulSets named in
+the error with foreground propagation. Wait for their Pods to disappear before
+starting another run. Deleting only Pods causes replacements.
 
 - This approximates telemetry volume and client count, not the full collector
   telemetry mix.
