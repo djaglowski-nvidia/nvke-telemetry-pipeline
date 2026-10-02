@@ -294,11 +294,6 @@ omits them.
 Setting `daemonset.kubernetes.targetAllocator.enabled` to `false` will cause Helm
 rendering to fail.
 
-Legacy `daemonset.kubelet` values also cause Helm rendering to fail. Move scrape
-jobs and TLS settings into `daemonset.otelcol.config` and CA volumes and mounts
-into `daemonset.kubernetes`, then remove `daemonset.kubelet`. See
-[Kubelet metrics](../docs/kubelet_metrics.md) for the configuration paths and examples.
-
 Monitoring CRs labeled `nktp.nvidia.io/large-target: "true"` are excluded.
 Unlabeled monitors remain eligible. Targets without a matching collector node
 remain unassigned.

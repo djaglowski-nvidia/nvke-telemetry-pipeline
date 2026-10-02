@@ -4,29 +4,6 @@ release:
 templates:
   - templates/daemonset.yaml
 tests:
-  - it: rejects legacy kubelet CA settings with migration guidance
-    set:
-      daemonset.kubelet.tls.ca.configMap:
-        name: kubelet-serving-ca
-        key: ca.crt
-    asserts:
-      - failedTemplate:
-          errorMessage: daemonset.kubelet is no longer supported; migrate scrape jobs and TLS settings to daemonset.otelcol.config.receivers.prometheus/kubelet.config.scrape_configs and CA volumes/mounts to daemonset.kubernetes.volumes/volumeMounts, then remove daemonset.kubelet. See docs/kubelet_metrics.md
-
-  - it: rejects legacy disabled kubelet scrapes
-    set:
-      daemonset.kubelet.cadvisor.enabled: false
-    asserts:
-      - failedTemplate:
-          errorMessage: daemonset.kubelet is no longer supported; migrate scrape jobs and TLS settings to daemonset.otelcol.config.receivers.prometheus/kubelet.config.scrape_configs and CA volumes/mounts to daemonset.kubernetes.volumes/volumeMounts, then remove daemonset.kubelet. See docs/kubelet_metrics.md
-
-  - it: rejects an empty legacy kubelet map
-    set:
-      daemonset.kubelet: {}
-    asserts:
-      - failedTemplate:
-          errorMessage: daemonset.kubelet is no longer supported; migrate scrape jobs and TLS settings to daemonset.otelcol.config.receivers.prometheus/kubelet.config.scrape_configs and CA volumes/mounts to daemonset.kubernetes.volumes/volumeMounts, then remove daemonset.kubelet. See docs/kubelet_metrics.md
-
   - it: rejects disabled target allocation
     set:
       daemonset.kubernetes.targetAllocator.enabled: false

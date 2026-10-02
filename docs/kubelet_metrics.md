@@ -41,11 +41,9 @@ To enable verification, first create a ConfigMap in the NKTP release namespace
 that contains the kubelet-serving CA:
 
 ```console
-read -r -p "NKTP release namespace: " RELEASE_NAMESPACE
-read -r -p "Path to the kubelet-serving CA file: " KUBELET_CA_FILE
 kubectl create configmap kubelet-serving-ca \
-  --namespace "$RELEASE_NAMESPACE" \
-  --from-file="ca.crt=$KUBELET_CA_FILE"
+  --namespace <release-namespace> \
+  --from-file=ca.crt=/path/to/kubelet-serving-ca.crt
 ```
 
 Then mount it into the collector. Add this volume to

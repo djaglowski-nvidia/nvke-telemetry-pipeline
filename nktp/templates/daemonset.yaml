@@ -1,6 +1,3 @@
-{{- if hasKey .Values.daemonset "kubelet" -}}
-{{- fail "daemonset.kubelet is no longer supported; migrate scrape jobs and TLS settings to daemonset.otelcol.config.receivers.prometheus/kubelet.config.scrape_configs and CA volumes/mounts to daemonset.kubernetes.volumes/volumeMounts, then remove daemonset.kubelet. See docs/kubelet_metrics.md" -}}
-{{- end -}}
 {{- $allocator := .Values.daemonset.kubernetes.targetAllocator | default dict -}}
 {{- if not (and (kindIs "map" $allocator) (deepEqual $allocator.enabled true)) -}}
 {{- fail "daemonset.kubernetes.targetAllocator.enabled must be true to assign scrape targets to Collectors on the same node" -}}
