@@ -2714,7 +2714,7 @@
     "timepicker": {},
     "timezone": "browser",
     "title": "Reference - Cluster Availability",
-    "uid": null,
+    "uid": "nktp-availability-per-cluster-ref",
     "version": 1,
     "weekStart": ""
   }

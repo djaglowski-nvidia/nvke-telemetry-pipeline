@@ -1394,7 +1394,7 @@
     "timepicker": {},
     "timezone": "browser",
     "title": "Reference - Kubernetes Health",
-    "uid": null,
+    "uid": "nktp-kubernetes-health-ref",
     "version": 1,
     "weekStart": ""
   }

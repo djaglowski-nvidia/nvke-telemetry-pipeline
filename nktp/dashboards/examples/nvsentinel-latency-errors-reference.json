@@ -57,8 +57,8 @@
       {
         "id": 1,
         "type": "row",
-        "title": "Deployment Health",
-        "description": "Requires kube-state-metrics for resources in the nvsentinel namespace.",
+        "title": "Available",
+        "description": "Available deployments and ready StatefulSet replicas, DaemonSet pods, and pods in the nvsentinel namespace. Requires kube-state-metrics. Missing metrics are displayed as No data.",
         "collapsed": false,
         "gridPos": {
           "x": 0,
@@ -69,10 +69,10 @@
         "panels": []
       },
       {
-        "id": 2,
+        "id": 28,
         "type": "stat",
-        "title": "Unavailable deployments",
-        "description": "Deployments whose Available condition is false.",
+        "title": "Available deployments",
+        "description": "Deployments whose Available condition is true.",
         "gridPos": {
           "x": 0,
           "y": 14,
@@ -86,7 +86,7 @@
         "targets": [
           {
             "refId": "A",
-            "expr": "sum by (k8s_cluster_name) (kube_deployment_status_condition{namespace=\"nvsentinel\",k8s_cluster_name=~\"$cluster\",condition=\"Available\",status=\"false\"} == 1)",
+            "expr": "sum by (k8s_cluster_name) (kube_deployment_status_condition{namespace=\"nvsentinel\",k8s_cluster_name=~\"$cluster\",condition=\"Available\",status=\"true\"} == bool 1)",
             "legendFormat": "{{k8s_cluster_name}}",
             "instant": true,
             "range": false
@@ -102,7 +102,244 @@
                   "value": null
                 }
               ]
-            }
+            },
+            "unit": "short",
+            "decimals": 0,
+            "noValue": "No data"
+          },
+          "overrides": []
+        },
+        "options": {
+          "colorMode": "value",
+          "graphMode": "area",
+          "reduceOptions": {
+            "calcs": [
+              "lastNotNull"
+            ],
+            "fields": "",
+            "values": false
+          },
+          "textMode": "auto"
+        }
+      },
+      {
+        "id": 29,
+        "type": "stat",
+        "title": "Ready StatefulSet replicas",
+        "description": "Ready replicas across NVSentinel StatefulSets.",
+        "gridPos": {
+          "x": 6,
+          "y": 14,
+          "w": 6,
+          "h": 6
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${DS_PROMETHEUS}"
+        },
+        "targets": [
+          {
+            "refId": "A",
+            "expr": "sum by (k8s_cluster_name) (kube_statefulset_status_replicas_ready{namespace=\"nvsentinel\",k8s_cluster_name=~\"$cluster\"})",
+            "legendFormat": "{{k8s_cluster_name}}",
+            "instant": true,
+            "range": false
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {
+                  "color": "green",
+                  "value": null
+                }
+              ]
+            },
+            "unit": "short",
+            "decimals": 0,
+            "noValue": "No data"
+          },
+          "overrides": []
+        },
+        "options": {
+          "colorMode": "value",
+          "graphMode": "area",
+          "reduceOptions": {
+            "calcs": [
+              "lastNotNull"
+            ],
+            "fields": "",
+            "values": false
+          },
+          "textMode": "auto"
+        }
+      },
+      {
+        "id": 30,
+        "type": "stat",
+        "title": "Ready DaemonSet pods",
+        "description": "Ready pods across NVSentinel DaemonSets.",
+        "gridPos": {
+          "x": 12,
+          "y": 14,
+          "w": 6,
+          "h": 6
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${DS_PROMETHEUS}"
+        },
+        "targets": [
+          {
+            "refId": "A",
+            "expr": "sum by (k8s_cluster_name) (kube_daemonset_status_number_ready{namespace=\"nvsentinel\",k8s_cluster_name=~\"$cluster\"})",
+            "legendFormat": "{{k8s_cluster_name}}",
+            "instant": true,
+            "range": false
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {
+                  "color": "green",
+                  "value": null
+                }
+              ]
+            },
+            "unit": "short",
+            "decimals": 0,
+            "noValue": "No data"
+          },
+          "overrides": []
+        },
+        "options": {
+          "colorMode": "value",
+          "graphMode": "area",
+          "reduceOptions": {
+            "calcs": [
+              "lastNotNull"
+            ],
+            "fields": "",
+            "values": false
+          },
+          "textMode": "auto"
+        }
+      },
+      {
+        "id": 31,
+        "type": "stat",
+        "title": "Ready pods",
+        "description": "Pods whose Ready condition is true, across NVSentinel workloads.",
+        "gridPos": {
+          "x": 18,
+          "y": 14,
+          "w": 6,
+          "h": 6
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${DS_PROMETHEUS}"
+        },
+        "targets": [
+          {
+            "refId": "A",
+            "expr": "sum by (k8s_cluster_name) (kube_pod_status_ready{namespace=\"nvsentinel\",k8s_cluster_name=~\"$cluster\",condition=\"true\"})",
+            "legendFormat": "{{k8s_cluster_name}}",
+            "instant": true,
+            "range": false
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {
+                  "color": "green",
+                  "value": null
+                }
+              ]
+            },
+            "unit": "short",
+            "decimals": 0,
+            "noValue": "No data"
+          },
+          "overrides": []
+        },
+        "options": {
+          "colorMode": "value",
+          "graphMode": "area",
+          "reduceOptions": {
+            "calcs": [
+              "lastNotNull"
+            ],
+            "fields": "",
+            "values": false
+          },
+          "textMode": "auto"
+        }
+      },
+      {
+        "id": 32,
+        "type": "row",
+        "title": "Unavailable",
+        "description": "Deployment availability and progression failures, unready StatefulSet replicas, unavailable DaemonSet pods, and container waiting states in the nvsentinel namespace. Missing metrics do not indicate workload availability.",
+        "collapsed": false,
+        "gridPos": {
+          "x": 0,
+          "y": 20,
+          "w": 24,
+          "h": 1
+        },
+        "panels": []
+      },
+      {
+        "id": 2,
+        "type": "stat",
+        "title": "Unavailable deployments",
+        "description": "Deployments whose Available condition is false.",
+        "gridPos": {
+          "x": 0,
+          "y": 21,
+          "w": 6,
+          "h": 6
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${DS_PROMETHEUS}"
+        },
+        "targets": [
+          {
+            "refId": "A",
+            "expr": "sum by (k8s_cluster_name) (kube_deployment_status_condition{namespace=\"nvsentinel\",k8s_cluster_name=~\"$cluster\",condition=\"Available\",status=\"false\"} == bool 1)",
+            "legendFormat": "{{k8s_cluster_name}}",
+            "instant": true,
+            "range": false
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {
+                  "color": "green",
+                  "value": null
+                },
+                {
+                  "color": "red",
+                  "value": 1
+                }
+              ]
+            },
+            "unit": "short",
+            "decimals": 0,
+            "noValue": "No data"
           },
           "overrides": []
         },
@@ -126,7 +363,7 @@
         "description": "Deployments whose Progressing condition is false.",
         "gridPos": {
           "x": 6,
-          "y": 14,
+          "y": 21,
           "w": 6,
           "h": 6
         },
@@ -137,7 +374,7 @@
         "targets": [
           {
             "refId": "A",
-            "expr": "sum by (k8s_cluster_name) (kube_deployment_status_condition{namespace=\"nvsentinel\",k8s_cluster_name=~\"$cluster\",condition=\"Progressing\",status=\"false\"} == 1)",
+            "expr": "sum by (k8s_cluster_name) (kube_deployment_status_condition{namespace=\"nvsentinel\",k8s_cluster_name=~\"$cluster\",condition=\"Progressing\",status=\"false\"} == bool 1)",
             "legendFormat": "{{k8s_cluster_name}}",
             "instant": true,
             "range": false
@@ -151,9 +388,16 @@
                 {
                   "color": "green",
                   "value": null
+                },
+                {
+                  "color": "red",
+                  "value": 1
                 }
               ]
-            }
+            },
+            "unit": "short",
+            "decimals": 0,
+            "noValue": "No data"
           },
           "overrides": []
         },
@@ -173,11 +417,11 @@
       {
         "id": 4,
         "type": "stat",
-        "title": "StatefulSets with unready replicas",
-        "description": "",
+        "title": "Unready StatefulSet replicas",
+        "description": "Desired StatefulSet replicas minus ready replicas, summed across the cluster.",
         "gridPos": {
           "x": 12,
-          "y": 14,
+          "y": 21,
           "w": 6,
           "h": 6
         },
@@ -202,9 +446,16 @@
                 {
                   "color": "green",
                   "value": null
+                },
+                {
+                  "color": "red",
+                  "value": 1
                 }
               ]
-            }
+            },
+            "unit": "short",
+            "decimals": 0,
+            "noValue": "No data"
           },
           "overrides": []
         },
@@ -228,7 +479,7 @@
         "description": "",
         "gridPos": {
           "x": 18,
-          "y": 14,
+          "y": 21,
           "w": 6,
           "h": 6
         },
@@ -253,9 +504,16 @@
                 {
                   "color": "green",
                   "value": null
+                },
+                {
+                  "color": "red",
+                  "value": 1
                 }
               ]
-            }
+            },
+            "unit": "short",
+            "decimals": 0,
+            "noValue": "No data"
           },
           "overrides": []
         },
@@ -279,7 +537,7 @@
         "description": "Containers currently reporting a waiting reason.",
         "gridPos": {
           "x": 0,
-          "y": 20,
+          "y": 27,
           "w": 24,
           "h": 8
         },
@@ -333,7 +591,7 @@
         "collapsed": false,
         "gridPos": {
           "x": 0,
-          "y": 28,
+          "y": 35,
           "w": 24,
           "h": 1
         },
@@ -346,7 +604,7 @@
         "description": "",
         "gridPos": {
           "x": 0,
-          "y": 29,
+          "y": 36,
           "w": 12,
           "h": 8
         },
@@ -400,7 +658,7 @@
         "description": "",
         "gridPos": {
           "x": 12,
-          "y": 29,
+          "y": 36,
           "w": 12,
           "h": 8
         },
@@ -454,7 +712,7 @@
         "description": "Rate of failed NVSentinel DCGM API operations.",
         "gridPos": {
           "x": 0,
-          "y": 37,
+          "y": 44,
           "w": 24,
           "h": 8
         },
@@ -509,7 +767,7 @@
         "collapsed": false,
         "gridPos": {
           "x": 0,
-          "y": 45,
+          "y": 52,
           "w": 24,
           "h": 1
         },
@@ -522,7 +780,7 @@
         "description": "",
         "gridPos": {
           "x": 0,
-          "y": 46,
+          "y": 53,
           "w": 12,
           "h": 8
         },
@@ -576,7 +834,7 @@
         "description": "",
         "gridPos": {
           "x": 12,
-          "y": 46,
+          "y": 53,
           "w": 12,
           "h": 8
         },
@@ -630,7 +888,7 @@
         "description": "",
         "gridPos": {
           "x": 0,
-          "y": 54,
+          "y": 61,
           "w": 12,
           "h": 8
         },
@@ -684,7 +942,7 @@
         "description": "",
         "gridPos": {
           "x": 12,
-          "y": 54,
+          "y": 61,
           "w": 12,
           "h": 8
         },
@@ -738,7 +996,7 @@
         "description": "Current node-drainer operations waiting for their timeout.",
         "gridPos": {
           "x": 0,
-          "y": 62,
+          "y": 69,
           "w": 24,
           "h": 8
         },
@@ -792,7 +1050,7 @@
         "collapsed": false,
         "gridPos": {
           "x": 0,
-          "y": 70,
+          "y": 77,
           "w": 24,
           "h": 1
         },
@@ -805,7 +1063,7 @@
         "description": "",
         "gridPos": {
           "x": 0,
-          "y": 71,
+          "y": 78,
           "w": 12,
           "h": 8
         },
@@ -858,7 +1116,7 @@
         "description": "",
         "gridPos": {
           "x": 12,
-          "y": 71,
+          "y": 78,
           "w": 12,
           "h": 8
         },
@@ -912,7 +1170,7 @@
         "description": "",
         "gridPos": {
           "x": 0,
-          "y": 79,
+          "y": 86,
           "w": 12,
           "h": 8
         },
@@ -966,7 +1224,7 @@
         "description": "",
         "gridPos": {
           "x": 12,
-          "y": 79,
+          "y": 86,
           "w": 12,
           "h": 8
         },
@@ -1020,7 +1278,7 @@
         "description": "MongoDB member-state numeric values as exported by the MongoDB exporter.",
         "gridPos": {
           "x": 0,
-          "y": 87,
+          "y": 94,
           "w": 12,
           "h": 8
         },
@@ -1074,7 +1332,7 @@
         "description": "",
         "gridPos": {
           "x": 12,
-          "y": 87,
+          "y": 94,
           "w": 12,
           "h": 8
         },
@@ -1128,7 +1386,7 @@
         "collapsed": false,
         "gridPos": {
           "x": 0,
-          "y": 95,
+          "y": 102,
           "w": 24,
           "h": 1
         },
@@ -1141,7 +1399,7 @@
         "description": "",
         "gridPos": {
           "x": 0,
-          "y": 96,
+          "y": 103,
           "w": 12,
           "h": 8
         },
@@ -1195,7 +1453,7 @@
         "description": "",
         "gridPos": {
           "x": 12,
-          "y": 96,
+          "y": 103,
           "w": 12,
           "h": 8
         },
@@ -1249,7 +1507,7 @@
         "description": "",
         "gridPos": {
           "x": 0,
-          "y": 104,
+          "y": 111,
           "w": 24,
           "h": 8
         },
@@ -1341,7 +1599,7 @@
     "timepicker": {},
     "timezone": "browser",
     "title": "Reference - NVSentinel Latency and Errors",
-    "uid": null,
+    "uid": "nktp-nvsentinel-latency-errors-ref",
     "version": 1,
     "weekStart": ""
   }
