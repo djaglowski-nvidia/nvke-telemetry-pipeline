@@ -70,6 +70,12 @@ Label emulated pods `scale.nktp.io/lifecycle: complete-30s` to complete them aft
 30 seconds of Running time. Controller delays may extend their lifetime.
 Pods without the lifecycle label use KWOK's default behavior.
 
+## Stdout log generation
+
+The [stdout logs plan](stdout-logs.md) runs 94 Vector Pods per worker on 100 nodes,
+generating about 4 GiB/hour of log bodies per node through the node collectors
+and logs gateways.
+
 ## Watchdog load
 
 The [watchdog plan](watchdog.md) runs 5,000 sources, each sending 100 metric
