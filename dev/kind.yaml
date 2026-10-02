@@ -18,8 +18,15 @@ nodes:
       - |
         kind: KubeProxyConfiguration
         metricsBindAddress: 0.0.0.0:10249
-# Retain image layers so dev:down can save them for the next cluster.
+      # Pull images in parallel so small images do not wait behind large ones.
+      - |
+        kind: KubeletConfiguration
+        serializeImagePulls: false
+# Read registry mirror settings from certs.d. registry-mirrors.sh writes them.
+# Containerd can pull through the CRI image service or the transfer service.
 containerdConfigPatches:
   - |-
-    [plugins."io.containerd.grpc.v1.cri".containerd]
-      discard_unpacked_layers = false
+    [plugins."io.containerd.grpc.v1.cri".registry]
+      config_path = "/etc/containerd/certs.d"
+    [plugins."io.containerd.transfer.v1.local"]
+      config_path = "/etc/containerd/certs.d"

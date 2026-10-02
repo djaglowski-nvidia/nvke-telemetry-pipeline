@@ -13,5 +13,3 @@ tests/scale/.grafana-port-forward.log
 tests/e2e/.kubeconfig
 
 .idea/
-dev/.images.tar
-dev/.images.tar.tmp

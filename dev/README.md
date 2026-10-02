@@ -15,10 +15,14 @@ background (logs in `dev/.tilt.log`). Edits to the chart or the active config
 redeploy automatically.
 `dev:up` returns when Grafana is available, or after Helm applies the chart when
 LGTM is disabled. Other workloads may still be starting. Follow their status in
-Tilt. Images for the node's platform are cached between cluster recreations and
-restored with `kind load image-archive`. Cache preparation changes multi-platform
-index digests while preserving native image contents and references. Cache restore
-failures do not block startup.
+Tilt.
+
+Images are cached by a pull-through registry mirror for each upstream registry
+(Docker Hub, ghcr.io, quay.io, and registry.k8s.io). The mirrors run as Docker
+containers named `nktp-mirror-*`, outside the cluster, with their own volumes.
+They keep running after `dev:down`, so an image is downloaded only once and later
+clusters pull it locally. To clear the cache, remove those containers and
+volumes. See [registry-mirrors.sh](registry-mirrors.sh).
 
 The tooling never touches kubectl contexts or clusters other than its own. To
 point kubectl at the dev cluster, run the `export KUBECONFIG=...` line that

@@ -85,13 +85,8 @@ tasks:
         export {{.TOOLS_PATH}}
         if ! kind get clusters | grep -qx nktp; then
           kind create cluster --name nktp --image {{.NODE_IMAGE}} --kubeconfig .kubeconfig --config kind.yaml
-          if test -f .images.tar; then
-            echo "Restoring cached images into Kind..."
-            if ! kind load image-archive --name nktp .images.tar; then
-              echo "Could not restore the image cache. Continuing startup with normal image pulls." >&2
-            fi
-          fi
         fi
+        bash registry-mirrors.sh
       - '{{.TOOLS_PATH}} kind -q export kubeconfig --name nktp --kubeconfig .kubeconfig'
       - echo "Waiting for Kind nodes to become ready..."
       - '{{.TOOLS_PATH}} kubectl wait --kubeconfig .kubeconfig --context kind-nktp --for=condition=Ready nodes --all --timeout=5m'
@@ -109,20 +104,6 @@ tasks:
       - |
         export {{.TOOLS_PATH}}
         if kind get clusters | grep -qx nktp; then
-          echo "Saving Kind images for the next startup..."
-          if docker exec nktp-control-plane sh -ec '
-            cached_images=$(ctr -n k8s.io images list -q)
-            # Keep only the node platform so Kind can load the complete archive.
-            for image in $cached_images; do
-              ctr -n k8s.io images convert "$image" "$image" >/dev/null
-            done
-            ctr -n k8s.io images export --local - $cached_images
-          ' > .images.tar.tmp; then
-            mv .images.tar.tmp .images.tar
-          else
-            rm -f .images.tar.tmp
-            echo "Could not refresh the image cache. Continuing shutdown with the previous cache." >&2
-          fi
           kind delete cluster --name nktp --kubeconfig .kubeconfig
         else
           echo "Kind cluster is already stopped."
