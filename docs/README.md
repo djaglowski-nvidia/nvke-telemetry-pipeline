@@ -2,6 +2,10 @@
 
 This directory organizes NKTP architecture, design, installation, configuration, operational, service-owner, and testing documentation.
 
+## Installation
+
+- [Getting started](getting-started.md)
+
 ## Configuration
 
 - [Secure gateway export](gateway_mtls.md)
