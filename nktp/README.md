@@ -254,79 +254,10 @@ Restricted processes can have missing metrics or attributes and produce scrape
 errors.
 Node exporter remains responsible for other host metrics.
 
-Each DaemonSet collector also scrapes the kubelet `/metrics` endpoint on its own
-node over HTTPS every 30 seconds. The collector connects directly to the node's
-host IP on port 10250; this scrape does not use a ServiceMonitor or the Target
-Allocator. It authenticates with the collector's projected service-account token
-and has read-only `nodes/metrics` permission. The certificate authorities that
-sign kubelet serving certificates, and the subject alternative names in those
-certificates, vary between Kubernetes distributions, so certificate verification
-is disabled by default. To enable it, create a ConfigMap in the NKTP release
-namespace containing the kubelet-serving CA:
-
-```console
-kubectl create configmap kubelet-serving-ca \
-  --namespace <release-namespace> \
-  --from-file=ca.crt=/path/to/kubelet-serving-ca.crt
-```
-
-Then configure its name and key:
-
-```yaml
-daemonset:
-  kubelet:
-    tls:
-      ca:
-        configMap:
-          name: kubelet-serving-ca
-          key: ca.crt
-```
-
-The chart mounts the selected key into the collector and merges the required
-settings into the `kubelet` job's `tls_config`. It preserves other TLS fields,
-but this option takes precedence for `ca_file` and sets `insecure_skip_verify`
-to `false`.
-
-Each kubelet certificate must cover the node IP used by the collector.
-
-By default, each collector also scrapes `/metrics/cadvisor`. It applies default
-[metric relabelings copied from kube-prometheus-stack to drop less useful,
-always-zero, overlapping, host-network-interface, and podless-cgroup
-samples](https://github.com/prometheus-community/helm-charts/blob/4713c624771a48e99f16dec9eb55ec8204f06830/charts/kube-prometheus-stack/values.yaml#L1952).
-Set `daemonset.kubelet.cadvisor.metricRelabelings` to replace these filters.
-Disable cAdvisor or enable `/metrics/probes` and `/metrics/resource`
-independently:
-
-```yaml
-daemonset:
-  kubelet:
-    cadvisor:
-      enabled: false
-    probes:
-      enabled: true
-    resource:
-      enabled: true
-```
-
-Each optional job inherits the `/metrics` job's connection, authentication, and
-resolved TLS configuration.
-
-When kube-prometheus-stack is installed alongside NKTP, disable its kubelet
-ServiceMonitor only after enabling the required replacement endpoints in NKTP
-and migrating their consumers. This avoids scraping kubelet `/metrics` twice:
-
-```yaml
-kubelet:
-  serviceMonitor:
-    enabled: false
-```
-
-As a best-effort fallback, the DaemonSet Target Allocator excludes
-ServiceMonitors with the conventional
-`app` labels `kube-prometheus-stack-kubelet` and
-`prometheus-operator-kubelet` to avoid unintentionally assigning an externally
-managed kubelet scrape. ServiceMonitor names and labels are configurable, so
-this fallback is not guaranteed to identify every kubelet ServiceMonitor.
+Each DaemonSet collector also scrapes the kubelet `/metrics` and
+`/metrics/cadvisor` endpoints on its own node. See
+[Kubelet metrics](../docs/kubelet_metrics.md) to change these scrapes, verify
+kubelet certificates, or run NKTP alongside kube-prometheus-stack.
 
 The DaemonSet also collects systemd journal entries at info priority and above
 and forwards them to the logs gateway. Nodes must provide `/usr/bin/journalctl`
@@ -362,6 +293,11 @@ omits them.
 
 Setting `daemonset.kubernetes.targetAllocator.enabled` to `false` will cause Helm
 rendering to fail.
+
+Legacy `daemonset.kubelet` values also cause Helm rendering to fail. Move scrape
+jobs and TLS settings into `daemonset.otelcol.config` and CA volumes and mounts
+into `daemonset.kubernetes`, then remove `daemonset.kubelet`. See
+[Kubelet metrics](../docs/kubelet_metrics.md) for the configuration paths and examples.
 
 Monitoring CRs labeled `nktp.nvidia.io/large-target: "true"` are excluded.
 Unlabeled monitors remain eligible. Targets without a matching collector node

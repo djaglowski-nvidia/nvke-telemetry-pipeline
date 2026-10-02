@@ -4,6 +4,29 @@ release:
 templates:
   - templates/daemonset.yaml
 tests:
+  - it: rejects legacy kubelet CA settings with migration guidance
+    set:
+      daemonset.kubelet.tls.ca.configMap:
+        name: kubelet-serving-ca
+        key: ca.crt
+    asserts:
+      - failedTemplate:
+          errorMessage: daemonset.kubelet is no longer supported; migrate scrape jobs and TLS settings to daemonset.otelcol.config.receivers.prometheus/kubelet.config.scrape_configs and CA volumes/mounts to daemonset.kubernetes.volumes/volumeMounts, then remove daemonset.kubelet. See docs/kubelet_metrics.md
+
+  - it: rejects legacy disabled kubelet scrapes
+    set:
+      daemonset.kubelet.cadvisor.enabled: false
+    asserts:
+      - failedTemplate:
+          errorMessage: daemonset.kubelet is no longer supported; migrate scrape jobs and TLS settings to daemonset.otelcol.config.receivers.prometheus/kubelet.config.scrape_configs and CA volumes/mounts to daemonset.kubernetes.volumes/volumeMounts, then remove daemonset.kubelet. See docs/kubelet_metrics.md
+
+  - it: rejects an empty legacy kubelet map
+    set:
+      daemonset.kubelet: {}
+    asserts:
+      - failedTemplate:
+          errorMessage: daemonset.kubelet is no longer supported; migrate scrape jobs and TLS settings to daemonset.otelcol.config.receivers.prometheus/kubelet.config.scrape_configs and CA volumes/mounts to daemonset.kubernetes.volumes/volumeMounts, then remove daemonset.kubelet. See docs/kubelet_metrics.md
+
   - it: rejects disabled target allocation
     set:
       daemonset.kubernetes.targetAllocator.enabled: false
@@ -160,103 +183,6 @@ tests:
                   regex: .+;
       - notExists:
           path: spec.config.receivers["prometheus/kubelet"].target_allocator
-
-  - it: translates configured cAdvisor metric relabelings to Prometheus syntax
-    set:
-      daemonset.kubelet.cadvisor.metricRelabelings:
-        - sourceLabels: [__name__, scope]
-          targetLabel: copied_scope
-          action: replace
-    asserts:
-      - equal:
-          path: spec.config.receivers["prometheus/kubelet"].config.scrape_configs[1].metric_relabel_configs
-          value:
-            - source_labels: [__name__, scope]
-              target_label: copied_scope
-              action: replace
-
-  - it: can disable the default cAdvisor scrape
-    set:
-      daemonset.kubelet.cadvisor.enabled: false
-    asserts:
-      - notExists:
-          path: spec.config.receivers["prometheus/kubelet"].config.scrape_configs[1]
-
-  - it: optionally scrapes local kubelet probe and resource metrics
-    set:
-      daemonset.kubelet.probes.enabled: true
-      daemonset.kubelet.resource.enabled: true
-    asserts:
-      - equal:
-          path: spec.config.receivers["prometheus/kubelet"].config.scrape_configs[1].job_name
-          value: kubelet-cadvisor
-      - equal:
-          path: spec.config.receivers["prometheus/kubelet"].config.scrape_configs[1].metrics_path
-          value: /metrics/cadvisor
-      - equal:
-          path: spec.config.receivers["prometheus/kubelet"].config.scrape_configs[1].relabel_configs[4].replacement
-          value: /metrics/cadvisor
-      - equal:
-          path: spec.config.receivers["prometheus/kubelet"].config.scrape_configs[2].job_name
-          value: kubelet-probes
-      - equal:
-          path: spec.config.receivers["prometheus/kubelet"].config.scrape_configs[2].metrics_path
-          value: /metrics/probes
-      - equal:
-          path: spec.config.receivers["prometheus/kubelet"].config.scrape_configs[2].relabel_configs[4].replacement
-          value: /metrics/probes
-      - equal:
-          path: spec.config.receivers["prometheus/kubelet"].config.scrape_configs[3].job_name
-          value: kubelet-resource
-      - equal:
-          path: spec.config.receivers["prometheus/kubelet"].config.scrape_configs[3].metrics_path
-          value: /metrics/resource
-      - equal:
-          path: spec.config.receivers["prometheus/kubelet"].config.scrape_configs[3].relabel_configs[4].replacement
-          value: /metrics/resource
-
-  - it: mounts a kubelet-serving CA and preserves other TLS settings
-    set:
-      daemonset.kubelet.cadvisor.enabled: true
-      daemonset.kubelet.tls.ca.configMap.name: kubelet-serving-ca
-      daemonset.kubelet.tls.ca.configMap.key: cluster-ca.crt
-      daemonset.otelcol.config.receivers.prometheus/kubelet.config.scrape_configs:
-        - job_name: kubelet
-          scheme: https
-          tls_config:
-            ca_file: /custom/ignored-ca.crt
-            insecure_skip_verify: true
-            server_name: kubelet.example
-          static_configs:
-            - targets: ["127.0.0.1:10250"]
-    asserts:
-      - equal:
-          path: spec.config.receivers["prometheus/kubelet"].config.scrape_configs[0].tls_config
-          value:
-            ca_file: /etc/nktp/kubelet-serving-ca/ca.crt
-            insecure_skip_verify: false
-            server_name: kubelet.example
-      - equal:
-          path: spec.config.receivers["prometheus/kubelet"].config.scrape_configs[1].tls_config
-          value:
-            ca_file: /etc/nktp/kubelet-serving-ca/ca.crt
-            insecure_skip_verify: false
-            server_name: kubelet.example
-      - contains:
-          path: spec.volumes
-          content:
-            name: kubelet-serving-ca
-            configMap:
-              name: kubelet-serving-ca
-              items:
-                - key: cluster-ca.crt
-                  path: ca.crt
-      - contains:
-          path: spec.volumeMounts
-          content:
-            name: kubelet-serving-ca
-            mountPath: /etc/nktp/kubelet-serving-ca
-            readOnly: true
 
   - it: parses container records from a read-only host mount and excludes NKTP Collector logs
     asserts:
