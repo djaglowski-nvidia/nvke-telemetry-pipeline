@@ -4,6 +4,10 @@ version: '3'
 # a file dedicated to this project's Kind cluster. The dev loop never reads or
 # writes any other kubeconfig, regardless of the user's environment.
 
+vars:
+  # Taskfile env cannot override an inherited PATH, so commands set it inline.
+  TOOLS_PATH: 'PATH={{.TASKFILE_DIR | shellQuote}}/.bin:"$PATH"'
+
 tasks:
 
   # --- Dev-facing tasks ---
@@ -15,8 +19,9 @@ tasks:
     cmds:
       - task: stop-tilt
       - echo "Starting Tilt..."
-      - sh -c 'KUBECONFIG=$(pwd)/.kubeconfig tilt up --context kind-nktp {{if .CLI_ARGS}}-- --config {{.CLI_ARGS}}{{end}} > .tilt.log 2>&1 & echo $! > .tilt.pid'
+      - '{{.TOOLS_PATH}} sh -c ''KUBECONFIG=$(pwd)/.kubeconfig tilt up --context kind-nktp {{if .CLI_ARGS}}-- --config {{.CLI_ARGS}}{{end}} > .tilt.log 2>&1 & echo $! > .tilt.pid'''
       - |
+        export {{.TOOLS_PATH}}
         status=0
         bash wait-ready.sh || status=$?
         echo ""
@@ -66,7 +71,7 @@ tasks:
   cluster:up:
     internal: true
     desc: Create the local Kind cluster
-    deps: [check-local-deps]
+    deps: [tools]
     preconditions:
       - sh: docker info >/dev/null 2>&1
         msg: 'Docker daemon is not running. Start it (e.g. colima start, or Docker Desktop) and retry.'
@@ -77,6 +82,7 @@ tasks:
       # installed kind binary happens to default to.
       - echo "Preparing the local Kind cluster..."
       - |
+        export {{.TOOLS_PATH}}
         if ! kind get clusters | grep -qx nktp; then
           kind create cluster --name nktp --image {{.NODE_IMAGE}} --kubeconfig .kubeconfig --config kind.yaml
           if test -f .images.tar; then
@@ -86,13 +92,14 @@ tasks:
             fi
           fi
         fi
-      - kind -q export kubeconfig --name nktp --kubeconfig .kubeconfig
+      - '{{.TOOLS_PATH}} kind -q export kubeconfig --name nktp --kubeconfig .kubeconfig'
       - echo "Waiting for Kind nodes to become ready..."
-      - kubectl wait --kubeconfig .kubeconfig --context kind-nktp --for=condition=Ready nodes --all --timeout=5m
+      - '{{.TOOLS_PATH}} kubectl wait --kubeconfig .kubeconfig --context kind-nktp --for=condition=Ready nodes --all --timeout=5m'
       - task: :cert-manager:install
         vars:
           KUBECONFIG_FILE: '{{.TASKFILE_DIR}}/.kubeconfig'
           KUBE_CONTEXT: kind-nktp
+          TOOLS_PATH: '{{.TOOLS_PATH}}'
 
   cluster:down:
     internal: true
@@ -100,6 +107,7 @@ tasks:
     silent: true
     cmds:
       - |
+        export {{.TOOLS_PATH}}
         if kind get clusters | grep -qx nktp; then
           echo "Saving Kind images for the next startup..."
           if docker exec nktp-control-plane sh -ec '
@@ -121,14 +129,15 @@ tasks:
         fi
       - rm -f .kubeconfig
 
-  check-local-deps:
+  tools:
     internal: true
-    desc: Check that required local dev tools are installed
+    desc: Install the pinned kind, kubectl, helm, and tilt into dev/.bin
     silent: true
     cmds:
       - |
         missing=0
-        for tool in docker kind kubectl helm tilt curl; do
+        for tool in docker curl tar; do
           command -v "$tool" >/dev/null || { echo "missing: $tool (see dev/README.md)"; missing=1; }
         done
         exit $missing
+      - bash install-tools.sh

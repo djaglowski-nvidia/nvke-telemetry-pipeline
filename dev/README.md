@@ -1,6 +1,10 @@
 # Local Development
 
-Requires a Docker-compatible container runtime ([Docker Desktop](https://docs.docker.com/get-docker/), [Colima](https://github.com/abiosoft/colima), ...), [Task](https://taskfile.dev/installation/), [Kind](https://kind.sigs.k8s.io/docs/user/quick-start/#installation), [kubectl](https://kubernetes.io/docs/tasks/tools/), [Helm](https://helm.sh/docs/intro/install/), and [Tilt](https://docs.tilt.dev/install.html).
+Requires a Docker-compatible container runtime ([Docker Desktop](https://docs.docker.com/get-docker/), [Colima](https://github.com/abiosoft/colima), ...), [Task](https://taskfile.dev/installation/), `curl`, and `tar`.
+`task dev:up` downloads pinned versions of Kind, kubectl, Helm, and Tilt into
+`dev/.bin` and uses those instead of any installed copies. The versions are set
+in [install-tools.sh](install-tools.sh).
+
 ```sh
 task dev:up       # Kind cluster + cert-manager + NKTP chart + Tilt dev loop
 task dev:down     # remove the workloads and delete the cluster
