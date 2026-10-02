@@ -6,6 +6,10 @@ This directory organizes NKTP architecture, design, installation, configuration,
 
 - [Secure gateway export](gateway_mtls.md)
 
+## Design principles
+
+- [Design principles](design_principles.md)
+
 ## Design documents
 
 - [Repository layout](designs/repo_layout.md)

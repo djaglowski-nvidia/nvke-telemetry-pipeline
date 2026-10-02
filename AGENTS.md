@@ -14,7 +14,8 @@
   `nktp/templates/` for the chart; `occt/chart/templates/_transpile.tpl` for the
   transpiler; `Taskfile.yml` for commands; `dev/Tiltfile` for the local loop.
 - Docs home: [docs/README.md](docs/README.md). Contribution rules:
-  [CONTRIBUTING.md](CONTRIBUTING.md).
+  [CONTRIBUTING.md](CONTRIBUTING.md). Design principles, which every change
+  must follow: [docs/design_principles.md](docs/design_principles.md).
 
 ## Repository map
 
@@ -76,17 +77,22 @@ task dev:down
 
 ## Working rules
 
-1. **Read before writing.** Do not modify a template, values file, or test you
+1. **Always respect the design principles.** Every change must follow
+   [docs/design_principles.md](docs/design_principles.md). This rule comes
+   before all other rules in this file. If a task cannot be done without
+   breaking a principle, stop and explain why. Do not work around a principle,
+   and do not add an exception to one.
+2. **Read before writing.** Do not modify a template, values file, or test you
    have not read, and read the rendered output when the change affects it.
-2. **Tests must pass.** Run `task test` before opening a pull request, and the
+3. **Tests must pass.** Run `task test` before opening a pull request, and the
    OCCT tests when `occt/` changes. Fix failures; do not work around them, and
    do not treat a pre-existing failure as acceptable without saying so.
-3. **Never make a test pass by weakening it.** Do not skip, delete, or loosen
+4. **Never make a test pass by weakening it.** Do not skip, delete, or loosen
    an assertion, and do not regenerate a snapshot or golden file until you can
    explain why the rendered output changed and the change is intended.
-4. **Do what was asked.** Do not widen the change, add features, or refactor
+5. **Do what was asked.** Do not widen the change, add features, or refactor
    nearby code without being asked.
-5. **Stop after three failed attempts** at the same fix. Reassess and explain
+6. **Stop after three failed attempts** at the same fix. Reassess and explain
    what is blocking instead of trying a fourth variation.
 
 ## Secrets and credentials
@@ -146,6 +152,11 @@ Do not change unless explicitly instructed:
 
 Always:
 
+- Keep Collector configurations monolithic. Write each one as complete, native
+  Collector YAML in `values.yaml`, and render it unchanged. Templates must not
+  add, merge, or change anything inside a configuration, and no other value may
+  change one. There are no exceptions. See
+  [docs/design_principles.md](docs/design_principles.md).
 - Treat bundled dependency versions as deliberate pins. Propose a bump as its
   own pull request and update `Chart.lock` there with `helm dependency update`.
 - Do not add roadmap, support, security, or review-time commitments unless a
