@@ -1462,14 +1462,6 @@ daemonset:
                   - source_labels: [id, pod]
                     action: drop
                     regex: .+;
-        hostmetrics:
-          root_path: /hostfs
-          collection_interval: 1m
-          scrapers:
-            process:
-              resource_attributes:
-                process.command_line:
-                  enabled: false # Do not export process arguments.
       processors:
         memory_limiter:
           check_interval: 500ms # Poll Go heap Alloc. Bursts can allocate between checks.
@@ -1595,7 +1587,7 @@ daemonset:
             processors: [memory_limiter, resource/node, transform/operator]
             exporters: [otlp_http/watchdog]
           metrics:
-            receivers: [prometheus, prometheus/kubelet, hostmetrics, otlp]
+            receivers: [prometheus, prometheus/kubelet, otlp]
             processors: [memory_limiter, resource/node]
             exporters: [otlp_http/metrics]
           traces:

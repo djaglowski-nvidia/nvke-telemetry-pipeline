@@ -14,6 +14,7 @@ each part in depth.
 - [Configure cert-manager](guides/configure_cert_manager.md)
 - [Secure gateway export](guides/secure_gateway_export.md)
 - [Configure kubelet metrics](guides/configure_kubelet_metrics.md)
+- [Enable host process metrics](guides/enable_host_process_metrics.md)
 
 ## Send telemetry to NKTP
 

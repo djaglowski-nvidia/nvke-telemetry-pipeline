@@ -713,14 +713,6 @@ matches the snapshot with default values:
               enabled: true
               max_elapsed_time: 0
             start_at: beginning
-          hostmetrics:
-            collection_interval: 1m
-            root_path: /hostfs
-            scrapers:
-              process:
-                resource_attributes:
-                  process.command_line:
-                    enabled: false
           journald:
             directory: /var/log/journal
             journalctl_path: /usr/bin/journalctl
@@ -896,7 +888,6 @@ matches the snapshot with default values:
               receivers:
                 - prometheus
                 - prometheus/kubelet
-                - hostmetrics
                 - otlp
             traces:
               exporters:

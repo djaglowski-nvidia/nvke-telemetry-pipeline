@@ -56,7 +56,7 @@ tests:
             logs: {receivers: [filelog, journald, otlp, filelog/host-auth, filelog/host-audit, filelog/kube-api-audit], processors: [memory_limiter, resource/node], exporters: [otlp_http/logs]}
             logs/targetallocator: {receivers: [filelog/targetallocator], processors: [memory_limiter, resource/node, transform/targetallocator], exporters: [otlp_http/watchdog]}
             logs/operator: {receivers: [filelog/operator], processors: [memory_limiter, resource/node, transform/operator], exporters: [otlp_http/watchdog]}
-            metrics: {receivers: [prometheus, prometheus/kubelet, hostmetrics, otlp], processors: [memory_limiter, resource/node], exporters: [otlp_http/metrics]}
+            metrics: {receivers: [prometheus, prometheus/kubelet, otlp], processors: [memory_limiter, resource/node], exporters: [otlp_http/metrics]}
             traces: {receivers: [otlp], processors: [memory_limiter, resource/node], exporters: [otlp_http/traces]}
       - equal:
           path: spec.config.exporters["otlp_http/logs"].endpoint
@@ -607,7 +607,6 @@ tests:
           filelog/host-audit: null
           filelog/kube-api-audit: null
           prometheus: null
-          hostmetrics: null
           otlp:
             protocols:
               http: {endpoint: "0.0.0.0:4318"}
@@ -681,7 +680,22 @@ tests:
           path: spec.config.service.telemetry.metrics.readers[0].periodic.exporter.otlp.endpoint
           value: http://127.0.0.1:4319
 
-  - it: collects only per-process host metrics through the metrics gateway
+  - it: does not collect per-process host metrics by default
+    asserts:
+      - notExists:
+          path: spec.config.receivers.hostmetrics
+      - equal:
+          path: spec.config.service.pipelines.metrics
+          value:
+            receivers: [prometheus, prometheus/kubelet, otlp]
+            processors: [memory_limiter, resource/node]
+            exporters: [otlp_http/metrics]
+      - notExists:
+          path: spec.hostPID
+
+  - it: collects per-process host metrics with the documented opt-in values
+    values:
+      - ../../docs/examples/host_process_metrics.values.yaml
     asserts:
       - equal:
           path: spec.config.receivers.hostmetrics
@@ -690,14 +704,47 @@ tests:
             collection_interval: 1m
             scrapers:
               process:
+                mute_process_exe_error: true
+                mute_process_user_error: true
                 resource_attributes:
                   process.command_line: {enabled: false}
       - equal:
-          path: spec.config.service.pipelines.metrics
+          path: spec.config.service.pipelines["metrics/process"]
           value:
-            receivers: [prometheus, prometheus/kubelet, hostmetrics, otlp]
+            receivers: [hostmetrics]
             processors: [memory_limiter, resource/node]
             exporters: [otlp_http/metrics]
+      - equal:
+          path: spec.config.service.pipelines.metrics
+          value:
+            receivers: [prometheus, prometheus/kubelet, otlp]
+            processors: [memory_limiter, resource/node]
+            exporters: [otlp_http/metrics]
+      - equal:
+          path: spec.securityContext
+          value:
+            runAsUser: 0
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL], add: [SYS_CHROOT, SYS_PTRACE, DAC_READ_SEARCH]}
+            appArmorProfile: {type: Unconfined}
+      - lengthEqual:
+          path: spec.volumes
+          count: 9
+      - lengthEqual:
+          path: spec.volumeMounts
+          count: 10
+      - contains:
+          path: spec.volumes
+          content:
+            name: host-passwd
+            hostPath: {path: /etc/passwd, type: File}
+      - contains:
+          path: spec.volumeMounts
+          content: {name: host-passwd, mountPath: /etc/passwd, readOnly: true}
+      - contains:
+          path: spec.volumeMounts
+          content: {name: host-proc, mountPath: /hostfs/proc, readOnly: true}
       - notExists:
           path: spec.hostPID
 
@@ -713,7 +760,7 @@ tests:
           value: {receivers: [filelog, journald, otlp, filelog/host-auth, filelog/host-audit, filelog/kube-api-audit], processors: [memory_limiter, resource/node], exporters: [otlp_http/logs]}
       - equal:
           path: spec.config.service.pipelines.metrics
-          value: {receivers: [prometheus, prometheus/kubelet, hostmetrics, otlp], processors: [memory_limiter, resource/node], exporters: [otlp_http/metrics]}
+          value: {receivers: [prometheus, prometheus/kubelet, otlp], processors: [memory_limiter, resource/node], exporters: [otlp_http/metrics]}
       - equal:
           path: spec.config.service.pipelines.traces
           value: {receivers: [otlp], processors: [memory_limiter, resource/node], exporters: [otlp_http/traces]}

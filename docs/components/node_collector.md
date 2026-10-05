@@ -19,13 +19,10 @@ The DaemonSet reads pod logs from `/var/log/pods` and sends them to the logs
 gateway. A dedicated Target Allocator assigns monitored metric endpoints only
 to collectors on the same node. Metrics go to
 `http://nktp-gateway-metrics-collector:4318`, which requires the metrics gateway.
-The `hostmetrics` receiver reads host `/proc` through a read-only mount at
-`/hostfs/proc`. Only its `process` scraper is enabled. It collects per-process
-CPU time, physical and virtual memory, and disk I/O every minute, and sends them
-through the metrics gateway. Full process command lines are not exported.
-Restricted processes can have missing metrics or attributes and produce scrape
-errors.
-Node exporter remains responsible for other host metrics.
+Per-process host metrics are not collected by default. Node exporter provides
+host metrics, and the kubelet cAdvisor scrape provides per-container resource
+use. See [Enable host process metrics](../guides/enable_host_process_metrics.md)
+to enable the `hostmetrics` process scraper.
 
 Each DaemonSet collector also scrapes the kubelet `/metrics` and
 `/metrics/cadvisor` endpoints on its own node. See
