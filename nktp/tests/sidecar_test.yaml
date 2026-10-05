@@ -1,0 +1,245 @@
+suite: self-telemetry sidecars
+release:
+  namespace: nktp
+templates:
+  - templates/watchdog.yaml
+  - templates/gateway-logs.yaml
+  - templates/gateway-metrics.yaml
+  - templates/gateway-traces.yaml
+  - templates/daemonset.yaml
+  - templates/large-target-metrics.yaml
+  - templates/cluster-events.yaml
+tests:
+  - it: runs one native sidecar before each Collector
+    asserts:
+      - lengthEqual:
+          path: spec.initContainers
+          count: 1
+      - equal:
+          path: spec.initContainers[0].name
+          value: otc-sidecar
+      - equal:
+          path: spec.initContainers[0].restartPolicy
+          value: Always
+      - equal:
+          path: spec.initContainers[0].image
+          value: otel/opentelemetry-collector-k8s:0.162.0
+      - equal:
+          path: spec.initContainers[0].startupProbe.httpGet.port
+          value: 13134
+      - matchRegex:
+          path: spec.initContainers[0].args[0]
+          pattern: '^--config=yaml:\{.*"tail_sampling":'
+
+  - it: names each sidecar after its workload
+    asserts:
+      - matchRegex:
+          path: spec.initContainers[0].args[0]
+          pattern: '"service.name":"nktp-watchdog-sidecar"'
+        template: templates/watchdog.yaml
+      - matchRegex:
+          path: spec.initContainers[0].args[0]
+          pattern: '"service.name":"nktp-gateway-logs-sidecar"'
+        template: templates/gateway-logs.yaml
+      - matchRegex:
+          path: spec.initContainers[0].args[0]
+          pattern: '"service.name":"nktp-gateway-metrics-sidecar"'
+        template: templates/gateway-metrics.yaml
+      - matchRegex:
+          path: spec.initContainers[0].args[0]
+          pattern: '"service.name":"nktp-gateway-traces-sidecar"'
+        template: templates/gateway-traces.yaml
+      - matchRegex:
+          path: spec.initContainers[0].args[0]
+          pattern: '"service.name":"nktp-daemonset-sidecar"'
+        template: templates/daemonset.yaml
+      - matchRegex:
+          path: spec.initContainers[0].args[0]
+          pattern: '"service.name":"nktp-large-target-metrics-sidecar"'
+        template: templates/large-target-metrics.yaml
+      - matchRegex:
+          path: spec.initContainers[0].args[0]
+          pattern: '"service.name":"nktp-cluster-events-sidecar"'
+        template: templates/cluster-events.yaml
+
+  - it: sets the node name on the daemonset sidecar
+    template: templates/daemonset.yaml
+    asserts:
+      - contains:
+          path: spec.initContainers[0].env
+          content:
+            name: NODE_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: spec.nodeName
+      - matchRegex:
+          path: spec.initContainers[0].args[0]
+          pattern: '"k8s.node.name":"\$\{env:NODE_NAME\}"'
+
+  - it: keeps POD_NAME when a sidecar env list replaces the default
+    template: templates/gateway-logs.yaml
+    set:
+      gateway_logs.sidecar.kubernetes.env:
+        - name: GOMEMLIMIT
+          value: 100MiB
+    asserts:
+      - equal:
+          path: spec.initContainers[0].env
+          value:
+            - name: GOMEMLIMIT
+              value: 100MiB
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+
+  - it: keeps POD_NAME and NODE_NAME when the daemonset sidecar env list replaces the default
+    template: templates/daemonset.yaml
+    set:
+      daemonset.sidecar.kubernetes.env:
+        - name: GOMEMLIMIT
+          value: 100MiB
+    asserts:
+      - equal:
+          path: spec.initContainers[0].env
+          value:
+            - name: GOMEMLIMIT
+              value: 100MiB
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+
+  - it: sets NODE_NAME only on the daemonset sidecar
+    templates:
+      - templates/watchdog.yaml
+      - templates/gateway-logs.yaml
+      - templates/gateway-metrics.yaml
+      - templates/gateway-traces.yaml
+      - templates/large-target-metrics.yaml
+      - templates/cluster-events.yaml
+    asserts:
+      - notContains:
+          path: spec.initContainers[0].env
+          content:
+            name: NODE_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: spec.nodeName
+
+  - it: keeps a user-set POD_NAME in the sidecar env
+    template: templates/gateway-logs.yaml
+    set:
+      gateway_logs.sidecar.kubernetes.env:
+        - name: POD_NAME
+          value: custom
+    asserts:
+      - contains:
+          path: spec.initContainers[0].env
+          content:
+            name: POD_NAME
+            value: custom
+      - lengthEqual:
+          path: spec.initContainers[0].env
+          count: 1
+
+  - it: exports watchdog telemetry to the backend and all other telemetry to the watchdog
+    asserts:
+      - matchRegex:
+          path: spec.initContainers[0].args[0]
+          pattern: '"otlp_http":\{"endpoint":"http://lgtm:4318"'
+        template: templates/watchdog.yaml
+      - matchRegex:
+          path: spec.initContainers[0].args[0]
+          pattern: '"otlp_http":\{"endpoint":"http://nktp-watchdog-collector:4318"'
+        template: templates/gateway-logs.yaml
+      - matchRegex:
+          path: spec.initContainers[0].args[0]
+          pattern: '"otlp_http":\{"endpoint":"http://nktp-watchdog-collector:4318"'
+        template: templates/daemonset.yaml
+
+  - it: passes sidecar configuration values and native expressions unchanged
+    template: templates/gateway-logs.yaml
+    set:
+      gateway_logs.sidecar.otelcol.config.exporters.otlp_http.endpoint: ${env:DESTINATION}
+      gateway_logs.sidecar.otelcol.config.exporters.otlp_http.headers:
+        x-literal: "{{ preserved }} $$TOKEN"
+    asserts:
+      - matchRegex:
+          path: spec.initContainers[0].args[0]
+          pattern: '"otlp_http":\{"endpoint":"\$\{env:DESTINATION\}","headers":\{"x-literal":"\{\{ preserved \}\} \$\$TOKEN"\}'
+      - lengthEqual:
+          path: spec.initContainers[0].args
+          count: 1
+
+  - it: keeps the native sidecar fields when Kubernetes values override them
+    template: templates/gateway-logs.yaml
+    set:
+      gateway_logs.sidecar.kubernetes:
+        name: telemetry-buffer
+        image: example.com/ignored:1
+        restartPolicy: Never
+        args: [--ignored]
+        resources:
+          requests: {cpu: 5m, memory: 16Mi}
+    asserts:
+      - equal:
+          path: spec.initContainers[0].name
+          value: otc-sidecar
+      - equal:
+          path: spec.initContainers[0].image
+          value: otel/opentelemetry-collector-k8s:0.162.0
+      - equal:
+          path: spec.initContainers[0].restartPolicy
+          value: Always
+      - matchRegex:
+          path: spec.initContainers[0].args[0]
+          pattern: '^--config=yaml:'
+      - lengthEqual:
+          path: spec.initContainers[0].args
+          count: 1
+      - equal:
+          path: spec.initContainers[0].resources
+          value:
+            requests: {cpu: 5m, memory: 16Mi}
+            limits: {cpu: 200m, memory: 256Mi}
+
+  - it: resolves a sidecar image separately from the Collector image
+    template: templates/gateway-logs.yaml
+    set:
+      global.imageRegistry: mirror.example.com
+      gateway_logs.otelcol.image: {registry: example.com, repository: collector, tag: logs}
+      gateway_logs.sidecar.otelcol.image: {registry: example.com, repository: collector, tag: sidecar}
+    asserts:
+      - equal:
+          path: spec.image
+          value: mirror.example.com/collector:logs
+      - equal:
+          path: spec.initContainers[0].image
+          value: mirror.example.com/collector:sidecar
+
+  - it: appends the sidecar after other init containers
+    template: templates/daemonset.yaml
+    set:
+      daemonset.kubernetes.initContainers:
+        - name: prepare
+          image: example.com/prepare:1
+    asserts:
+      - equal:
+          path: spec.initContainers[0].name
+          value: prepare
+      - equal:
+          path: spec.initContainers[1].name
+          value: otc-sidecar
+
+  - it: rejects a sidecar without a Collector configuration
+    template: templates/cluster-events.yaml
+    set:
+      cluster_events.sidecar.otelcol.config: null
+    asserts:
+      - failedTemplate:
+          errorMessage: cluster_events.sidecar.otelcol.config must be a native Collector YAML map

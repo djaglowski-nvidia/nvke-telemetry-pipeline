@@ -4,7 +4,7 @@ release:
 templates:
   - templates/gateway-metrics.yaml
 tests:
-  - it: forwards only metrics and sends its own telemetry to watchdog
+  - it: forwards only metrics and sends its own telemetry through its sidecar
     asserts:
       - equal:
           path: metadata.name
@@ -51,22 +51,23 @@ tests:
                     exporter:
                       otlp:
                         protocol: http/protobuf
-                        endpoint: http://nktp-watchdog-collector:4318
+                        endpoint: http://127.0.0.1:4319
             logs:
               processors:
                 - batch:
                     exporter:
                       otlp:
                         protocol: http/protobuf
-                        endpoint: http://nktp-watchdog-collector:4318
+                        endpoint: http://127.0.0.1:4319
             traces:
               level: basic
               processors:
                 - batch:
+                    schedule_delay: 1000
                     exporter:
                       otlp:
                         protocol: http/protobuf
-                        endpoint: http://nktp-watchdog-collector:4318
+                        endpoint: http://127.0.0.1:4319
 
   - it: uses the global image with an existing Operator in another namespace
     release:
@@ -161,13 +162,13 @@ tests:
             batch: {sizer: bytes, min_size: 1048576, max_size: 2097152, flush_timeout: 1s}
       - equal:
           path: spec.config.service.telemetry.metrics.readers[0].periodic.exporter.otlp.endpoint
-          value: http://nktp-watchdog-collector:4318
+          value: http://127.0.0.1:4319
       - equal:
           path: spec.config.service.telemetry.logs.processors[0].batch.exporter.otlp.endpoint
-          value: http://nktp-watchdog-collector:4318
+          value: http://127.0.0.1:4319
       - equal:
           path: spec.config.service.telemetry.traces.processors[0].batch.exporter.otlp.endpoint
-          value: http://nktp-watchdog-collector:4318
+          value: http://127.0.0.1:4319
 
   - it: replaces own metric exporters independently
     set:
@@ -184,10 +185,10 @@ tests:
                   otlp: {protocol: grpc, endpoint: http://metrics.example:4317}
       - equal:
           path: spec.config.service.telemetry.logs.processors[0].batch.exporter.otlp.endpoint
-          value: http://nktp-watchdog-collector:4318
+          value: http://127.0.0.1:4319
       - equal:
           path: spec.config.service.telemetry.traces.processors[0].batch.exporter.otlp.endpoint
-          value: http://nktp-watchdog-collector:4318
+          value: http://127.0.0.1:4319
       - equal:
           path: spec.config.exporters.otlp_http.endpoint
           value: http://lgtm:4318
@@ -207,10 +208,10 @@ tests:
                   otlp: {protocol: grpc, endpoint: http://logs.example:4317}
       - equal:
           path: spec.config.service.telemetry.metrics.readers[0].periodic.exporter.otlp.endpoint
-          value: http://nktp-watchdog-collector:4318
+          value: http://127.0.0.1:4319
       - equal:
           path: spec.config.service.telemetry.traces.processors[0].batch.exporter.otlp.endpoint
-          value: http://nktp-watchdog-collector:4318
+          value: http://127.0.0.1:4319
       - equal:
           path: spec.config.exporters.otlp_http.endpoint
           value: http://lgtm:4318
@@ -230,10 +231,10 @@ tests:
                   otlp: {protocol: grpc, endpoint: http://traces.example:4317}
       - equal:
           path: spec.config.service.telemetry.metrics.readers[0].periodic.exporter.otlp.endpoint
-          value: http://nktp-watchdog-collector:4318
+          value: http://127.0.0.1:4319
       - equal:
           path: spec.config.service.telemetry.logs.processors[0].batch.exporter.otlp.endpoint
-          value: http://nktp-watchdog-collector:4318
+          value: http://127.0.0.1:4319
       - equal:
           path: spec.config.exporters.otlp_http.endpoint
           value: http://lgtm:4318

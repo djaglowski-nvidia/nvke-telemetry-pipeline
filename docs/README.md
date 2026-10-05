@@ -9,6 +9,7 @@ each part in depth.
 - [Getting started](getting-started.md)
 - [Topology](architecture/topology.md)
 - [Backpressure](architecture/backpressure.md)
+- [Self-telemetry sidecars](architecture/self_telemetry.md)
 - [Size resources](guides/size_resources.md)
 - [Configure cert-manager](guides/configure_cert_manager.md)
 - [Secure gateway export](guides/secure_gateway_export.md)

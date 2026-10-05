@@ -2,7 +2,7 @@
 
 The cluster event reader sends Kubernetes Event logs to the logs gateway. Two
 replicas share one watch through leader election. Its own metrics, logs and
-traces go to watchdog.
+traces go through its [sidecar](../architecture/self_telemetry.md) to watchdog.
 
 Use `cluster_events.otelcol.config` for Collector configuration and
 `cluster_events.kubernetes` for Kubernetes workload configuration. Retain

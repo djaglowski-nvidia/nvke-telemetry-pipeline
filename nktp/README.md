@@ -89,7 +89,9 @@ are silently dropped. Apply the new CRDs before `helm upgrade`.
 The node collectors, the large-target pool, and the event reader send each
 signal to its gateway, and the gateways export to the backend. Every NKTP
 component sends its own telemetry to the watchdog, which exports it to the
-backend without passing through the gateways.
+backend without passing through the gateways. Each Collector Pod runs a sidecar
+Collector that buffers the Collector's own telemetry and samples its traces on
+the way to the watchdog.
 
 ## Sending telemetry to NKTP
 

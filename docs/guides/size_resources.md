@@ -13,6 +13,8 @@ Default budgets are per Pod. Configure collector resources under
 | Watchdog | 500m / 512 MiB | 4 / 1 GiB |
 | Node Target Allocator | 250m / 2 GiB | 2 / 4 GiB |
 | Large-target and watchdog Target Allocators | 250m / 1 GiB | 1 / 2 GiB |
+| Self-telemetry sidecar, watchdog and gateways | 20m / 64 MiB | 200m / 256 MiB |
+| Self-telemetry sidecar, other Collectors | 10m / 32 MiB | 100m / 128 MiB |
 
 Node collectors use a `3276MiB` `GOMEMLIMIT`. Gateways use 7 GiB,
 large-target collectors use 8 GiB and watchdog uses 768 MiB. Tune runtime memory
@@ -28,4 +30,6 @@ reassignment under load, especially after restarts.
 See [Large-target metrics](../components/large_target_metrics.md#sizing-large-scrapes)
 for sizing the pool for large scrape responses, and
 [Backpressure](../architecture/backpressure.md) for how queues and the memory limiter
-behave when a component is saturated.
+behave when a component is saturated. See
+[Self-telemetry sidecars](../architecture/self_telemetry.md#sizing) for how the
+sidecar sizes were chosen.

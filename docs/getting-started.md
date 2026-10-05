@@ -20,7 +20,8 @@ that most often need preparing:
   TCP 9443. Managed clusters can block it with firewall rules or security groups.
 - **Capacity.** The defaults are sized for large clusters: about 10 CPU and
   26 GiB of memory in requests for the cluster-wide components, plus about
-  1.1 CPU and 2.1 GiB on every node. See
+  1.1 CPU and 2.2 GiB on every node. These totals include each Collector's
+  [self-telemetry sidecar](architecture/self_telemetry.md). See
   [Size resources](guides/size_resources.md).
 
 ## Install
@@ -75,38 +76,21 @@ for the dashboards that are included by default.
 
 ## Set a backend
 
-Everything leaves the cluster through four Collectors: the three gateways, one
-per signal, and the watchdog, which carries the other Collectors' own
-telemetry. Point all of them at your backend and turn the bundled one off. The
-backend must accept OTLP over HTTP for metrics, logs and traces, and accept
-delta-temporality metrics, which the Target Allocators send.
+Everything leaves the cluster through five Collectors: the three gateways, one
+per signal, the watchdog, which carries the other Collectors' own telemetry,
+and the watchdog's [sidecar](architecture/self_telemetry.md), which carries the
+watchdog's own telemetry. Point all of them at your backend and turn off the
+default LGTM backend. Your backend must accept OTLP over HTTP for metrics, logs
+and traces, and accept delta-temporality metrics, which the Target Allocators
+send.
 
 ```yaml
 otel-lgtm:
   enabled: false
 watchdog:
-  otelcol:
-    config:
-      exporters:
-        otlp_http:
-          endpoint: https://<backend>
-      service:
-        telemetry:
-          metrics:
-            readers:
-              - periodic:
-                  exporter:
-                    otlp: {protocol: http/protobuf, endpoint: https://<backend>}
-          logs:
-            processors:
-              - batch:
-                  exporter:
-                    otlp: {protocol: http/protobuf, endpoint: https://<backend>}
-          traces:
-            processors:
-              - batch:
-                  exporter:
-                    otlp: {protocol: http/protobuf, endpoint: https://<backend>}
+  otelcol: {config: {exporters: {otlp_http: {endpoint: https://<backend>}}}}
+  sidecar:
+    otelcol: {config: {exporters: {otlp_http: {endpoint: https://<backend>}}}}
 gateway_logs:
   otelcol: {config: {exporters: {otlp_http: {endpoint: https://<backend>}}}}
 gateway_metrics:

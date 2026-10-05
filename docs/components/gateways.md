@@ -2,7 +2,8 @@
 
 NKTP runs one gateway per signal. Each gateway accepts OTLP over gRPC and HTTP
 at its Service in the Helm release namespace, forwards what it receives to LGTM
-by default, and sends its own metrics, logs and traces to watchdog.
+by default, and sends its own metrics, logs and traces through its
+[sidecar](../architecture/self_telemetry.md) to watchdog.
 
 | Gateway | Values key | gRPC | HTTP |
 | --- | --- | --- | --- |

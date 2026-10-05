@@ -81,18 +81,22 @@ Each Collector reaches its Target Allocator over mTLS by default; see
 
 ```mermaid
 flowchart LR
-  col["Collector self-telemetry<br/>metrics, logs, traces"] --> wd["Watchdog"]
+  col["Collector self-telemetry<br/>metrics, logs, traces"] --> sc["Collector's sidecar"]
+  sc --> wd["Watchdog"]
   ta["Target Allocator metrics"] --> wd
   tal["Target Allocator and Operator logs<br/>read by the node collector"] --> wd
   op["Operator metrics<br/>scraped by the watchdog"] --> wd
   wd --> be[("Backend<br/>otel-lgtm by default")]
+  wd -. own telemetry .-> wsc["Watchdog's sidecar"]
+  wsc --> be
 ```
 
 The watchdog receives the pipeline's own telemetry at
 `http://nktp-watchdog-collector:4318`:
 
 - Every Collector except the watchdog exports its own metrics, logs and traces
-  there through `service.telemetry` in its configuration.
+  through `service.telemetry` to the sidecar in its Pod, and the sidecar exports
+  them there. See [Self-telemetry sidecars](self_telemetry.md).
 - Every Target Allocator pushes its metrics there.
 - The node collector reads Target Allocator and Operator container logs on its
   node and sends them there through its `logs/targetallocator` and
@@ -100,8 +104,8 @@ The watchdog receives the pipeline's own telemetry at
   Collectors' own pod logs, so they are not also sent through the logs gateway.
 - The watchdog scrapes the Operator's metrics endpoint itself.
 
-The watchdog forwards what it receives, and exports its own telemetry, directly
-to the backend. Self-telemetry therefore does not pass through the gateways.
+The watchdog forwards what it receives directly to the backend. Its own
+telemetry goes through its sidecar to the backend. Self-telemetry therefore does not pass through the gateways.
 See [Backpressure](backpressure.md) for how self-telemetry is buffered
 separately from collection.
 

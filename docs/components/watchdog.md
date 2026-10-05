@@ -2,7 +2,8 @@
 
 The watchdog receives internal metrics, logs and traces from NKTP collectors over
 OTLP/HTTP at `http://nktp-watchdog-collector:4318` in the Helm release namespace.
-It forwards received telemetry and exports its own telemetry to LGTM by default.
+It forwards received telemetry to LGTM by default. Its own telemetry goes through
+its [sidecar](../architecture/self_telemetry.md), which exports to LGTM by default.
 It also scrapes the Operator's metrics endpoint with the `nktp-operator` job in
 its `prometheus` receiver. See [Topology](../architecture/topology.md#self-telemetry)
 for every source of self-telemetry.

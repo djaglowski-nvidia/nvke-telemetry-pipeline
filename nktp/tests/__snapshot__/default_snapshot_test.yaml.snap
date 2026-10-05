@@ -365,14 +365,14 @@ matches the snapshot with default values:
                 - batch:
                     exporter:
                       otlp:
-                        endpoint: http://nktp-watchdog-collector:4318
+                        endpoint: http://127.0.0.1:4319
                         protocol: http/protobuf
             metrics:
               readers:
                 - periodic:
                     exporter:
                       otlp:
-                        endpoint: http://nktp-watchdog-collector:4318
+                        endpoint: http://127.0.0.1:4319
                         protocol: http/protobuf
             resource:
               service.instance.id: ${env:POD_NAME}
@@ -383,8 +383,9 @@ matches the snapshot with default values:
                 - batch:
                     exporter:
                       otlp:
-                        endpoint: http://nktp-watchdog-collector:4318
+                        endpoint: http://127.0.0.1:4319
                         protocol: http/protobuf
+                    schedule_delay: 1000
       env:
         - name: GOMEMLIMIT
           value: 896MiB
@@ -395,6 +396,43 @@ matches the snapshot with default values:
             fieldRef:
               fieldPath: metadata.namespace
       image: otel/opentelemetry-collector-k8s:0.162.0
+      initContainers:
+        - args:
+            - --config=yaml:{"exporters":{"otlp_http":{"endpoint":"http://nktp-watchdog-collector:4318","retry_on_failure":{"max_elapsed_time":"30m"},"sending_queue":{"batch":{"flush_timeout":"1s","max_size":262144,"min_size":65536,"sizer":"bytes"},"block_on_overflow":false,"num_consumers":2,"queue_size":4194304,"sizer":"bytes"}}},"extensions":{"health_check":{"endpoint":"0.0.0.0:13134"}},"processors":{"memory_limiter":{"check_interval":"500ms","limit_percentage":80,"spike_limit_percentage":25},"tail_sampling":{"decision_cache":{"sampled_cache_size":10000},"decision_wait":"5s","num_traces":1000,"policies":[{"name":"errors","status_code":{"status_codes":["ERROR"]},"type":"status_code"},{"name":"slow","ottl_condition":{"error_mode":"ignore","span":["end_time_unix_nano - start_time_unix_nano \u003e 1000000000"]},"type":"ottl_condition"}]}},"receivers":{"otlp":{"protocols":{"http":{"endpoint":"127.0.0.1:4319","keepalive":{"idle_timeout":"5m"}}}}},"service":{"extensions":["health_check"],"pipelines":{"logs":{"exporters":["otlp_http"],"processors":["memory_limiter"],"receivers":["otlp"]},"metrics":{"exporters":["otlp_http"],"processors":["memory_limiter"],"receivers":["otlp"]},"traces":{"exporters":["otlp_http"],"processors":["memory_limiter","tail_sampling"],"receivers":["otlp"]}},"telemetry":{"logs":{"processors":[{"batch":{"exporter":{"otlp":{"endpoint":"http://127.0.0.1:4319","protocol":"http/protobuf"}}}}]},"metrics":{"readers":[{"periodic":{"exporter":{"otlp":{"endpoint":"http://127.0.0.1:4319","protocol":"http/protobuf"}}}}]},"resource":{"service.instance.id":"${env:POD_NAME}","service.name":"nktp-cluster-events-sidecar"},"traces":{"level":"none"}}}}
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: GOMEMLIMIT
+              value: 96MiB
+          image: otel/opentelemetry-collector-k8s:0.162.0
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 13134
+          name: otc-sidecar
+          resources:
+            limits:
+              cpu: 100m
+              memory: 128Mi
+            requests:
+              cpu: 10m
+              memory: 32Mi
+          restartPolicy: Always
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+          startupProbe:
+            failureThreshold: 30
+            httpGet:
+              path: /
+              port: 13134
+            periodSeconds: 1
       managementState: managed
       mode: statefulset
       podDisruptionBudget:
@@ -874,14 +912,14 @@ matches the snapshot with default values:
                 - batch:
                     exporter:
                       otlp:
-                        endpoint: http://nktp-watchdog-collector:4318
+                        endpoint: http://127.0.0.1:4319
                         protocol: http/protobuf
             metrics:
               readers:
                 - periodic:
                     exporter:
                       otlp:
-                        endpoint: http://nktp-watchdog-collector:4318
+                        endpoint: http://127.0.0.1:4319
                         protocol: http/protobuf
             resource:
               k8s.node.name: ${env:NODE_NAME}
@@ -893,8 +931,9 @@ matches the snapshot with default values:
                 - batch:
                     exporter:
                       otlp:
-                        endpoint: http://nktp-watchdog-collector:4318
+                        endpoint: http://127.0.0.1:4319
                         protocol: http/protobuf
+                    schedule_delay: 1000
       env:
         - name: GOMEMLIMIT
           value: 3276MiB
@@ -913,6 +952,47 @@ matches the snapshot with default values:
             fieldRef:
               fieldPath: status.hostIP
       image: otel/opentelemetry-collector-k8s:0.162.0
+      initContainers:
+        - args:
+            - --config=yaml:{"exporters":{"otlp_http":{"endpoint":"http://nktp-watchdog-collector:4318","retry_on_failure":{"max_elapsed_time":"30m"},"sending_queue":{"batch":{"flush_timeout":"1s","max_size":262144,"min_size":65536,"sizer":"bytes"},"block_on_overflow":false,"num_consumers":2,"queue_size":4194304,"sizer":"bytes"}}},"extensions":{"health_check":{"endpoint":"0.0.0.0:13134"}},"processors":{"memory_limiter":{"check_interval":"500ms","limit_percentage":80,"spike_limit_percentage":25},"tail_sampling":{"decision_cache":{"sampled_cache_size":10000},"decision_wait":"5s","num_traces":1000,"policies":[{"name":"errors","status_code":{"status_codes":["ERROR"]},"type":"status_code"},{"name":"slow","ottl_condition":{"error_mode":"ignore","span":["end_time_unix_nano - start_time_unix_nano \u003e 1000000000"]},"type":"ottl_condition"}]}},"receivers":{"otlp":{"protocols":{"http":{"endpoint":"127.0.0.1:4319","keepalive":{"idle_timeout":"5m"}}}}},"service":{"extensions":["health_check"],"pipelines":{"logs":{"exporters":["otlp_http"],"processors":["memory_limiter"],"receivers":["otlp"]},"metrics":{"exporters":["otlp_http"],"processors":["memory_limiter"],"receivers":["otlp"]},"traces":{"exporters":["otlp_http"],"processors":["memory_limiter","tail_sampling"],"receivers":["otlp"]}},"telemetry":{"logs":{"processors":[{"batch":{"exporter":{"otlp":{"endpoint":"http://127.0.0.1:4319","protocol":"http/protobuf"}}}}]},"metrics":{"readers":[{"periodic":{"exporter":{"otlp":{"endpoint":"http://127.0.0.1:4319","protocol":"http/protobuf"}}}}]},"resource":{"k8s.node.name":"${env:NODE_NAME}","service.instance.id":"${env:POD_NAME}","service.name":"nktp-daemonset-sidecar"},"traces":{"level":"none"}}}}
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: GOMEMLIMIT
+              value: 96MiB
+          image: otel/opentelemetry-collector-k8s:0.162.0
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 13134
+          name: otc-sidecar
+          resources:
+            limits:
+              cpu: 100m
+              memory: 128Mi
+            requests:
+              cpu: 10m
+              memory: 32Mi
+          restartPolicy: Always
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+          startupProbe:
+            failureThreshold: 30
+            httpGet:
+              path: /
+              port: 13134
+            periodSeconds: 1
       managementState: managed
       mode: daemonset
       podSecurityContext:
@@ -1129,14 +1209,14 @@ matches the snapshot with default values:
                 - batch:
                     exporter:
                       otlp:
-                        endpoint: http://nktp-watchdog-collector:4318
+                        endpoint: http://127.0.0.1:4319
                         protocol: http/protobuf
             metrics:
               readers:
                 - periodic:
                     exporter:
                       otlp:
-                        endpoint: http://nktp-watchdog-collector:4318
+                        endpoint: http://127.0.0.1:4319
                         protocol: http/protobuf
             resource:
               service.instance.id: ${env:POD_NAME}
@@ -1147,14 +1227,52 @@ matches the snapshot with default values:
                 - batch:
                     exporter:
                       otlp:
-                        endpoint: http://nktp-watchdog-collector:4318
+                        endpoint: http://127.0.0.1:4319
                         protocol: http/protobuf
+                    schedule_delay: 1000
       env:
         - name: GOMEMLIMIT
           value: 7GiB
         - name: GOGC
           value: "50"
       image: otel/opentelemetry-collector-k8s:0.162.0
+      initContainers:
+        - args:
+            - --config=yaml:{"exporters":{"otlp_http":{"endpoint":"http://nktp-watchdog-collector:4318","retry_on_failure":{"max_elapsed_time":"30m"},"sending_queue":{"batch":{"flush_timeout":"1s","max_size":262144,"min_size":65536,"sizer":"bytes"},"block_on_overflow":false,"num_consumers":2,"queue_size":16777216,"sizer":"bytes"}}},"extensions":{"health_check":{"endpoint":"0.0.0.0:13134"}},"processors":{"memory_limiter":{"check_interval":"500ms","limit_percentage":80,"spike_limit_percentage":25},"tail_sampling":{"decision_cache":{"sampled_cache_size":50000},"decision_wait":"5s","num_traces":5000,"policies":[{"name":"errors","status_code":{"status_codes":["ERROR"]},"type":"status_code"},{"name":"slow","ottl_condition":{"error_mode":"ignore","span":["end_time_unix_nano - start_time_unix_nano \u003e 1000000000"]},"type":"ottl_condition"}]}},"receivers":{"otlp":{"protocols":{"http":{"endpoint":"127.0.0.1:4319","keepalive":{"idle_timeout":"5m"}}}}},"service":{"extensions":["health_check"],"pipelines":{"logs":{"exporters":["otlp_http"],"processors":["memory_limiter"],"receivers":["otlp"]},"metrics":{"exporters":["otlp_http"],"processors":["memory_limiter"],"receivers":["otlp"]},"traces":{"exporters":["otlp_http"],"processors":["memory_limiter","tail_sampling"],"receivers":["otlp"]}},"telemetry":{"logs":{"processors":[{"batch":{"exporter":{"otlp":{"endpoint":"http://127.0.0.1:4319","protocol":"http/protobuf"}}}}]},"metrics":{"readers":[{"periodic":{"exporter":{"otlp":{"endpoint":"http://127.0.0.1:4319","protocol":"http/protobuf"}}}}]},"resource":{"service.instance.id":"${env:POD_NAME}","service.name":"nktp-gateway-logs-sidecar"},"traces":{"level":"none"}}}}
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: GOMEMLIMIT
+              value: 192MiB
+          image: otel/opentelemetry-collector-k8s:0.162.0
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 13134
+          name: otc-sidecar
+          resources:
+            limits:
+              cpu: 200m
+              memory: 256Mi
+            requests:
+              cpu: 20m
+              memory: 64Mi
+          restartPolicy: Always
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+          startupProbe:
+            failureThreshold: 30
+            httpGet:
+              path: /
+              port: 13134
+            periodSeconds: 1
       managementState: managed
       mode: statefulset
       podDisruptionBudget:
@@ -1254,14 +1372,14 @@ matches the snapshot with default values:
                 - batch:
                     exporter:
                       otlp:
-                        endpoint: http://nktp-watchdog-collector:4318
+                        endpoint: http://127.0.0.1:4319
                         protocol: http/protobuf
             metrics:
               readers:
                 - periodic:
                     exporter:
                       otlp:
-                        endpoint: http://nktp-watchdog-collector:4318
+                        endpoint: http://127.0.0.1:4319
                         protocol: http/protobuf
             resource:
               service.instance.id: ${env:POD_NAME}
@@ -1272,14 +1390,52 @@ matches the snapshot with default values:
                 - batch:
                     exporter:
                       otlp:
-                        endpoint: http://nktp-watchdog-collector:4318
+                        endpoint: http://127.0.0.1:4319
                         protocol: http/protobuf
+                    schedule_delay: 1000
       env:
         - name: GOMEMLIMIT
           value: 7GiB
         - name: GOGC
           value: "50"
       image: otel/opentelemetry-collector-k8s:0.162.0
+      initContainers:
+        - args:
+            - --config=yaml:{"exporters":{"otlp_http":{"endpoint":"http://nktp-watchdog-collector:4318","retry_on_failure":{"max_elapsed_time":"30m"},"sending_queue":{"batch":{"flush_timeout":"1s","max_size":262144,"min_size":65536,"sizer":"bytes"},"block_on_overflow":false,"num_consumers":2,"queue_size":16777216,"sizer":"bytes"}}},"extensions":{"health_check":{"endpoint":"0.0.0.0:13134"}},"processors":{"memory_limiter":{"check_interval":"500ms","limit_percentage":80,"spike_limit_percentage":25},"tail_sampling":{"decision_cache":{"sampled_cache_size":50000},"decision_wait":"5s","num_traces":5000,"policies":[{"name":"errors","status_code":{"status_codes":["ERROR"]},"type":"status_code"},{"name":"slow","ottl_condition":{"error_mode":"ignore","span":["end_time_unix_nano - start_time_unix_nano \u003e 1000000000"]},"type":"ottl_condition"}]}},"receivers":{"otlp":{"protocols":{"http":{"endpoint":"127.0.0.1:4319","keepalive":{"idle_timeout":"5m"}}}}},"service":{"extensions":["health_check"],"pipelines":{"logs":{"exporters":["otlp_http"],"processors":["memory_limiter"],"receivers":["otlp"]},"metrics":{"exporters":["otlp_http"],"processors":["memory_limiter"],"receivers":["otlp"]},"traces":{"exporters":["otlp_http"],"processors":["memory_limiter","tail_sampling"],"receivers":["otlp"]}},"telemetry":{"logs":{"processors":[{"batch":{"exporter":{"otlp":{"endpoint":"http://127.0.0.1:4319","protocol":"http/protobuf"}}}}]},"metrics":{"readers":[{"periodic":{"exporter":{"otlp":{"endpoint":"http://127.0.0.1:4319","protocol":"http/protobuf"}}}}]},"resource":{"service.instance.id":"${env:POD_NAME}","service.name":"nktp-gateway-metrics-sidecar"},"traces":{"level":"none"}}}}
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: GOMEMLIMIT
+              value: 192MiB
+          image: otel/opentelemetry-collector-k8s:0.162.0
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 13134
+          name: otc-sidecar
+          resources:
+            limits:
+              cpu: 200m
+              memory: 256Mi
+            requests:
+              cpu: 20m
+              memory: 64Mi
+          restartPolicy: Always
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+          startupProbe:
+            failureThreshold: 30
+            httpGet:
+              path: /
+              port: 13134
+            periodSeconds: 1
       managementState: managed
       mode: statefulset
       podDisruptionBudget:
@@ -1379,14 +1535,14 @@ matches the snapshot with default values:
                 - batch:
                     exporter:
                       otlp:
-                        endpoint: http://nktp-watchdog-collector:4318
+                        endpoint: http://127.0.0.1:4319
                         protocol: http/protobuf
             metrics:
               readers:
                 - periodic:
                     exporter:
                       otlp:
-                        endpoint: http://nktp-watchdog-collector:4318
+                        endpoint: http://127.0.0.1:4319
                         protocol: http/protobuf
             resource:
               service.instance.id: ${env:POD_NAME}
@@ -1397,14 +1553,52 @@ matches the snapshot with default values:
                 - batch:
                     exporter:
                       otlp:
-                        endpoint: http://nktp-watchdog-collector:4318
+                        endpoint: http://127.0.0.1:4319
                         protocol: http/protobuf
+                    schedule_delay: 1000
       env:
         - name: GOMEMLIMIT
           value: 7GiB
         - name: GOGC
           value: "50"
       image: otel/opentelemetry-collector-k8s:0.162.0
+      initContainers:
+        - args:
+            - --config=yaml:{"exporters":{"otlp_http":{"endpoint":"http://nktp-watchdog-collector:4318","retry_on_failure":{"max_elapsed_time":"30m"},"sending_queue":{"batch":{"flush_timeout":"1s","max_size":262144,"min_size":65536,"sizer":"bytes"},"block_on_overflow":false,"num_consumers":2,"queue_size":16777216,"sizer":"bytes"}}},"extensions":{"health_check":{"endpoint":"0.0.0.0:13134"}},"processors":{"memory_limiter":{"check_interval":"500ms","limit_percentage":80,"spike_limit_percentage":25},"tail_sampling":{"decision_cache":{"sampled_cache_size":50000},"decision_wait":"5s","num_traces":5000,"policies":[{"name":"errors","status_code":{"status_codes":["ERROR"]},"type":"status_code"},{"name":"slow","ottl_condition":{"error_mode":"ignore","span":["end_time_unix_nano - start_time_unix_nano \u003e 1000000000"]},"type":"ottl_condition"}]}},"receivers":{"otlp":{"protocols":{"http":{"endpoint":"127.0.0.1:4319","keepalive":{"idle_timeout":"5m"}}}}},"service":{"extensions":["health_check"],"pipelines":{"logs":{"exporters":["otlp_http"],"processors":["memory_limiter"],"receivers":["otlp"]},"metrics":{"exporters":["otlp_http"],"processors":["memory_limiter"],"receivers":["otlp"]},"traces":{"exporters":["otlp_http"],"processors":["memory_limiter","tail_sampling"],"receivers":["otlp"]}},"telemetry":{"logs":{"processors":[{"batch":{"exporter":{"otlp":{"endpoint":"http://127.0.0.1:4319","protocol":"http/protobuf"}}}}]},"metrics":{"readers":[{"periodic":{"exporter":{"otlp":{"endpoint":"http://127.0.0.1:4319","protocol":"http/protobuf"}}}}]},"resource":{"service.instance.id":"${env:POD_NAME}","service.name":"nktp-gateway-traces-sidecar"},"traces":{"level":"none"}}}}
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: GOMEMLIMIT
+              value: 192MiB
+          image: otel/opentelemetry-collector-k8s:0.162.0
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 13134
+          name: otc-sidecar
+          resources:
+            limits:
+              cpu: 200m
+              memory: 256Mi
+            requests:
+              cpu: 20m
+              memory: 64Mi
+          restartPolicy: Always
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+          startupProbe:
+            failureThreshold: 30
+            httpGet:
+              path: /
+              port: 13134
+            periodSeconds: 1
       managementState: managed
       mode: statefulset
       podDisruptionBudget:
@@ -2720,14 +2914,14 @@ matches the snapshot with default values:
                 - batch:
                     exporter:
                       otlp:
-                        endpoint: http://nktp-watchdog-collector:4318
+                        endpoint: http://127.0.0.1:4319
                         protocol: http/protobuf
             metrics:
               readers:
                 - periodic:
                     exporter:
                       otlp:
-                        endpoint: http://nktp-watchdog-collector:4318
+                        endpoint: http://127.0.0.1:4319
                         protocol: http/protobuf
             resource:
               service.instance.id: ${env:POD_NAME}
@@ -2738,14 +2932,52 @@ matches the snapshot with default values:
                 - batch:
                     exporter:
                       otlp:
-                        endpoint: http://nktp-watchdog-collector:4318
+                        endpoint: http://127.0.0.1:4319
                         protocol: http/protobuf
+                    schedule_delay: 1000
       env:
         - name: GOMEMLIMIT
           value: 8GiB
         - name: GOGC
           value: "50"
       image: otel/opentelemetry-collector-k8s:0.162.0
+      initContainers:
+        - args:
+            - --config=yaml:{"exporters":{"otlp_http":{"endpoint":"http://nktp-watchdog-collector:4318","retry_on_failure":{"max_elapsed_time":"30m"},"sending_queue":{"batch":{"flush_timeout":"1s","max_size":262144,"min_size":65536,"sizer":"bytes"},"block_on_overflow":false,"num_consumers":2,"queue_size":4194304,"sizer":"bytes"}}},"extensions":{"health_check":{"endpoint":"0.0.0.0:13134"}},"processors":{"memory_limiter":{"check_interval":"500ms","limit_percentage":80,"spike_limit_percentage":25},"tail_sampling":{"decision_cache":{"sampled_cache_size":10000},"decision_wait":"5s","num_traces":1000,"policies":[{"name":"errors","status_code":{"status_codes":["ERROR"]},"type":"status_code"},{"name":"slow","ottl_condition":{"error_mode":"ignore","span":["end_time_unix_nano - start_time_unix_nano \u003e 1000000000"]},"type":"ottl_condition"}]}},"receivers":{"otlp":{"protocols":{"http":{"endpoint":"127.0.0.1:4319","keepalive":{"idle_timeout":"5m"}}}}},"service":{"extensions":["health_check"],"pipelines":{"logs":{"exporters":["otlp_http"],"processors":["memory_limiter"],"receivers":["otlp"]},"metrics":{"exporters":["otlp_http"],"processors":["memory_limiter"],"receivers":["otlp"]},"traces":{"exporters":["otlp_http"],"processors":["memory_limiter","tail_sampling"],"receivers":["otlp"]}},"telemetry":{"logs":{"processors":[{"batch":{"exporter":{"otlp":{"endpoint":"http://127.0.0.1:4319","protocol":"http/protobuf"}}}}]},"metrics":{"readers":[{"periodic":{"exporter":{"otlp":{"endpoint":"http://127.0.0.1:4319","protocol":"http/protobuf"}}}}]},"resource":{"service.instance.id":"${env:POD_NAME}","service.name":"nktp-large-target-metrics-sidecar"},"traces":{"level":"none"}}}}
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: GOMEMLIMIT
+              value: 96MiB
+          image: otel/opentelemetry-collector-k8s:0.162.0
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 13134
+          name: otc-sidecar
+          resources:
+            limits:
+              cpu: 100m
+              memory: 128Mi
+            requests:
+              cpu: 10m
+              memory: 32Mi
+          restartPolicy: Always
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+          startupProbe:
+            failureThreshold: 30
+            httpGet:
+              path: /
+              port: 13134
+            periodSeconds: 1
       managementState: managed
       mode: statefulset
       podDisruptionBudget:
@@ -9479,14 +9711,14 @@ matches the snapshot with default values:
                 - batch:
                     exporter:
                       otlp:
-                        endpoint: http://lgtm:4318
+                        endpoint: http://127.0.0.1:4319
                         protocol: http/protobuf
             metrics:
               readers:
                 - periodic:
                     exporter:
                       otlp:
-                        endpoint: http://lgtm:4318
+                        endpoint: http://127.0.0.1:4319
                         protocol: http/protobuf
             resource:
               service.instance.id: ${env:POD_NAME}
@@ -9497,14 +9729,52 @@ matches the snapshot with default values:
                 - batch:
                     exporter:
                       otlp:
-                        endpoint: http://lgtm:4318
+                        endpoint: http://127.0.0.1:4319
                         protocol: http/protobuf
+                    schedule_delay: 1000
       env:
         - name: GOMEMLIMIT
           value: 768MiB
         - name: GOGC
           value: "50"
       image: otel/opentelemetry-collector-k8s:0.162.0
+      initContainers:
+        - args:
+            - --config=yaml:{"exporters":{"otlp_http":{"endpoint":"http://lgtm:4318","retry_on_failure":{"max_elapsed_time":"30m"},"sending_queue":{"batch":{"flush_timeout":"1s","max_size":262144,"min_size":65536,"sizer":"bytes"},"block_on_overflow":false,"num_consumers":2,"queue_size":16777216,"sizer":"bytes"}}},"extensions":{"health_check":{"endpoint":"0.0.0.0:13134"}},"processors":{"memory_limiter":{"check_interval":"500ms","limit_percentage":80,"spike_limit_percentage":25},"tail_sampling":{"decision_cache":{"sampled_cache_size":50000},"decision_wait":"5s","num_traces":5000,"policies":[{"name":"errors","status_code":{"status_codes":["ERROR"]},"type":"status_code"},{"name":"slow","ottl_condition":{"error_mode":"ignore","span":["end_time_unix_nano - start_time_unix_nano \u003e 1000000000"]},"type":"ottl_condition"}]}},"receivers":{"otlp":{"protocols":{"http":{"endpoint":"127.0.0.1:4319","keepalive":{"idle_timeout":"5m"}}}}},"service":{"extensions":["health_check"],"pipelines":{"logs":{"exporters":["otlp_http"],"processors":["memory_limiter"],"receivers":["otlp"]},"metrics":{"exporters":["otlp_http"],"processors":["memory_limiter"],"receivers":["otlp"]},"traces":{"exporters":["otlp_http"],"processors":["memory_limiter","tail_sampling"],"receivers":["otlp"]}},"telemetry":{"logs":{"processors":[{"batch":{"exporter":{"otlp":{"endpoint":"http://127.0.0.1:4319","protocol":"http/protobuf"}}}}]},"metrics":{"readers":[{"periodic":{"exporter":{"otlp":{"endpoint":"http://127.0.0.1:4319","protocol":"http/protobuf"}}}}]},"resource":{"service.instance.id":"${env:POD_NAME}","service.name":"nktp-watchdog-sidecar"},"traces":{"level":"none"}}}}
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: GOMEMLIMIT
+              value: 192MiB
+          image: otel/opentelemetry-collector-k8s:0.162.0
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 13134
+          name: otc-sidecar
+          resources:
+            limits:
+              cpu: 200m
+              memory: 256Mi
+            requests:
+              cpu: 20m
+              memory: 64Mi
+          restartPolicy: Always
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+          startupProbe:
+            failureThreshold: 30
+            httpGet:
+              path: /
+              port: 13134
+            periodSeconds: 1
       managementState: managed
       mode: statefulset
       podDisruptionBudget:

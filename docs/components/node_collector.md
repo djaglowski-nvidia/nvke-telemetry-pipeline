@@ -73,7 +73,8 @@ names reach the logs gateway alongside the classification.
 
 ## Self-telemetry
 
-The collector's own metrics, logs and traces go to watchdog.
+The collector's own metrics, logs and traces go through its
+[sidecar](../architecture/self_telemetry.md) to watchdog.
 Target Allocator telemetry is sent to watchdog.
 Each collector also reads Target Allocator stdout and stderr logs on its node
 in the release namespace and sends them to watchdog through `logs/targetallocator`.

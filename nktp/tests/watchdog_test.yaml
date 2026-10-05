@@ -370,7 +370,7 @@ tests:
                   exporter:
                     otlp:
                       protocol: http/protobuf
-                      endpoint: http://lgtm:4318
+                      endpoint: http://127.0.0.1:4319
       - equal:
           path: spec.config.receivers.otlp.protocols
           value:
@@ -399,15 +399,16 @@ tests:
                 exporter:
                   otlp:
                     protocol: http/protobuf
-                    endpoint: http://lgtm:4318
+                    endpoint: http://127.0.0.1:4319
       - equal:
           path: spec.config.service.telemetry.traces.processors
           value:
             - batch:
+                schedule_delay: 1000
                 exporter:
                   otlp:
                     protocol: http/protobuf
-                    endpoint: http://lgtm:4318
+                    endpoint: http://127.0.0.1:4319
       - equal:
           path: spec.config.service.telemetry.resource
           value:
@@ -443,15 +444,16 @@ tests:
                     exporter:
                       otlp:
                         protocol: http/protobuf
-                        endpoint: http://lgtm:4318
+                        endpoint: http://127.0.0.1:4319
             traces:
               level: basic
               processors:
                 - batch:
+                    schedule_delay: 1000
                     exporter:
                       otlp:
                         protocol: http/protobuf
-                        endpoint: http://lgtm:4318
+                        endpoint: http://127.0.0.1:4319
       - equal:
           path: spec.config.exporters.otlp_http.endpoint
           value: http://lgtm:4318
@@ -484,7 +486,7 @@ tests:
                     exporter:
                       otlp:
                         protocol: http/protobuf
-                        endpoint: http://lgtm:4318
+                        endpoint: http://127.0.0.1:4319
             logs:
               processors:
                 - batch:
@@ -496,10 +498,11 @@ tests:
               level: basic
               processors:
                 - batch:
+                    schedule_delay: 1000
                     exporter:
                       otlp:
                         protocol: http/protobuf
-                        endpoint: http://lgtm:4318
+                        endpoint: http://127.0.0.1:4319
       - equal:
           path: spec.config.exporters.otlp_http.endpoint
           value: http://lgtm:4318
@@ -532,14 +535,14 @@ tests:
                     exporter:
                       otlp:
                         protocol: http/protobuf
-                        endpoint: http://lgtm:4318
+                        endpoint: http://127.0.0.1:4319
             logs:
               processors:
                 - batch:
                     exporter:
                       otlp:
                         protocol: http/protobuf
-                        endpoint: http://lgtm:4318
+                        endpoint: http://127.0.0.1:4319
             traces:
               level: basic
               processors:
@@ -581,13 +584,13 @@ tests:
               flush_timeout: 1s
       - equal:
           path: spec.config.service.telemetry.logs.processors[0].batch.exporter.otlp.endpoint
-          value: http://lgtm:4318
+          value: http://127.0.0.1:4319
       - equal:
           path: spec.config.service.telemetry.metrics.readers[0].periodic.exporter.otlp.endpoint
-          value: http://lgtm:4318
+          value: http://127.0.0.1:4319
       - equal:
           path: spec.config.service.telemetry.traces.processors[0].batch.exporter.otlp.endpoint
-          value: http://lgtm:4318
+          value: http://127.0.0.1:4319
 
   - it: preserves native environment references and literal expressions
     template: templates/watchdog.yaml

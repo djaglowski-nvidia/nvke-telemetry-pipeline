@@ -497,7 +497,7 @@ tests:
           value: http://nktp-gateway-metrics-collector:4318
       - equal:
           path: spec.config.service.telemetry.logs.processors[0].batch.exporter.otlp.endpoint
-          value: http://nktp-watchdog-collector:4318
+          value: http://127.0.0.1:4319
 
   - it: replaces own metric exporters independently
     set:
@@ -514,10 +514,10 @@ tests:
                   otlp: {protocol: grpc, endpoint: http://metrics.example:4317}
       - equal:
           path: spec.config.service.telemetry.logs.processors[0].batch.exporter.otlp.endpoint
-          value: http://nktp-watchdog-collector:4318
+          value: http://127.0.0.1:4319
       - equal:
           path: spec.config.service.telemetry.traces.processors[0].batch.exporter.otlp.endpoint
-          value: http://nktp-watchdog-collector:4318
+          value: http://127.0.0.1:4319
       - equal:
           path: spec.config.exporters["otlp_http/logs"].endpoint
           value: http://nktp-gateway-logs-collector:4318
@@ -537,10 +537,10 @@ tests:
                   otlp: {protocol: grpc, endpoint: http://logs.example:4317}
       - equal:
           path: spec.config.service.telemetry.metrics.readers[0].periodic.exporter.otlp.endpoint
-          value: http://nktp-watchdog-collector:4318
+          value: http://127.0.0.1:4319
       - equal:
           path: spec.config.service.telemetry.traces.processors[0].batch.exporter.otlp.endpoint
-          value: http://nktp-watchdog-collector:4318
+          value: http://127.0.0.1:4319
       - equal:
           path: spec.config.exporters["otlp_http/logs"].endpoint
           value: http://nktp-gateway-logs-collector:4318
@@ -560,10 +560,10 @@ tests:
                   otlp: {protocol: grpc, endpoint: http://traces.example:4317}
       - equal:
           path: spec.config.service.telemetry.metrics.readers[0].periodic.exporter.otlp.endpoint
-          value: http://nktp-watchdog-collector:4318
+          value: http://127.0.0.1:4319
       - equal:
           path: spec.config.service.telemetry.logs.processors[0].batch.exporter.otlp.endpoint
-          value: http://nktp-watchdog-collector:4318
+          value: http://127.0.0.1:4319
       - equal:
           path: spec.config.exporters["otlp_http/logs"].endpoint
           value: http://nktp-gateway-logs-collector:4318
@@ -679,7 +679,7 @@ tests:
                   otlpGrpc: {endpoint: "http://allocator-metrics:4317", tls: {insecure: true}}
       - equal:
           path: spec.config.service.telemetry.metrics.readers[0].periodic.exporter.otlp.endpoint
-          value: http://nktp-watchdog-collector:4318
+          value: http://127.0.0.1:4319
 
   - it: collects only per-process host metrics through the metrics gateway
     asserts:

@@ -7,6 +7,8 @@ can refuse data under memory pressure, so receivers and upstream senders must
 retry retryable failures. The Filelog receiver retries these failures until
 recovery and drops errors marked permanent.
 
-Each Collector exports its own telemetry through separate SDK buffering. Logs
-and traces use bounded asynchronous queues, and metrics use a periodic reader.
-This keeps monitoring congestion from blocking collection.
+Each Collector exports its own telemetry through separate SDK buffering to its
+[self-telemetry sidecar](self_telemetry.md). Logs and traces use bounded
+asynchronous queues, and metrics use a periodic reader. The sidecar has its own
+bounded queue and does not block when it is full. This keeps monitoring
+congestion from blocking collection.

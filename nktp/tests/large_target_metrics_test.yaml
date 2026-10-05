@@ -78,15 +78,15 @@ tests:
         documentIndex: 0
       - equal:
           path: "spec.config.service.telemetry.metrics.readers[0].periodic.exporter.otlp"
-          value: {"protocol": "http/protobuf", "endpoint": "http://nktp-watchdog-collector:4318"}
+          value: {"protocol": "http/protobuf", "endpoint": "http://127.0.0.1:4319"}
         documentIndex: 0
       - equal:
           path: "spec.config.service.telemetry.logs.processors[0].batch.exporter.otlp"
-          value: {"protocol": "http/protobuf", "endpoint": "http://nktp-watchdog-collector:4318"}
+          value: {"protocol": "http/protobuf", "endpoint": "http://127.0.0.1:4319"}
         documentIndex: 0
       - equal:
           path: "spec.config.service.telemetry.traces.processors[0].batch.exporter.otlp"
-          value: {"protocol": "http/protobuf", "endpoint": "http://nktp-watchdog-collector:4318"}
+          value: {"protocol": "http/protobuf", "endpoint": "http://127.0.0.1:4319"}
         documentIndex: 0
   - it: sets independent allocator security contexts and resource budgets
     asserts:
