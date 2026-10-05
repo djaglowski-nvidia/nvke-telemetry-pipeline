@@ -4,6 +4,15 @@ on:
   pull_request:
     branches:
       - main
+    paths:
+      - 'nktp/**'
+      - 'tests/e2e/**'
+      - 'tests/internal/**'
+      - 'tests/go.mod'
+      - 'tests/go.sum'
+      - 'Taskfile.yml'
+      - '.github/actions/setup-chart/**'
+      - '.github/workflows/nktp-chart-ci.yaml'
 
 permissions:
   contents: read
