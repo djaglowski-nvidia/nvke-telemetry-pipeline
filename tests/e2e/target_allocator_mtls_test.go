@@ -20,7 +20,6 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 
 	"github.com/NVIDIA-dev/nktp/tests/internal/framework"
-	"github.com/NVIDIA-dev/nktp/tests/internal/kube"
 )
 
 var certificates = schema.GroupVersionResource{
@@ -44,13 +43,13 @@ var targetAllocatorMTLSCases = []struct {
 // handler, so a new request proves the Collector completed mTLS and reached
 // the application rather than merely finding a ready certificate.
 func TestTargetAllocatorMTLS(t *testing.T) {
-	k := newKubeWithReadyRelease(t.Context(), t)
+	readyRelease(t.Context(), t)
 	ctx, cancel := deadline(t.Context())
 	defer cancel()
 	var baseline map[string]float64
 	var lastErr error
 	err := wait.PollUntilContextCancel(ctx, 5*time.Second, true, func(ctx context.Context) (bool, error) {
-		baseline, lastErr = targetAllocatorRequestCounts(ctx, k)
+		baseline, lastErr = targetAllocatorRequestCounts(ctx)
 		return lastErr == nil, nil
 	})
 	require.NoError(t, err, "reading Target Allocator request counts before checking for new requests: %v", lastErr)
@@ -93,7 +92,7 @@ func TestTargetAllocatorMTLS(t *testing.T) {
 	for _, tc := range targetAllocatorMTLSCases {
 		wantServices = append(wantServices, tc.serviceName)
 	}
-	require.NoError(t, waitForTargetAllocatorRequests(ctx, k, wantServices, baseline),
+	require.NoError(t, waitForTargetAllocatorRequests(ctx, wantServices, baseline),
 		"waiting for every Collector to request targets over mTLS")
 }
 
@@ -130,11 +129,11 @@ func hasServicePort(service *corev1.Service, name string, port int32) bool {
 
 const targetAllocatorRequestQuery = `sum by (service_name) (opentelemetry_allocator_http_duration_seconds_count{path="/jobs/:job_id/targets"})`
 
-func waitForTargetAllocatorRequests(ctx context.Context, k *kube.Client, want []string, baseline map[string]float64) error {
+func waitForTargetAllocatorRequests(ctx context.Context, want []string, baseline map[string]float64) error {
 	var got map[string]float64
 	var lastErr error
 	err := wait.PollUntilContextCancel(ctx, 5*time.Second, true, func(ctx context.Context) (bool, error) {
-		got, lastErr = targetAllocatorRequestCounts(ctx, k)
+		got, lastErr = targetAllocatorRequestCounts(ctx)
 		if lastErr != nil {
 			return false, nil
 		}
@@ -151,7 +150,7 @@ func waitForTargetAllocatorRequests(ctx context.Context, k *kube.Client, want []
 	return err
 }
 
-func targetAllocatorRequestCounts(ctx context.Context, k *kube.Client) (map[string]float64, error) {
+func targetAllocatorRequestCounts(ctx context.Context) (map[string]float64, error) {
 	body, err := k.ServiceEndpointQuery(ctx, *namespace, "lgtm", "9090", "/api/v1/query", map[string]string{"query": targetAllocatorRequestQuery})
 	if err != nil {
 		return nil, fmt.Errorf("querying Prometheus for Target Allocator requests: %w", err)

@@ -35,8 +35,7 @@ func TestChartLifecycle(t *testing.T) {
 		t.Skip("-nktp.install is unset, so this suite does not own a release to install or remove")
 	}
 
-	k := newKube(t)
-	deployed := newChart(t, k)
+	deployed := newChart(t)
 	owner := t
 
 	installed := t.Run("the chart installs", func(t *testing.T) {
@@ -45,7 +44,7 @@ func TestChartLifecycle(t *testing.T) {
 
 		owned, err := deployed.InstallFresh(ctx)
 		if owned {
-			registerChartCleanup(owner, deployed, k)
+			registerChartCleanup(owner, deployed)
 		}
 		require.NoError(t, err,
 			"installing a fresh release; validate an existing release with -nktp.install=false")
@@ -102,7 +101,7 @@ func TestChartLifecycle(t *testing.T) {
 		t.Run(stage, func(t *testing.T) {
 			for _, tc := range []struct {
 				name  string
-				check func(context.Context, *kube.Client) error
+				check func(context.Context) error
 			}{
 				{"the node exporter runs on every node", checkNodeExporterCoverage},
 				{"the node exporter serves host metrics", checkNodeExporterMetrics},
@@ -115,7 +114,7 @@ func TestChartLifecycle(t *testing.T) {
 				t.Run(tc.name, func(t *testing.T) {
 					ctx, cancel := deadline(t.Context())
 					defer cancel()
-					assert.NoError(t, tc.check(ctx, k))
+					assert.NoError(t, tc.check(ctx))
 				})
 			}
 		})

@@ -13,7 +13,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
 	"github.com/NVIDIA-dev/nktp/tests/internal/framework"
-	"github.com/NVIDIA-dev/nktp/tests/internal/kube"
 )
 
 // The node exporter labels every object it owns with its chart name, which is
@@ -26,7 +25,7 @@ var serviceMonitors = schema.GroupVersionResource{
 
 // Shared validation returns descriptive errors and never interacts with
 // testing.T. Each Test lists its coverage explicitly and reports failures.
-func checkNodeExporterCoverage(ctx context.Context, k *kube.Client) error {
+func checkNodeExporterCoverage(ctx context.Context) error {
 	daemonsets, err := k.DaemonSets(ctx, *namespace, nodeExporterSelector)
 	if err != nil {
 		return fmt.Errorf("listing node exporter DaemonSets: %w", err)
@@ -49,7 +48,7 @@ func checkNodeExporterCoverage(ctx context.Context, k *kube.Client) error {
 	return errors.Join(errs...)
 }
 
-func checkNodeExporterMetrics(ctx context.Context, k *kube.Client) error {
+func checkNodeExporterMetrics(ctx context.Context) error {
 	pods, err := k.Pods(ctx, *namespace, nodeExporterSelector)
 	if err != nil {
 		return fmt.Errorf("listing node exporter pods: %w", err)
@@ -67,7 +66,7 @@ func checkNodeExporterMetrics(ctx context.Context, k *kube.Client) error {
 	return nil
 }
 
-func checkNodeExporterMonitor(ctx context.Context, k *kube.Client) error {
+func checkNodeExporterMonitor(ctx context.Context) error {
 	monitors, err := k.CustomResources(ctx, *namespace, serviceMonitors)
 	if err != nil {
 		return fmt.Errorf("listing ServiceMonitors: %w", err)
@@ -79,7 +78,7 @@ func checkNodeExporterMonitor(ctx context.Context, k *kube.Client) error {
 	return nil
 }
 
-func checkGrafanaHealth(ctx context.Context, k *kube.Client) error {
+func checkGrafanaHealth(ctx context.Context) error {
 	body, err := k.ServiceEndpoint(ctx, *namespace, "lgtm", "3000", "/api/health")
 	if err != nil {
 		return fmt.Errorf("reaching Grafana through the lgtm service: %w", err)
@@ -90,7 +89,7 @@ func checkGrafanaHealth(ctx context.Context, k *kube.Client) error {
 	return nil
 }
 
-func checkCollectorDeployment(ctx context.Context, k *kube.Client) error {
+func checkCollectorDeployment(ctx context.Context) error {
 	collectors, err := k.CustomResources(ctx, *namespace, framework.Collectors)
 	if err != nil {
 		return fmt.Errorf("listing Collectors: %w", err)
@@ -112,7 +111,7 @@ func checkCollectorDeployment(ctx context.Context, k *kube.Client) error {
 	return nil
 }
 
-func checkCollectorReadiness(ctx context.Context, k *kube.Client) error {
+func checkCollectorReadiness(ctx context.Context) error {
 	collectors, err := k.CustomResources(ctx, *namespace, framework.Collectors)
 	if err != nil {
 		return fmt.Errorf("listing Collectors: %w", err)
@@ -140,7 +139,7 @@ func checkCollectorReadiness(ctx context.Context, k *kube.Client) error {
 	return errors.Join(errs...)
 }
 
-func checkRequiredCRDs(ctx context.Context, k *kube.Client) error {
+func checkRequiredCRDs(ctx context.Context) error {
 	var errs []error
 	for _, crd := range []struct{ group, resource string }{
 		{"monitoring.coreos.com", "servicemonitors"},

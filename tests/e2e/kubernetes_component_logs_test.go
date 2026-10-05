@@ -20,8 +20,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/util/retry"
-
-	"github.com/NVIDIA-dev/nktp/tests/internal/kube"
 )
 
 const componentLogsFixtureName = "nktp-e2e-component-logs"
@@ -53,7 +51,7 @@ type componentLogCase struct {
 // without credentials or data operations. This requires pods/proxy access and
 // an etcd pod labeled component=etcd with a TLS listener reachable on port 2379.
 func TestKubernetesComponentLogs(t *testing.T) {
-	k := newKubeWithReadyRelease(t.Context(), t)
+	readyRelease(t.Context(), t)
 
 	ctx, cancel := deadline(t.Context())
 	defer cancel()
@@ -62,8 +60,8 @@ func TestKubernetesComponentLogs(t *testing.T) {
 	etcdPods, err := k.CoreV1().Pods("kube-system").List(ctx, metav1.ListOptions{LabelSelector: "component=etcd"})
 	require.NoError(t, err, "listing etcd pods for the TLS rejection probe")
 	require.NotEmpty(t, etcdPods.Items, "the cluster must have an etcd pod to test")
-	createCoreDNSLogsFixture(ctx, t, k)
-	createComponentLogsFixture(ctx, t, k)
+	createCoreDNSLogsFixture(ctx, t)
+	createComponentLogsFixture(ctx, t)
 
 	// Loki normalizes dots to underscores. Pipeline filters also work
 	// for attributes stored as structured metadata rather than labels.
@@ -170,7 +168,7 @@ func TestKubernetesComponentLogs(t *testing.T) {
 					}
 				}
 			}
-			found[i], queryErrors[i] = lokiHasLogsSince(ctx, k, tc.expression, started)
+			found[i], queryErrors[i] = lokiHasLogsSince(ctx, tc.expression, started)
 			if ctx.Err() != nil {
 				return false, nil
 			}
@@ -180,7 +178,7 @@ func TestKubernetesComponentLogs(t *testing.T) {
 	})
 	if err != nil {
 		t.Logf("component log polling stopped after %s: %v", time.Since(started), err)
-		logComponentLogsDiagnostics(context.WithoutCancel(t.Context()), t, k, cases, found, started)
+		logComponentLogsDiagnostics(context.WithoutCancel(t.Context()), t, cases, found, started)
 	}
 	for i, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -198,7 +196,7 @@ func TestKubernetesComponentLogs(t *testing.T) {
 // Diagnostics use their own deadline after polling times out. Summaries avoid
 // application log bodies and unrelated healthy pods. All counters are cumulative
 // since process startup; sent records prove delivery to the next hop, not to Loki.
-func logComponentLogsDiagnostics(ctx context.Context, t *testing.T, k *kube.Client, cases []componentLogCase, found []bool, started time.Time) {
+func logComponentLogsDiagnostics(ctx context.Context, t *testing.T, cases []componentLogCase, found []bool, started time.Time) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(ctx, 45*time.Second)
 	defer cancel()
@@ -262,7 +260,7 @@ func logComponentLogsDiagnostics(ctx context.Context, t *testing.T, k *kube.Clie
 		t.Logf("log diagnostics: locating LGTM: error=%v", err)
 	} else {
 		pod := backend.Items[0]
-		logLGTMIngestionDiagnostics(ctx, t, k, pod)
+		logLGTMIngestionDiagnostics(ctx, t, pod)
 		probeCtx, probeCancel = context.WithTimeout(ctx, 3*time.Second)
 		ready, readyErr := k.PodEndpoint(probeCtx, *namespace, pod.Name, "3100", "/ready")
 		probeCancel()
@@ -341,7 +339,7 @@ func logComponentLogsDiagnostics(ctx context.Context, t *testing.T, k *kube.Clie
 		}
 		seen[selector] = true
 		probeCtx, probeCancel := context.WithTimeout(ctx, 3*time.Second)
-		present, err := lokiHasLogsSince(probeCtx, k, selector, started)
+		present, err := lokiHasLogsSince(probeCtx, selector, started)
 		probeCancel()
 		t.Logf("log diagnostics: Loki selector=%s present=%t error=%v", selector, present, err)
 	}
@@ -397,7 +395,7 @@ func logComponentLogsDiagnostics(ctx context.Context, t *testing.T, k *kube.Clie
 // e2e values enable their process logs; no telemetry payload exporter is enabled.
 // Keep only the most recent operational warnings/errors, including the previous
 // container when it restarted, rather than dumping every backend's startup logs.
-func logLGTMIngestionDiagnostics(ctx context.Context, t *testing.T, k *kube.Client, pod corev1.Pod) {
+func logLGTMIngestionDiagnostics(ctx context.Context, t *testing.T, pod corev1.Pod) {
 	t.Helper()
 	restarted := false
 	for _, status := range pod.Status.ContainerStatuses {
@@ -450,7 +448,7 @@ func logLGTMIngestionDiagnostics(ctx context.Context, t *testing.T, k *kube.Clie
 // createCoreDNSLogsFixture preserves the cluster's DNS configuration and only
 // adds query logging. A separate ConfigMap lets cleanup delete everything this
 // test creates without deleting or overwriting the cluster-owned ConfigMap.
-func createCoreDNSLogsFixture(ctx context.Context, t *testing.T, k *kube.Client) {
+func createCoreDNSLogsFixture(ctx context.Context, t *testing.T) {
 	t.Helper()
 	deployment, err := k.AppsV1().Deployments("kube-system").Get(ctx, "coredns", metav1.GetOptions{})
 	require.NoError(t, err, "reading the CoreDNS Deployment")
@@ -495,12 +493,12 @@ func createCoreDNSLogsFixture(ctx context.Context, t *testing.T, k *kube.Client)
 	t.Cleanup(func() {
 		cleanupCtx, cleanupCancel := context.WithTimeout(context.WithoutCancel(t.Context()), *timeout+30*time.Second)
 		defer cleanupCancel()
-		if !assert.NoError(t, setCoreDNSConfigMap(cleanupCtx, k, volumeName, fixture.Name, original.Name), "restoring CoreDNS configuration") {
+		if !assert.NoError(t, setCoreDNSConfigMap(cleanupCtx, volumeName, fixture.Name, original.Name), "restoring CoreDNS configuration") {
 			return
 		}
 		// Keep the temporary ConfigMap until the original configuration is
 		// serving again, so an incomplete rollout cannot strand DNS pods.
-		if !assert.NoError(t, waitForCoreDNSRollout(cleanupCtx, k), "waiting for restored CoreDNS") {
+		if !assert.NoError(t, waitForCoreDNSRollout(cleanupCtx), "waiting for restored CoreDNS") {
 			return
 		}
 		err := k.CoreV1().ConfigMaps("kube-system").Delete(cleanupCtx, fixture.Name, metav1.DeleteOptions{
@@ -510,11 +508,11 @@ func createCoreDNSLogsFixture(ctx context.Context, t *testing.T, k *kube.Client)
 			assert.NoError(t, err, "deleting the CoreDNS logs ConfigMap")
 		}
 	})
-	require.NoError(t, setCoreDNSConfigMap(ctx, k, volumeName, original.Name, fixture.Name), "enabling CoreDNS query logs")
-	require.NoError(t, waitForCoreDNSRollout(ctx, k), "waiting for CoreDNS query logging")
+	require.NoError(t, setCoreDNSConfigMap(ctx, volumeName, original.Name, fixture.Name), "enabling CoreDNS query logs")
+	require.NoError(t, waitForCoreDNSRollout(ctx), "waiting for CoreDNS query logging")
 }
 
-func setCoreDNSConfigMap(ctx context.Context, k *kube.Client, volumeName, from, to string) error {
+func setCoreDNSConfigMap(ctx context.Context, volumeName, from, to string) error {
 	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		deployment, err := k.AppsV1().Deployments("kube-system").Get(ctx, "coredns", metav1.GetOptions{})
 		if err != nil {
@@ -539,7 +537,7 @@ func setCoreDNSConfigMap(ctx context.Context, k *kube.Client, volumeName, from, 
 	})
 }
 
-func waitForCoreDNSRollout(ctx context.Context, k *kube.Client) error {
+func waitForCoreDNSRollout(ctx context.Context) error {
 	return wait.PollUntilContextCancel(ctx, 2*time.Second, true, func(ctx context.Context) (bool, error) {
 		deployment, err := k.AppsV1().Deployments("kube-system").Get(ctx, "coredns", metav1.GetOptions{})
 		if err != nil {
@@ -555,7 +553,7 @@ func waitForCoreDNSRollout(ctx context.Context, k *kube.Client) error {
 	})
 }
 
-func createComponentLogsFixture(ctx context.Context, t *testing.T, k *kube.Client) {
+func createComponentLogsFixture(ctx context.Context, t *testing.T) {
 	t.Helper()
 	fixture := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{Name: componentLogsFixtureName, Namespace: *namespace},
@@ -583,7 +581,7 @@ func createComponentLogsFixture(ctx context.Context, t *testing.T, k *kube.Clien
 	t.Cleanup(func() {
 		cleanupCtx, cleanupCancel := context.WithTimeout(context.WithoutCancel(t.Context()), *timeout+30*time.Second)
 		defer cleanupCancel()
-		assert.NoError(t, deleteComponentLogsDeployment(cleanupCtx, k, fixture), "removing the component logs Deployment")
+		assert.NoError(t, deleteComponentLogsDeployment(cleanupCtx, fixture), "removing the component logs Deployment")
 	})
 	service, err := k.CoreV1().Services(*namespace).Create(ctx, &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{Name: componentLogsFixtureName, Namespace: *namespace},
@@ -598,7 +596,7 @@ func createComponentLogsFixture(ctx context.Context, t *testing.T, k *kube.Clien
 	t.Cleanup(func() {
 		cleanupCtx, cleanupCancel := context.WithTimeout(context.WithoutCancel(t.Context()), *timeout+30*time.Second)
 		defer cleanupCancel()
-		assert.NoError(t, deleteComponentLogsService(cleanupCtx, k, service), "removing the component logs Service")
+		assert.NoError(t, deleteComponentLogsService(cleanupCtx, service), "removing the component logs Service")
 	})
 	var status appsv1.DeploymentStatus
 	err = wait.PollUntilContextCancel(ctx, 2*time.Second, true, func(ctx context.Context) (bool, error) {
@@ -613,7 +611,7 @@ func createComponentLogsFixture(ctx context.Context, t *testing.T, k *kube.Clien
 	require.NoError(t, err, "waiting for the component logs fixture; last Deployment status: %+v", status)
 }
 
-func deleteComponentLogsService(ctx context.Context, k *kube.Client, service *corev1.Service) error {
+func deleteComponentLogsService(ctx context.Context, service *corev1.Service) error {
 	err := k.CoreV1().Services(service.Namespace).Delete(ctx, service.Name, metav1.DeleteOptions{
 		Preconditions: &metav1.Preconditions{UID: &service.UID},
 	})
@@ -623,7 +621,7 @@ func deleteComponentLogsService(ctx context.Context, k *kube.Client, service *co
 	return err
 }
 
-func deleteComponentLogsDeployment(ctx context.Context, k *kube.Client, deployment *appsv1.Deployment) error {
+func deleteComponentLogsDeployment(ctx context.Context, deployment *appsv1.Deployment) error {
 	foreground := metav1.DeletePropagationForeground
 	err := k.AppsV1().Deployments(deployment.Namespace).Delete(ctx, deployment.Name, metav1.DeleteOptions{
 		PropagationPolicy: &foreground,
@@ -650,7 +648,7 @@ func deleteComponentLogsDeployment(ctx context.Context, k *kube.Client, deployme
 	})
 }
 
-func lokiHasLogsSince(ctx context.Context, k *kube.Client, expression string, started time.Time) (bool, error) {
+func lokiHasLogsSince(ctx context.Context, expression string, started time.Time) (bool, error) {
 	// LGTM exposes Grafana, whose provisioned Loki datasource proxies the
 	// internal Loki endpoint without requiring another chart service port.
 	now := time.Now()

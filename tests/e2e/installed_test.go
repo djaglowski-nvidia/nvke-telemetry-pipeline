@@ -7,8 +7,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-
-	"github.com/NVIDIA-dev/nktp/tests/internal/kube"
 )
 
 // TestInstalled validates the node exporter, backend, Collector workloads,
@@ -19,10 +17,10 @@ func TestInstalled(t *testing.T) {
 	if *install {
 		t.Skip("the lifecycle test owns the release; pass -nktp.install=false to validate one already installed")
 	}
-	k := newKubeWithReadyRelease(t.Context(), t)
+	readyRelease(t.Context(), t)
 	for _, tc := range []struct {
 		name  string
-		check func(context.Context, *kube.Client) error
+		check func(context.Context) error
 	}{
 		{"the node exporter runs on every node", checkNodeExporterCoverage},
 		{"the node exporter serves host metrics", checkNodeExporterMetrics},
@@ -35,7 +33,7 @@ func TestInstalled(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			ctx, cancel := deadline(t.Context())
 			defer cancel()
-			assert.NoError(t, tc.check(ctx, k))
+			assert.NoError(t, tc.check(ctx))
 		})
 	}
 }

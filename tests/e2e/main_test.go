@@ -42,6 +42,9 @@ var (
 	valueFiles valuesFlag
 )
 
+// kubeclient is created once and shared by all the tests
+var k *kube.Client
+
 // valuesFlag collects a repeatable -nktp.values in the order given, which is
 // the order Helm layers the files in.
 type valuesFlag []string
@@ -64,33 +67,23 @@ func TestMain(m *testing.M) {
 			"No cluster to test against: set KUBECONFIG, or pass -nktp.kubeconfig. Run `task e2e:test` to have a throwaway one created.")
 		os.Exit(1)
 	}
+	var err error
+	k, err = kube.New(*kubeconfig)
+	if err != nil {
+		fmt.Fprintln(os.Stderr,
+			"connecting to the cluster:", err)
+		os.Exit(1)
+	}
 	os.Exit(m.Run())
 }
 
-// newKube returns a client for the Kubernetes API of the cluster under test.
-func newKube(t *testing.T) *kube.Client {
-	t.Helper()
-
-	k, err := kube.New(*kubeconfig)
-	require.NoError(t, err, "connecting to the cluster")
-	return k
-}
-
-// newHelm returns a Helm client that logs to the test given to it, so build
-// one per test rather than sharing one: `go test` files a log line under
-// whichever test wrote it, not under the one running at the time.
-func newHelm(t *testing.T) *helm.Client {
-	t.Helper()
-	return &helm.Client{Kubeconfig: *kubeconfig, Log: logWriter{t}}
-}
-
 // newChart returns an installer for the configured release.
-func newChart(t *testing.T, k *kube.Client) *framework.Chart {
+func newChart(t *testing.T) *framework.Chart {
 	t.Helper()
 	return &framework.Chart{
-		Helm:       newHelm(t),
+		Helm:       &helm.Client{Kubeconfig: *kubeconfig, Log: logWriter{t}},
 		Kube:       k,
-		Release:    releaseRef(),
+		Release:    helm.Release{Name: *release, Namespace: *namespace},
 		Path:       *chart,
 		ValueFiles: valueFiles,
 		Timeout:    *timeout,
@@ -98,11 +91,11 @@ func newChart(t *testing.T, k *kube.Client) *framework.Chart {
 }
 
 // readyRelease makes the configured release ready by installing it or waiting
-// for an existing one, according to -nktp.install. It uses the supplied client
+// for an existing one, according to -nktp.install. It uses the global client
 // and returns the chart for tests that need to modify the release.
-func readyRelease(ctx context.Context, t *testing.T, k *kube.Client) *framework.Chart {
+func readyRelease(ctx context.Context, t *testing.T) *framework.Chart {
 	t.Helper()
-	deployed := newChart(t, k)
+	deployed := newChart(t)
 
 	ctx, cancel := deadline(ctx)
 	defer cancel()
@@ -111,7 +104,7 @@ func readyRelease(ctx context.Context, t *testing.T, k *kube.Client) *framework.
 		t.Logf("installing a fresh release %v/%v (all OpenTelemetryCollectors must be Ready)", deployed.Release.Namespace, deployed.Release.Name)
 		owned, err := deployed.InstallFresh(ctx)
 		if owned {
-			registerChartCleanup(t, deployed, k)
+			registerChartCleanup(t, deployed)
 		}
 		require.NoError(t, err, "installing a fresh release %v/%v", deployed.Release.Namespace, deployed.Release.Name)
 	} else {
@@ -126,23 +119,6 @@ func readyRelease(ctx context.Context, t *testing.T, k *kube.Client) *framework.
 	return deployed
 }
 
-// newKubeWithReadyRelease creates a Kubernetes client and installs or waits for
-// the configured release before returning that client. Release cleanup is
-// registered before fixture cleanup, so fixtures are removed first.
-func newKubeWithReadyRelease(ctx context.Context, t *testing.T) *kube.Client {
-	t.Helper()
-	started := time.Now()
-	k := newKube(t)
-	readyRelease(ctx, t, k)
-	t.Logf("release ready after %s", time.Since(started))
-	return k
-}
-
-// releaseRef names the release the suite operates on.
-func releaseRef() helm.Release {
-	return helm.Release{Name: *release, Namespace: *namespace}
-}
-
 // deadline budgets one operation. The grace beyond the timeout is there so
 // that a command handed the same timeout reports its own failure, instead of
 // being cut off by the context first and reporting a less specific one.
@@ -153,7 +129,7 @@ func deadline(ctx context.Context) (context.Context, context.CancelFunc) {
 // registerChartCleanup records ownership before a readiness assertion can
 // stop its caller. Cleanup uses independent contexts because a test's context
 // is canceled before its cleanup functions run.
-func registerChartCleanup(t *testing.T, deployed *framework.Chart, k *kube.Client) {
+func registerChartCleanup(t *testing.T, deployed *framework.Chart) {
 	t.Helper()
 	t.Cleanup(func() {
 		uninstallCtx, cancelUninstall := context.WithTimeout(context.WithoutCancel(t.Context()), *timeout+30*time.Second)

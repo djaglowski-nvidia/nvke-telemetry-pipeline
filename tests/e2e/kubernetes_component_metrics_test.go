@@ -20,7 +20,7 @@ const componentMetricMaxAge = 2 * time.Minute
 // ServiceMonitor delivers a recent metric to LGTM. The job label distinguishes
 // the four Kubernetes components that all export kubernetes_build_info.
 func TestKubernetesComponentMetrics(t *testing.T) {
-	k := newKubeWithReadyRelease(t.Context(), t)
+	readyRelease(t.Context(), t)
 
 	cases := []struct {
 		component string
@@ -48,7 +48,7 @@ func TestKubernetesComponentMetrics(t *testing.T) {
 			}
 			expression := fmt.Sprintf(`timestamp(%s{job=%q}) > time() - %d`,
 				tc.metric, tc.job, int(componentMetricMaxAge.Seconds()))
-			jobs, queryErr := prometheusMetricLabelValues(ctx, k, expression, "job")
+			jobs, queryErr := prometheusMetricLabelValues(ctx, expression, "job")
 			if ctx.Err() != nil {
 				return false, nil
 			}

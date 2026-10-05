@@ -11,7 +11,6 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/NVIDIA-dev/nktp/tests/internal/kube"
 	"github.com/google/go-cmp/cmp"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
@@ -26,8 +25,7 @@ func TestTargetAllocatorRBAC(t *testing.T) {
 		t.Skip("RBAC updates require a release owned by the test")
 	}
 
-	k := newKube(t)
-	deployed := readyRelease(t.Context(), t, k)
+	deployed := readyRelease(t.Context(), t)
 	baseline := slices.Clone(deployed.ValueFiles)
 
 	ctx, cancel := deadline(t.Context())
@@ -63,7 +61,7 @@ func TestTargetAllocatorRBAC(t *testing.T) {
 		ctx, cancel := deadline(t.Context())
 		defer cancel()
 
-		if err := checkTargetAllocatorRBAC(ctx, k, secretNamespace.Name, false); err != nil {
+		if err := checkTargetAllocatorRBAC(ctx, secretNamespace.Name, false); err != nil {
 			t.Error(err)
 		}
 	}) {
@@ -78,7 +76,7 @@ func TestTargetAllocatorRBAC(t *testing.T) {
 		if _, err := deployed.Apply(ctx); err != nil {
 			t.Fatalf("Apply secretNamespaces override: %v", err)
 		}
-		if err := checkTargetAllocatorRBAC(ctx, k, secretNamespace.Name, true); err != nil {
+		if err := checkTargetAllocatorRBAC(ctx, secretNamespace.Name, true); err != nil {
 			t.Error(err)
 		}
 	}) {
@@ -93,13 +91,13 @@ func TestTargetAllocatorRBAC(t *testing.T) {
 		if _, err := deployed.Apply(ctx); err != nil {
 			t.Fatalf("Restore baseline values: %v", err)
 		}
-		if err := checkTargetAllocatorRBAC(ctx, k, secretNamespace.Name, false); err != nil {
+		if err := checkTargetAllocatorRBAC(ctx, secretNamespace.Name, false); err != nil {
 			t.Error(err)
 		}
 	})
 }
 
-func checkTargetAllocatorRBAC(ctx context.Context, k *kube.Client, secretNamespace string, present bool) error {
+func checkTargetAllocatorRBAC(ctx context.Context, secretNamespace string, present bool) error {
 	var errs []error
 	name := "nktp-daemonset-monitor-" + *namespace
 	role, roleErr := k.RbacV1().Roles(secretNamespace).Get(ctx, name, metav1.GetOptions{})

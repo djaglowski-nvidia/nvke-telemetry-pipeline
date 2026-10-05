@@ -17,8 +17,6 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
-
-	"github.com/NVIDIA-dev/nktp/tests/internal/kube"
 )
 
 const (
@@ -31,7 +29,7 @@ const (
 // to observe, requires that workload's memory metric to be non-zero, and then
 // removes the fixture and, in install mode, the release.
 func TestKubeletMetrics(t *testing.T) {
-	k := newKubeWithReadyRelease(t.Context(), t)
+	readyRelease(t.Context(), t)
 
 	ctx, cancel := deadline(t.Context())
 	defer cancel()
@@ -40,13 +38,13 @@ func TestKubeletMetrics(t *testing.T) {
 	require.NoError(t, err, "listing nodes for the kubelet metrics fixture")
 	require.NotEmpty(t, nodes.Items, "the cluster must have a node to test")
 
-	require.NoError(t, createKubeletMetricsFixture(ctx, k))
+	require.NoError(t, createKubeletMetricsFixture(ctx))
 	t.Cleanup(func() {
 		cleanupCtx, cleanupCancel := deadline(context.WithoutCancel(t.Context()))
 		defer cleanupCancel()
-		assert.NoError(t, deleteKubeletMetricsFixture(cleanupCtx, k), "removing the kubelet metrics fixture")
+		assert.NoError(t, deleteKubeletMetricsFixture(cleanupCtx), "removing the kubelet metrics fixture")
 	})
-	require.NoError(t, waitForKubeletMetricsFixture(ctx, k, int32(len(nodes.Items))))
+	require.NoError(t, waitForKubeletMetricsFixture(ctx, int32(len(nodes.Items))))
 
 	want := make([]string, 0, len(nodes.Items))
 	for _, node := range nodes.Items {
@@ -54,11 +52,11 @@ func TestKubeletMetrics(t *testing.T) {
 	}
 	sort.Strings(want)
 
-	require.NoError(t, waitForKubeletMetricNodes(ctx, k, want),
+	require.NoError(t, waitForKubeletMetricNodes(ctx, want),
 		"waiting for kubelet and cAdvisor metrics from every node")
 }
 
-func createKubeletMetricsFixture(ctx context.Context, k *kube.Client) error {
+func createKubeletMetricsFixture(ctx context.Context) error {
 	labels := map[string]string{"app.kubernetes.io/name": kubeletMetricsFixtureName}
 
 	fixture := &appsv1.DaemonSet{
@@ -75,7 +73,7 @@ func createKubeletMetricsFixture(ctx context.Context, k *kube.Client) error {
 	return nil
 }
 
-func waitForKubeletMetricsFixture(ctx context.Context, k *kube.Client, nodes int32) error {
+func waitForKubeletMetricsFixture(ctx context.Context, nodes int32) error {
 	var status appsv1.DaemonSetStatus
 	err := wait.PollUntilContextCancel(ctx, 2*time.Second, true, func(ctx context.Context) (bool, error) {
 		current, err := k.AppsV1().DaemonSets(*namespace).Get(ctx, kubeletMetricsFixtureName, metav1.GetOptions{})
@@ -95,7 +93,7 @@ func waitForKubeletMetricsFixture(ctx context.Context, k *kube.Client, nodes int
 	return err
 }
 
-func deleteKubeletMetricsFixture(ctx context.Context, k *kube.Client) error {
+func deleteKubeletMetricsFixture(ctx context.Context) error {
 	err := k.AppsV1().DaemonSets(*namespace).Delete(ctx, kubeletMetricsFixtureName, metav1.DeleteOptions{})
 	if err != nil && !apierrors.IsNotFound(err) {
 		return err
@@ -115,7 +113,7 @@ func deleteKubeletMetricsFixture(ctx context.Context, k *kube.Client) error {
 	})
 }
 
-func waitForKubeletMetricNodes(ctx context.Context, k *kube.Client, want []string) error {
+func waitForKubeletMetricNodes(ctx context.Context, want []string) error {
 	kubeletQuery := "count by (node) (kubelet_active_pods > 0)"
 	cadvisorQuery := fmt.Sprintf(
 		`max by (node) (container_memory_working_set_bytes{namespace=%q,pod=~%q,container="memory"}) > 0`,
@@ -124,11 +122,11 @@ func waitForKubeletMetricNodes(ctx context.Context, k *kube.Client, want []strin
 	var gotKubelet, gotCadvisor []string
 	var lastErr error
 	err := wait.PollUntilContextCancel(ctx, 5*time.Second, true, func(ctx context.Context) (bool, error) {
-		gotKubelet, lastErr = prometheusMetricNodes(ctx, k, kubeletQuery)
+		gotKubelet, lastErr = prometheusMetricNodes(ctx, kubeletQuery)
 		if lastErr != nil {
 			return false, nil
 		}
-		gotCadvisor, lastErr = prometheusMetricNodes(ctx, k, cadvisorQuery)
+		gotCadvisor, lastErr = prometheusMetricNodes(ctx, cadvisorQuery)
 		if lastErr != nil {
 			return false, nil
 		}
@@ -155,11 +153,11 @@ func coversValues(got, want []string) bool {
 	return true
 }
 
-func prometheusMetricNodes(ctx context.Context, k *kube.Client, expression string) ([]string, error) {
-	return prometheusMetricLabelValues(ctx, k, expression, "node")
+func prometheusMetricNodes(ctx context.Context, expression string) ([]string, error) {
+	return prometheusMetricLabelValues(ctx, expression, "node")
 }
 
-func prometheusMetricLabelValues(ctx context.Context, k *kube.Client, expression, label string) ([]string, error) {
+func prometheusMetricLabelValues(ctx context.Context, expression, label string) ([]string, error) {
 	body, err := k.ServiceEndpointQuery(ctx, *namespace, "lgtm", "9090", "/api/v1/query", map[string]string{"query": expression})
 	if err != nil {
 		return nil, fmt.Errorf("querying Prometheus for %q: %w", expression, err)

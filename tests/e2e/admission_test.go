@@ -23,7 +23,7 @@ const collectorValidationWebhook = "vopentelemetrycollectorcreateupdatebeta.kb.i
 // server reached the webhook, rather than rejecting the object through CRD
 // schema validation or failing to connect.
 func TestAdmissionWebhook(t *testing.T) {
-	k := newKubeWithReadyRelease(t.Context(), t)
+	readyRelease(t.Context(), t)
 	name := "nktp-e2e-invalid-webhook-probe"
 	invalid := &unstructured.Unstructured{Object: map[string]any{
 		"apiVersion": "opentelemetry.io/v1beta1",
