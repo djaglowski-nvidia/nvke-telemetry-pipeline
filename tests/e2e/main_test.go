@@ -158,8 +158,16 @@ func registerChartCleanup(t *testing.T, deployed *framework.Chart, k *kube.Clien
 	t.Cleanup(func() {
 		uninstallCtx, cancelUninstall := context.WithTimeout(context.WithoutCancel(t.Context()), *timeout+30*time.Second)
 		assert.NoError(t, deployed.Uninstall(uninstallCtx), "uninstalling the test release")
+		ll, err := k.ListLeases(uninstallCtx, *namespace)
+		assert.NoError(t, err, "failed to list leases in namespace")
+		if err == nil {
+			for _, lease := range ll.Items {
+				if strings.HasSuffix(lease.Name, ".opentelemetry.io") {
+					assert.NoError(t, k.DeleteLease(uninstallCtx, *namespace, lease.Name), "clearing the Operator's leftover leader-election lease")
+				}
+			}
+		}
 		cancelUninstall()
-
 		waitCtx, cancelWait := context.WithTimeout(context.WithoutCancel(t.Context()), *timeout+30*time.Second)
 		defer cancelWait()
 		assert.NoError(t, k.WaitWorkloadsGone(waitCtx, *namespace), "waiting for the test workloads to be removed")

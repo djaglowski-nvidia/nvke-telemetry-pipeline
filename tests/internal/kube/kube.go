@@ -13,7 +13,9 @@ import (
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
+	coordinationv1 "k8s.io/api/coordination/v1"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -213,6 +215,25 @@ func (c *Client) WaitWorkloadsGone(ctx context.Context, namespace string) error 
 		return fmt.Errorf("%w: %s is still there", err, strings.Join(left, ", "))
 	}
 	return err
+}
+
+func (c *Client) ListLeases(ctx context.Context, namespace string) (*coordinationv1.LeaseList, error) {
+	ll, err := c.CoordinationV1().Leases(namespace).List(ctx, metav1.ListOptions{})
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return &coordinationv1.LeaseList{}, nil
+		}
+		return ll, fmt.Errorf("listing leases failed in namespace %s: %w", namespace, err)
+	}
+	return ll, nil
+}
+
+func (c *Client) DeleteLease(ctx context.Context, namespace, name string) error {
+	err := c.CoordinationV1().Leases(namespace).Delete(ctx, name, metav1.DeleteOptions{})
+	if err != nil && !apierrors.IsNotFound(err) {
+		return fmt.Errorf("deleting lease %s/%s: %w", namespace, name, err)
+	}
+	return nil
 }
 
 // CustomResources returns every object of one custom resource kind in a
