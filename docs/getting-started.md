@@ -3,8 +3,9 @@
 NKTP is one Helm chart that collects a Kubernetes cluster's metrics, logs and
 traces and exports them over OTLP. This guide installs it, connects it to a
 backend, and covers the settings that most often differ from one cluster to the
-next. The [chart README](../nktp/README.md) is the reference for everything it
-deploys and every value.
+next. The [chart README](../nktp/README.md) summarizes what the chart
+deploys, and the [component pages](README.md#components) cover each component
+and its values.
 
 ## Before you install
 
@@ -12,7 +13,7 @@ The full list is in [Prerequisites](../nktp/README.md#prerequisites). The ones
 that most often need preparing:
 
 - **cert-manager.** The default values need it. You can run without it; see
-  [Install without cert-manager](../nktp/README.md#install-without-cert-manager).
+  [Install without cert-manager](guides/configure_cert_manager.md#installing-nktp-without-cert-manager).
 - **The resource metrics API** (`metrics.k8s.io`), which the Collector
   autoscalers read. NKTP can install metrics-server if nothing provides it.
 - **The Operator's admission webhook must be reachable** from the API server on
@@ -20,7 +21,7 @@ that most often need preparing:
 - **Capacity.** The defaults are sized for large clusters: about 10 CPU and
   26 GiB of memory in requests for the cluster-wide components, plus about
   1.1 CPU and 2.1 GiB on every node. See
-  [Resource sizing](../nktp/README.md#resource-sizing).
+  [Size resources](guides/size_resources.md).
 
 ## Install
 
@@ -114,7 +115,7 @@ gateway_traces:
   otelcol: {config: {exporters: {otlp_http: {endpoint: https://<backend>}}}}
 ```
 
-- **TLS and mTLS** to the backend: see [Secure gateway export](gateway_mtls.md).
+- **TLS and mTLS** to the backend: see [Secure gateway export](guides/secure_gateway_export.md).
 - **Credentials** go in a Secret, never in values. Add it to the Collector's
   `kubernetes.env` and reference it from the exporter with `${env:NAME}`, for
   example in `headers`. `env` is a list, so restate the chart's `GOMEMLIMIT`
@@ -129,7 +130,9 @@ NKTP-specific label. If a NetworkPolicy guards the metrics port, admit the
 release namespace. A monitor that needs credentials references a Secret, which
 the node Target Allocator reads only in the namespaces listed in
 `daemonset.kubernetes.targetAllocator.prometheusCR.secretNamespaces`; see
-[Node collector](../nktp/README.md#node-collector).
+[Node collector](components/node_collector.md#monitor-credentials).
+[Send telemetry to NKTP](guides/send_telemetry.md) is the guide to share
+with service owners.
 
 ## Upgrading
 

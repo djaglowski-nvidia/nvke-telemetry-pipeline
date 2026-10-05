@@ -1526,7 +1526,8 @@ opentelemetry-kube-stack:
     installOtel: true
     installPrometheus: true
   # Declare Kubernetes control-plane and DNS metrics endpoints. These monitors
-  # require a Target Allocator with denyFSAccessThroughSMs disabled; see README.
+  # require a Target Allocator with denyFSAccessThroughSMs disabled; see
+  # docs/components/large_target_metrics.md.
   kubernetesServiceMonitors:
     enabled: true
   kubeApiServer:

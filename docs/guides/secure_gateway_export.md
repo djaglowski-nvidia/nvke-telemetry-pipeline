@@ -1,8 +1,8 @@
-# Gateway mTLS Setup
+# Secure gateway export
 
 NKTP ships with a self-hosted LGTM stack sending telemetry over plaintext by default. This is intended only for local development. Production environments should configure HTTPS before sending logs, metrics and traces to a production backend.
 
-This guide walks through setting up mTLS for NKTP's three gateway collectors to an OTLP/HTTP backend. This guide does not focus on encryption from other components to the gateways. The [example](examples/gateway_mtls.values.yaml) shows the skeleton for using mTLS.
+This guide walks through setting up mTLS for NKTP's three gateway collectors to an OTLP/HTTP backend. This guide does not focus on encryption from other components to the gateways. The [example](../examples/gateway_mtls.values.yaml) shows the skeleton for using mTLS.
 
 ## mTLS with an existing certificate
 
@@ -74,7 +74,7 @@ gateway_logs:
 
 Apply the volume, mount, and exporter settings to `gateway_logs`,
 `gateway_metrics`, and `gateway_traces`. The complete
-[values example](examples/gateway_mtls.values.yaml) configures all three.
+[values example](../examples/gateway_mtls.values.yaml) configures all three.
 
 For server-authenticated TLS with a private CA but no client authentication,
 mount only `ca.crt` and configure only `ca_file`.

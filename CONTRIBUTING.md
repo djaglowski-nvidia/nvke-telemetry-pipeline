@@ -116,6 +116,22 @@ No specialized hardware or credentials are needed for any of the above. Chart
 publishing to NVCR runs only from `main` and release tags and is described in
 [RELEASING.md](RELEASING.md); pull requests validate without publishing.
 
+### Submodule tooling
+
+When a project submodule needs environment bootstrap or tool installation beyond
+the main development workflow, define a minimal `Taskfile.yml` in that submodule
+with the required automation. Include it in the [root Taskfile](Taskfile.yml)
+with `dir` set to the submodule directory. The root exposes namespaced commands
+while the submodule owns their implementation.
+
+Examples:
+
+- [OCCT](occt/Taskfile.yml) owns its test and snapshot update commands,
+  exposed as `task occt:test` and `task occt:update`.
+- [Scale tests](tests/scale/Taskfile.yml) own local cluster provisioning
+  and teardown through `task scale:up` and `task scale:down`.
+  `task scale:install` sets up an existing cluster, and `task scale:test` runs a plan.
+
 ## Developer Certificate of Origin
 
 Every commit must carry a `Signed-off-by` line. The sign-off certifies that you
@@ -204,9 +220,15 @@ By making a contribution to this project, I certify that:
    pull request with the corresponding `Chart.lock` update.
 6. Include regenerated snapshots or golden files in the same pull request as
    the change that alters them, so reviewers see the rendered effect.
-7. Update `nktp/README.md` in the same pull request when a change alters chart
-   defaults, bundled dependencies, or user-visible configuration.
-8. Keep the pull request in draft while you are still reshaping it. Once it is
+7. Update the documentation in the same pull request when a change alters chart
+   defaults, bundled dependencies, or user-visible configuration: the affected
+   component's page under `docs/components/`, and `nktp/README.md` when the
+   change touches what it covers.
+8. Keep `nktp/README.md` self-contained. It is packaged into the chart and read
+   through `helm show readme` and the chart registry, where links to other files
+   do not resolve. It must not link to other documentation, except its closing
+   link to `docs/` on `main`. Put in-depth material under `docs/`.
+9. Keep the pull request in draft while you are still reshaping it. Once it is
    ready for review, address feedback by pushing new commits rather than
    rewriting history, and reply on the thread with what changed and where.
 

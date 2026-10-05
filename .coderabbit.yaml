@@ -71,8 +71,9 @@ reviews:
     - path: "nktp/values.yaml"
       instructions: |
         The chart's public interface. Flag renamed or removed keys as
-        potentially breaking for existing installs, and ask whether
-        `nktp/README.md` needs updating in the same pull request, which
+        potentially breaking for existing installs, and ask whether the
+        affected component's page under `docs/components/`, or
+        `nktp/README.md`, needs updating in the same pull request, which
         CONTRIBUTING.md requires when chart defaults, bundled dependencies, or
         user-visible configuration change.
 
@@ -143,6 +144,14 @@ reviews:
         - Referenced composite actions (`./.github/actions/...`) exist, and
           pinned tool versions (Helm 3.20, helm-unittest 1.1.2) stay
           consistent across workflows.
+
+    - path: "nktp/README.md"
+      instructions: |
+        Packaged into the chart and read through `helm show readme` and the
+        chart registry, where links to other files do not resolve. Flag any
+        link to other documentation, whether a relative path or a URL. The only
+        allowed link is the closing one to `docs/` on `main`; anchors within
+        the README are fine. Material that needs a link belongs under `docs/`.
 
     - path: "**/*.md"
       instructions: |

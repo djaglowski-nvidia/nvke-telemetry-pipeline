@@ -1,4 +1,4 @@
-# cert-manager Integration
+# Configure cert-manager
 
 NKTP depends on cert-manager to reap the benefits of following features. These features are not explicitly required, but are enabled by default and represent the best-practices for deploying NKTP.
 

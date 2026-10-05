@@ -11,7 +11,7 @@ version: "3"
 # never created.
 #
 # The suite owns its cluster lifecycle rather than sharing one with the dev
-# loop, following the submodule pattern in docs/designs/repo_layout.md. Only
+# loop, following the submodule tooling pattern in CONTRIBUTING.md. Only
 # the node image is shared, from the root Taskfile.
 
 vars:

@@ -28,7 +28,7 @@
 | `occt/tests/` | Go golden tests for OCCT | `pass/<scenario>/values.yaml` renders to `output.yaml`; `test-chart/` is the fixture chart |
 | `tests/` | Go suites for integration, e2e, scale, and perf | Build-tagged; a suite's `Taskfile.yml` brings up its cluster and fetches dependencies, the Go suite does the rest; only the e2e suite is implemented and run in CI |
 | `dev/` | Local Kind and Tilt loop | Uses only `dev/.kubeconfig` and never other kubectl contexts |
-| `docs/` | Documentation index and design documents | Design proposals go under `docs/designs/` |
+| `docs/` | Getting started, architecture, per-component pages, guides, and design documents | Each component's behavior and values are documented under `docs/components/`; design proposals go under `docs/designs/` |
 | `.github/` | Workflows, composite action, PR template, CODEOWNERS, issue forms | Changes here need explicit instruction |
 | `RELEASING.md` | Release, tagging, and publishing process | Maintainer-owned |
 
@@ -126,8 +126,10 @@ value is already in every clone that fetched it.
   actually run and what it showed, not "CI is green".
 - Include regenerated snapshots or golden files in the same pull request as
   the change that alters them, with the diff reviewed.
-- Update `nktp/README.md` in the same pull request when chart defaults,
-  bundled dependencies, or user-visible configuration change.
+- Update the documentation in the same pull request when chart defaults,
+  bundled dependencies, or user-visible configuration change: the affected
+  component's page under `docs/components/`, and `nktp/README.md` when the
+  change touches what it covers.
 - Keep the pull request in draft while still changing it. Once it is ready,
   append commits rather than rewriting history, reply on the review thread
   with what changed and where, and re-request review once per round.
@@ -157,6 +159,10 @@ Always:
   add, merge, or change anything inside a configuration, and no other value may
   change one. There are no exceptions. See
   [docs/design_principles.md](docs/design_principles.md).
+- Keep `nktp/README.md` self-contained. It is packaged into the chart, where
+  links to other files do not resolve, so it must not link to other
+  documentation except its closing link to `docs/` on `main`. Put in-depth
+  material under `docs/`.
 - Treat bundled dependency versions as deliberate pins. Propose a bump as its
   own pull request and update `Chart.lock` there with `helm dependency update`.
 - Do not add roadmap, support, security, or review-time commitments unless a

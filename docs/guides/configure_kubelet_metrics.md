@@ -1,4 +1,4 @@
-# Kubelet Metrics
+# Configure kubelet metrics
 
 Each DaemonSet collector scrapes the kubelet on its own node over HTTPS every
 30 seconds. The collector connects directly to the node's host IP on port 10250.
