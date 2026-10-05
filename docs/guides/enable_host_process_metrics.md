@@ -255,6 +255,7 @@ daemonset:
         hostmetrics:
           scrapers:
             process:
+              mute_process_user_error: true
               metrics:
                 process.disk.io:
                   enabled: false

@@ -20,7 +20,7 @@ flowchart LR
   subgraph node["Each node"]
     apps["Workload OTLP"]
     local["Pod logs, journal,<br/>host and audit logs"]
-    scrapes["kubelet, cAdvisor, processes,<br/>node-local scrape targets"]
+    scrapes["kubelet, cAdvisor,<br/>node-local scrape targets"]
     ds["Node collector"]
     apps --> ds
     local --> ds
