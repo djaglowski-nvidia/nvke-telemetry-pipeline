@@ -10,6 +10,7 @@ This directory organizes NKTP architecture, design, installation, configuration,
 
 - [Secure gateway export](gateway_mtls.md)
 - [Kubelet metrics](kubelet_metrics.md)
+- [Cert manager integration](cert_manager.md)
 
 ## Design principles
 
