@@ -1,0 +1,747 @@
+# Mixed metrics, logs, spans, Events and large-target workload.
+# NKTP uses default resources and autoscaling, including self-telemetry sidecars.
+# Adapt placement and API access settings to the cluster. Install this profile alone.
+
+watchdog:
+  kubernetes:
+    nodeSelector: &systemSelector {nodeGroup: system-cpu}
+    tolerations: &systemTolerations
+      - {key: dedicated, operator: Equal, value: system-workload}
+    targetAllocator: &allocatorPlacement
+      nodeSelector: *systemSelector
+      tolerations: *systemTolerations
+
+# Node-local payload accounting. Synthetic load continues through the gateways.
+daemonset:
+  kubernetes:
+    targetAllocator: *allocatorPlacement
+  otelcol:
+    config:
+      receivers:
+        prometheus:
+          config:
+            global:
+              extra_scrape_metrics: true
+      connectors:
+        count/scale_payload:
+          logs:
+            nktp_scale_log_records:
+              conditions:
+                - attributes["source_pod"] != nil and attributes["scale_payload_bytes"] != nil
+              attributes: [{key: source_pod}, {key: scale_bucket}, {key: scale_payload_bytes}]
+            nktp_scale_logs_payload_bytes:
+              conditions:
+                - attributes["source_pod"] != nil and attributes["scale_payload_bytes"] != nil
+              attributes: [{key: source_pod}, {key: scale_bucket}, {key: scale_payload_bytes}]
+          spans:
+            nktp_scale_spans:
+              conditions:
+                - attributes["test_run_id"] != nil and attributes["scale_payload_bytes"] != nil
+              attributes: [{key: scale_bucket}, {key: scale_payload_bytes}, {key: test_run_id}]
+            nktp_scale_spans_payload_bytes:
+              conditions:
+                - attributes["test_run_id"] != nil and attributes["scale_payload_bytes"] != nil
+              attributes: [{key: scale_bucket}, {key: scale_payload_bytes}, {key: test_run_id}]
+          spanevents:
+            nktp_scale_ignored:
+              conditions:
+                - 'false'
+      processors:
+        batch/scale_payload:
+          timeout: 1s
+          send_batch_size: 8192
+          send_batch_max_size: 8192
+        transform/scale_payload:
+          error_mode: propagate
+          metric_statements:
+            - context: datapoint
+              statements:
+                - set(time_unix_nano, UnixNano(Now()))
+                - set(start_time_unix_nano, time_unix_nano)
+                - set(attributes["scale_node"], "${env:NODE_NAME}")
+                - set(value_int, value_int * Int(attributes["scale_payload_bytes"])) where IsMatch(metric.name,
+                  "_payload_bytes$")
+        deltatocumulative/scale_payload:
+          max_stale: 5m
+          max_streams: 4096
+        interval/scale_payload:
+          interval: 30s
+        transform/scale_stdout:
+          error_mode: propagate
+          log_statements:
+            - context: log
+              conditions:
+                - resource.attributes["k8s.namespace.name"] == "nktp" and IsMatch(resource.attributes["k8s.pod.name"],
+                  "^scale-") and IsMatch(resource.attributes["k8s.container.name"], "^vector-stdout-(small|large)$")
+                  and attributes["log.iostream"] == "stdout"
+              statements:
+                - set(attributes["source_pod"], resource.attributes["k8s.pod.name"])
+                - set(attributes["scale_payload_bytes"], String(Len(body)))
+                - set(attributes["scale_bucket"], "small") where resource.attributes["k8s.container.name"] == "vector-stdout-small"
+                - set(attributes["scale_bucket"], "large") where resource.attributes["k8s.container.name"] == "vector-stdout-large"
+      service:
+        telemetry:
+          metrics:
+            level: detailed
+            views:
+              - selector: {meter_name: go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc}
+                stream: {aggregation: {drop: {}}}
+              - selector: {meter_name: go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp}
+                stream: {aggregation: {drop: {}}}
+          traces: {level: none}
+        pipelines:
+          logs:
+            exporters: [otlp_http/logs, count/scale_payload]
+            processors: [memory_limiter, resource/node, transform/scale_stdout, redaction/basic_v1]
+          traces:
+            exporters: [otlp_http/traces, count/scale_payload]
+          metrics/scale_payload:
+            receivers: [count/scale_payload]
+            processors: [batch/scale_payload, transform/scale_payload, deltatocumulative/scale_payload, interval/scale_payload]
+            exporters: [otlp_http/scale_payload]
+      exporters:
+        otlp_http/scale_payload:
+          endpoint: http://nktp-watchdog-collector:4318
+          sending_queue:
+            sizer: bytes
+            queue_size: 8388608
+            num_consumers: 1
+            batch:
+              sizer: bytes
+              min_size: 65536
+              max_size: 131072
+              flush_timeout: 1s
+
+# Gateways discard load through blackhole while observations continue to LGTM.
+gateway_metrics:
+  kubernetes:
+    nodeSelector: *systemSelector
+    tolerations: *systemTolerations
+  otelcol:
+    config:
+      service:
+        telemetry:
+          metrics:
+            level: detailed
+            views:
+              - selector: {meter_name: go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc}
+                stream: {aggregation: {drop: {}}}
+              - selector: {meter_name: go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp}
+                stream: {aggregation: {drop: {}}}
+          traces: {level: none}
+      exporters:
+        otlp_http:
+          endpoint: http://nktp-mixed-workload-blackhole-collector:4318
+
+gateway_logs:
+  kubernetes:
+    nodeSelector: *systemSelector
+    tolerations: *systemTolerations
+  otelcol:
+    config:
+      service:
+        telemetry:
+          metrics:
+            level: detailed
+            views:
+              - selector: {meter_name: go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc}
+                stream: {aggregation: {drop: {}}}
+              - selector: {meter_name: go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp}
+                stream: {aggregation: {drop: {}}}
+          traces: {level: none}
+      exporters:
+        otlp_http:
+          endpoint: http://nktp-mixed-workload-blackhole-collector:4318
+
+gateway_traces:
+  kubernetes:
+    nodeSelector: *systemSelector
+    tolerations: *systemTolerations
+  otelcol:
+    config:
+      service:
+        telemetry:
+          metrics:
+            level: detailed
+            views:
+              - selector: {meter_name: go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc}
+                stream: {aggregation: {drop: {}}}
+              - selector: {meter_name: go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp}
+                stream: {aggregation: {drop: {}}}
+          traces: {level: none}
+      exporters:
+        otlp_http:
+          endpoint: http://nktp-mixed-workload-blackhole-collector:4318
+
+large_target_metrics:
+  kubernetes:
+    nodeSelector: *systemSelector
+    tolerations: *systemTolerations
+    targetAllocator: *allocatorPlacement
+  otelcol:
+    config:
+      receivers:
+        prometheus:
+          config:
+            global:
+              extra_scrape_metrics: true
+      service:
+        telemetry:
+          metrics:
+            level: detailed
+            views:
+              - selector: {meter_name: go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc}
+                stream: {aggregation: {drop: {}}}
+              - selector: {meter_name: go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp}
+                stream: {aggregation: {drop: {}}}
+          traces: {level: none}
+
+cluster_events:
+  kubernetes:
+    nodeSelector: *systemSelector
+    tolerations: *systemTolerations
+  otelcol:
+    config:
+      receivers:
+        k8s_events:
+          dedup_interval: 0s
+      service:
+        telemetry:
+          metrics:
+            level: detailed
+            views:
+              - selector: {meter_name: go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc}
+                stream: {aggregation: {drop: {}}}
+              - selector: {meter_name: go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp}
+                stream: {aggregation: {drop: {}}}
+          traces: {level: none}
+
+kube-state-metrics:
+  metricLabelsAllowlist:
+    - pods=[scale.nktp.io/run-id,scale.nktp.io/group,scale.nktp.io/bucket]
+  deployments:
+    unscheduled-pods:
+      kubernetes: &systemPlacement
+        nodeSelector: *systemSelector
+        tolerations: *systemTolerations
+    workloads:
+      kubernetes: *systemPlacement
+    networking:
+      kubernetes: *systemPlacement
+    storage:
+      kubernetes: *systemPlacement
+    configuration:
+      kubernetes: *systemPlacement
+    cluster:
+      kubernetes: *systemPlacement
+
+# Bundled backend retains the experiment budget, delta counters and NKTP dashboards.
+otel-lgtm:
+  enabled: true
+  resources:
+    requests: {cpu: '8', memory: 16Gi}
+    limits: {cpu: '16', memory: 64Gi}
+  nodeSelector: *systemSelector
+  tolerations: *systemTolerations
+
+opentelemetry-kube-stack:
+  opentelemetry-operator:
+    nodeSelector: *systemSelector
+    tolerations: *systemTolerations
+  extraObjects:
+    - apiVersion: monitoring.coreos.com/v1
+      kind: PodMonitor
+      metadata:
+        name: nktp-mixed-workload-load
+        namespace: '{{ .Release.Namespace }}'
+      spec:
+        selector:
+          matchLabels:
+            scale.nktp.io/workload: mixed-workload
+            scale.nktp.io/metric-source: scraped
+        podMetricsEndpoints:
+          - port: metrics
+            scrapeTimeout: 10s
+            relabelings:
+              - targetLabel: scale_workload
+                replacement: mixed-workload
+              - targetLabel: scale_scraper_pool
+                replacement: node
+              - sourceLabels: [__meta_kubernetes_pod_label_scale_nktp_io_run_id]
+                targetLabel: test_run_id
+              - sourceLabels: [__meta_kubernetes_pod_node_name]
+                targetLabel: scale_node
+              - sourceLabels: [__meta_kubernetes_pod_label_scale_nktp_io_group]
+                targetLabel: scale_group
+              - sourceLabels: [__meta_kubernetes_pod_name]
+                targetLabel: instance
+    - apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: nktp-mixed-workload-payloads
+        namespace: '{{ .Release.Namespace }}'
+      data:
+        spans-small: '{{ repeat 1024 "x" }}'
+        # 655,360 B/s/node / (40 emitters × 1,024 B/span) = 16 spans/s per emitter.
+        spans-small-rate: '16'
+        spans-large: '{{ repeat 65536 "x" }}'
+        # 524,288 B/s/node / (2 emitters × 65,536 B/span) = 4 spans/s per emitter.
+        spans-large-rate: '4'
+    - apiVersion: v1
+      kind: Service
+      metadata:
+        name: nktp-mixed-workload-local
+        namespace: '{{ .Release.Namespace }}'
+      spec:
+        internalTrafficPolicy: Local
+        selector:
+          app.kubernetes.io/name: nktp-daemonset-collector
+        ports:
+          - {name: otlp-grpc, port: 4317, targetPort: 4317}
+          - {name: otlp-http, port: 4318, targetPort: 4318}
+    # Keep performance observations while discarding generated telemetry.
+    - apiVersion: opentelemetry.io/v1beta1
+      kind: OpenTelemetryCollector
+      metadata:
+        name: nktp-mixed-workload-blackhole
+        namespace: '{{ .Release.Namespace }}'
+        labels:
+          helm.sh/chart: '{{ include "opentelemetry-kube-stack.chart" . }}'
+      spec:
+        image: otel/opentelemetry-collector-k8s:0.159.0
+        mode: deployment
+        replicas: 8
+        nodeSelector: *systemSelector
+        tolerations: *systemTolerations
+        topologySpreadConstraints:
+          - maxSkew: 1
+            topologyKey: kubernetes.io/hostname
+            whenUnsatisfiable: DoNotSchedule
+            nodeAffinityPolicy: Honor
+            nodeTaintsPolicy: Honor
+            labelSelector:
+              matchLabels:
+                app.kubernetes.io/instance: '{{ .Release.Namespace }}.nktp-mixed-workload-blackhole'
+        resources:
+          requests: {cpu: '8', memory: 8Gi}
+          limits: {cpu: '16', memory: 16Gi}
+        env:
+          - name: GOMEMLIMIT
+            value: 13107MiB
+          - name: GOGC
+            value: '50'
+          - name: POD_NAME
+            valueFrom: {fieldRef: {fieldPath: "metadata.name"}}
+        config:
+          extensions:
+            health_check:
+              endpoint: 0.0.0.0:13133
+          receivers:
+            otlp:
+              protocols:
+                http:
+                  endpoint: 0.0.0.0:4318
+          processors:
+            memory_limiter:
+              check_interval: 500ms
+              limit_percentage: 80
+              spike_limit_percentage: 25
+          exporters:
+            nop: {}
+            otlp_http/observations:
+              endpoint: http://lgtm:4318
+              retry_on_failure:
+                max_elapsed_time: 30m
+              sending_queue:
+                sizer: bytes
+                queue_size: 67108864
+                num_consumers: 8
+                block_on_overflow: true
+                batch:
+                  sizer: bytes
+                  min_size: 1048576
+                  max_size: 2097152
+                  flush_timeout: 1s
+          connectors:
+            routing/observations:
+              error_mode: propagate
+              default_pipelines:
+                - metrics/blackhole
+              table:
+                - context: metric
+                  condition: >-
+                    IsMatch(metric.name, "^(nktp_scale_.+|vector_component_sent_(events|bytes)_total|up)$") or
+                    IsMatch(metric.name, "^scrape_(body_size_bytes|duration_seconds|samples_scraped|samples_post_metric_relabeling)$") or
+                    IsMatch(metric.name, "^container_(cpu_usage_seconds_total|cpu_cfs_(periods|throttled_periods)_total|memory_(working_set|usage)_bytes)$") or
+                    IsMatch(metric.name, "^kube_pod_(info|labels|status_(phase|ready)|container_(status_(ready|running|restarts_total|last_terminated_reason)|resource_(requests|limits))|init_container_status_.+)$") or
+                    IsMatch(metric.name, "^(kube_node_(info|status_condition|status_allocatable)|kube_horizontalpodautoscaler_.+|node_memory_MemAvailable_bytes)$")
+                  action: move
+                  pipelines:
+                    - metrics/observations
+          service:
+            extensions: [health_check]
+            telemetry:
+              resource:
+                service.name: nktp-mixed-workload-blackhole
+                service.instance.id: ${env:POD_NAME}
+              metrics:
+                readers:
+                  - periodic:
+                      exporter:
+                        otlp:
+                          protocol: http/protobuf
+                          endpoint: http://nktp-watchdog-collector:4318
+            pipelines:
+              metrics:
+                receivers: [otlp]
+                processors: [memory_limiter]
+                exporters: [routing/observations]
+              metrics/blackhole:
+                receivers: [routing/observations]
+                exporters: [nop]
+              metrics/observations:
+                receivers: [routing/observations]
+                exporters: [otlp_http/observations]
+              logs:
+                receivers: [otlp]
+                processors: [memory_limiter]
+                exporters: [nop]
+              traces:
+                receivers: [otlp]
+                processors: [memory_limiter]
+                exporters: [nop]
+    - apiVersion: monitoring.coreos.com/v1
+      kind: PodMonitor
+      metadata:
+        name: nktp-mixed-workload-large
+        namespace: '{{ .Release.Namespace }}'
+        labels:
+          nktp.nvidia.io/large-target: 'true'
+      spec:
+        selector:
+          matchLabels:
+            scale.nktp.io/workload: mixed-workload-large
+        podMetricsEndpoints:
+          - port: large-metrics
+            interval: 60s
+            scrapeTimeout: 55s
+            relabelings:
+              - targetLabel: scale_workload
+                replacement: mixed-workload-large
+              - targetLabel: scale_scraper_pool
+                replacement: large
+              - sourceLabels: [__meta_kubernetes_pod_label_scale_nktp_io_run_id]
+                targetLabel: test_run_id
+              - sourceLabels: [__meta_kubernetes_pod_node_name]
+                targetLabel: scale_node
+              - sourceLabels: [__meta_kubernetes_pod_label_scale_nktp_io_metric_bucket]
+                targetLabel: metric_bucket
+              - sourceLabels: [__meta_kubernetes_pod_name, __meta_kubernetes_pod_container_port_number]
+                separator: ':'
+                targetLabel: instance
+    # Bounded Kubernetes Events generated by stock kube-burner.
+    - apiVersion: v1
+      kind: ServiceAccount
+      metadata:
+        name: nktp-mixed-workload-events
+        namespace: '{{ .Release.Namespace }}'
+    - apiVersion: rbac.authorization.k8s.io/v1
+      kind: Role
+      metadata:
+        name: nktp-mixed-workload-events
+        namespace: '{{ .Release.Namespace }}'
+      rules:
+        - apiGroups:
+            - ''
+          resources:
+            - events
+          verbs: [create, patch]
+    - apiVersion: rbac.authorization.k8s.io/v1
+      kind: RoleBinding
+      metadata:
+        name: nktp-mixed-workload-events
+        namespace: '{{ .Release.Namespace }}'
+      roleRef:
+        apiGroup: rbac.authorization.k8s.io
+        kind: Role
+        name: nktp-mixed-workload-events
+      subjects:
+        - kind: ServiceAccount
+          name: nktp-mixed-workload-events
+          namespace: '{{ .Release.Namespace }}'
+    # Stock kube-burner lists Events cluster-wide for verification and patch selection.
+    - apiVersion: rbac.authorization.k8s.io/v1
+      kind: ClusterRole
+      metadata:
+        name: '{{ .Release.Name }}-mixed-workload-events-list'
+      rules:
+        - apiGroups: ['']
+          resources: [events]
+          verbs: [list]
+    - apiVersion: rbac.authorization.k8s.io/v1
+      kind: ClusterRoleBinding
+      metadata:
+        name: '{{ .Release.Name }}-mixed-workload-events-list'
+      roleRef:
+        apiGroup: rbac.authorization.k8s.io
+        kind: ClusterRole
+        name: '{{ .Release.Name }}-mixed-workload-events-list'
+      subjects:
+        - kind: ServiceAccount
+          name: nktp-mixed-workload-events
+          namespace: '{{ .Release.Namespace }}'
+    - apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: nktp-mixed-workload-events
+        namespace: '{{ .Release.Namespace }}'
+      data:
+        config.yaml: |
+          global:
+            gc: false
+            requestTimeout: 30s
+          jobs:
+            - name: events-seed-{{`{{ .UUID }}`}}
+              jobType: create
+              namespace: {{ .Release.Namespace }}
+              namespacedIterations: false
+              jobIterations: 100
+              # 1,000 Events/s / 100 producers = 10 creates/s per producer during setup.
+              qps: 10
+              burst: 1
+              cleanup: false
+              preLoadImages: false
+              podWait: false
+              waitWhenFinished: false
+              verifyObjects: true
+              errorOnVerify: true
+              maxWaitTimeout: 30s
+              objects:
+                - objectTemplate: event.yaml
+                  replicas: 1
+                  wait: false
+            - name: events-update-{{`{{ .UUID }}`}}
+              jobType: patch
+              executionMode: sequential
+              # 540 passes × 100 Events / 10 updates/s = 5,400 seconds (90 minutes).
+              jobIterations: 540
+              # 1,000 updates/s cluster-wide / 100 producers = 10 updates/s per producer.
+              qps: 10
+              burst: 1
+              waitWhenFinished: false
+              maxWaitTimeout: 30s
+              objects:
+                - kind: Event
+                  apiVersion: v1
+                  objectTemplate: event-patch.yaml
+                  patchType: application/merge-patch+json
+                  labelSelector:
+                    kube-burner.io/uuid: {{`{{ .UUID }}`}}
+        event.yaml: |
+          {{`{{- $timestamp := now | date "2006-01-02T15:04:05.000000000Z07:00" }}`}}
+          apiVersion: v1
+          kind: Event
+          metadata:
+            name: nktp-event-{{`{{ .UUID }}`}}-{{`{{ .Iteration }}`}}
+            namespace: {{ .Release.Namespace }}
+            labels:
+              scale.nktp.io/workload: mixed-workload-events
+              scale.nktp.io/run-id: {{`{{ env "EVENT_RUN_ID" | quote }}`}}
+            ownerReferences:
+              - apiVersion: v1
+                kind: Pod
+                name: {{`{{ env "POD_NAME" | quote }}`}}
+                uid: {{`{{ env "POD_UID" | quote }}`}}
+          involvedObject:
+            apiVersion: v1
+            kind: Pod
+            namespace: {{ .Release.Namespace }}
+            name: {{`{{ env "POD_NAME" | quote }}`}}
+            uid: {{`{{ env "POD_UID" | quote }}`}}
+          reason: NKTPScaleTest
+          type: Normal
+          message: '{{ repeat 1024 "x" }}'
+          source:
+            component: kube-burner
+          firstTimestamp: '{{`{{ $timestamp }}`}}'
+          lastTimestamp: '{{`{{ $timestamp }}`}}'
+          count: 1
+        event-patch.yaml: |
+          count: {{`{{ add .Iteration 2 }}`}}
+          lastTimestamp: '{{`{{ now | date "2006-01-02T15:04:05.000000000Z07:00" }}`}}'
+    - apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: nktp-mixed-workload-stdout-small
+        namespace: '{{ .Release.Namespace }}'
+      data:
+        vector.yaml: |
+          sources:
+            load:
+              type: demo_logs
+              format: shuffle
+              sequence: false
+              # 144,000 B/s/node / (90 emitters × 100 B/record) = 16 records/s, interval = 1/16 s.
+              interval: 0.0625
+              lines: ['{{ repeat 100 "x" }}']
+            self:
+              type: internal_metrics
+              scrape_interval_secs: 15
+          transforms:
+            measured:
+              type: filter
+              inputs: [self]
+              condition: >-
+                .tags.component_id == "stdout_load" &&
+                includes(["component_sent_events_total", "component_sent_bytes_total"], .name)
+          sinks:
+            stdout_load:
+              type: console
+              inputs: [load]
+              target: stdout
+              encoding: {codec: text}
+            metrics:
+              type: prometheus_exporter
+              inputs: [measured]
+              address: 0.0.0.0:9598
+    - apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: nktp-mixed-workload-stdout-large
+        namespace: '{{ .Release.Namespace }}'
+      data:
+        vector.yaml: |
+          sources:
+            load:
+              type: demo_logs
+              format: shuffle
+              sequence: false
+              # 1,048,576 B/s/node / (4 emitters × 65,536 B/record) = 4 records/s, interval = 1/4 s.
+              interval: 0.25
+              lines: ['{{ repeat 65536 "x" }}']
+            self:
+              type: internal_metrics
+              scrape_interval_secs: 15
+          transforms:
+            measured:
+              type: filter
+              inputs: [self]
+              condition: >-
+                .tags.component_id == "stdout_load" &&
+                includes(["component_sent_events_total", "component_sent_bytes_total"], .name)
+          sinks:
+            stdout_load:
+              type: console
+              inputs: [load]
+              target: stdout
+              encoding: {codec: text}
+            metrics:
+              type: prometheus_exporter
+              inputs: [measured]
+              address: 0.0.0.0:9598
+    - apiVersion: monitoring.coreos.com/v1
+      kind: PodMonitor
+      metadata:
+        name: nktp-mixed-workload-stdout
+        namespace: '{{ .Release.Namespace }}'
+      spec:
+        selector:
+          matchLabels:
+            scale.nktp.io/workload: mixed-workload
+            scale.nktp.io/stdout: 'true'
+        podMetricsEndpoints:
+          - port: vector-metrics
+            interval: 30s
+            scrapeTimeout: 10s
+            relabelings:
+              - sourceLabels: [__meta_kubernetes_pod_name]
+                targetLabel: instance
+              - sourceLabels: [__meta_kubernetes_pod_node_name]
+                targetLabel: scale_node
+              - sourceLabels: [__meta_kubernetes_pod_label_scale_nktp_io_run_id]
+                targetLabel: test_run_id
+              - sourceLabels: [__meta_kubernetes_pod_label_scale_nktp_io_bucket]
+                targetLabel: scale_bucket
+    - apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: nktp-mixed-workload-otlp-metrics
+        namespace: '{{ .Release.Namespace }}'
+      data:
+        collector.yaml: |
+          # OTLP export cadence is independent of the node Target Allocator scrape interval.
+          extensions:
+            health_check:
+              endpoint: 0.0.0.0:13133
+          receivers:
+            prometheus:
+              config:
+                scrape_configs:
+                  - job_name: mixed-workload-instrumented
+                    scrape_interval: 30s
+                    scrape_timeout: 10s
+                    static_configs:
+                      - targets:
+                          - 127.0.0.1:9001
+                        labels:
+                          test_run_id: ${env:RUN_ID}
+                          scale_node: ${env:NODE_NAME}
+                          source_pod: ${env:POD_NAME}
+          processors:
+            filter/load:
+              error_mode: propagate
+              metrics:
+                metric:
+                  - name == "up" or IsMatch(name, "^scrape_")
+            filter/observations:
+              error_mode: propagate
+              metrics:
+                metric:
+                  - name != "up" and name != "scrape_samples_scraped"
+            transform/observations:
+              error_mode: propagate
+              metric_statements:
+                - context: metric
+                  statements:
+                    - set(name, "nktp_scale_otlp_source_up") where name == "up"
+                    - set(name, "nktp_scale_otlp_source_series") where name == "scrape_samples_scraped"
+            resource/source:
+              attributes:
+                - key: service.instance.id
+                  value: ${env:POD_UID}
+                  action: upsert
+          exporters:
+            otlp_http:
+              endpoint: http://nktp-mixed-workload-local.nktp.svc:4318
+              retry_on_failure:
+                max_elapsed_time: 30s
+              sending_queue:
+                enabled: false
+            otlp_http/observations:
+              endpoint: http://nktp-watchdog-collector:4318
+              sending_queue:
+                enabled: false
+          service:
+            extensions: [health_check]
+            telemetry:
+              resource:
+                service.name: nktp-mixed-workload-metrics-adapter
+                service.instance.id: ${env:POD_NAME}
+              metrics:
+                level: basic
+                readers:
+                  - periodic:
+                      exporter:
+                        otlp:
+                          protocol: http/protobuf
+                          endpoint: http://nktp-watchdog-collector:4318
+              traces: {level: none}
+            pipelines:
+              metrics/load:
+                receivers: [prometheus]
+                processors: [filter/load, resource/source]
+                exporters: [otlp_http]
+              metrics/observations:
+                receivers: [prometheus]
+                processors: [filter/observations, transform/observations, resource/source]
+                exporters: [otlp_http/observations]

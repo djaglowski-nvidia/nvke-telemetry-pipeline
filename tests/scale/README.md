@@ -17,6 +17,9 @@ For 10,000 real Pods with continuous replacement, see the
 For Kubernetes Event load through the scale harness, see the
 [kube-burner plan and profile](kube-burner-events.md).
 
+For metrics, stdout logs, spans, Events and large-target load together, see the
+[mixed workload guide](mixed-workload.md).
+
 ## Setup
 
 Requires kubectl, Helm 3 or 4, Task, and Go. Local provisioning also requires
