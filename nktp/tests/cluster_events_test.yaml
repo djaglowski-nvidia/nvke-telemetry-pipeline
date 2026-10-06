@@ -58,7 +58,7 @@ tests:
           path: spec.config.processors["redaction/basic_v1"]
       - equal:
           path: spec.config.exporters.otlp_http.endpoint
-          value: http://nktp-gateway-logs-collector:4318
+          value: https://nktp-gateway-logs-collector:4318
       - equal:
           path: spec.config.service.telemetry
           value:
@@ -219,7 +219,7 @@ tests:
           value: http://127.0.0.1:4319
       - equal:
           path: spec.config.exporters.otlp_http.endpoint
-          value: http://nktp-gateway-logs-collector:4318
+          value: https://nktp-gateway-logs-collector:4318
 
   - it: replaces own log exporters independently
     set:
@@ -242,7 +242,7 @@ tests:
           value: http://127.0.0.1:4319
       - equal:
           path: spec.config.exporters.otlp_http.endpoint
-          value: http://nktp-gateway-logs-collector:4318
+          value: https://nktp-gateway-logs-collector:4318
 
   - it: replaces own trace exporters independently
     set:
@@ -265,7 +265,7 @@ tests:
           value: http://127.0.0.1:4319
       - equal:
           path: spec.config.exporters.otlp_http.endpoint
-          value: http://nktp-gateway-logs-collector:4318
+          value: https://nktp-gateway-logs-collector:4318
 
   - it: overrides watched namespaces and the native Lease configuration
     set:

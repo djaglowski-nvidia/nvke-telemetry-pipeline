@@ -60,10 +60,25 @@ tests:
             traces: {receivers: [otlp], processors: [memory_limiter, resource/node, redaction/basic_v1], exporters: [otlp_http/traces]}
       - equal:
           path: spec.config.exporters["otlp_http/logs"].endpoint
-          value: http://nktp-gateway-logs-collector:4318
+          value: https://nktp-gateway-logs-collector:4318
       - equal:
           path: spec.config.exporters["otlp_http/metrics"].endpoint
-          value: http://nktp-gateway-metrics-collector:4318
+          value: https://nktp-gateway-metrics-collector:4318
+      - equal:
+          path: spec.config.exporters["otlp_http/logs"].tls
+          value: &clientTLS
+            ca_file: /etc/nktp/internal-tls/client/ca.crt
+            cert_file: /etc/nktp/internal-tls/client/tls.crt
+            key_file: /etc/nktp/internal-tls/client/tls.key
+            reload_interval: 1h
+      - equal:
+          path: spec.config.exporters["otlp_http/metrics"].tls
+          value: *clientTLS
+      - equal:
+          path: spec.config.exporters["otlp_http/traces"].tls
+          value: *clientTLS
+      - notExists:
+          path: spec.config.exporters["otlp_http/watchdog"].tls
       - equal:
           path: spec.config.receivers.prometheus.config
           value: {scrape_configs: []}
@@ -205,6 +220,13 @@ tests:
               hostPath: {path: /etc/machine-id, type: File}
             - name: host-logs
               hostPath: {path: /var/log, type: Directory}
+            - name: internal-tls-client
+              secret:
+                secretName: nktp-daemonset-client-tls
+                items:
+                  - {key: tls.crt, path: tls.crt}
+                  - {key: tls.key, path: tls.key}
+                  - {key: ca.crt, path: ca.crt}
       - equal:
           path: spec.volumeMounts
           value:
@@ -234,6 +256,9 @@ tests:
               readOnly: true
             - name: host-logs
               mountPath: /hostfs/var/log
+              readOnly: true
+            - name: internal-tls-client
+              mountPath: /etc/nktp/internal-tls/client
               readOnly: true
       - equal:
           path: spec.securityContext
@@ -494,7 +519,7 @@ tests:
           value: {x-literal: "{{ preserved }} $$TOKEN"}
       - equal:
           path: spec.config.exporters["otlp_http/metrics"].endpoint
-          value: http://nktp-gateway-metrics-collector:4318
+          value: https://nktp-gateway-metrics-collector:4318
       - equal:
           path: spec.config.service.telemetry.logs.processors[0].batch.exporter.otlp.endpoint
           value: http://127.0.0.1:4319
@@ -520,7 +545,7 @@ tests:
           value: http://127.0.0.1:4319
       - equal:
           path: spec.config.exporters["otlp_http/logs"].endpoint
-          value: http://nktp-gateway-logs-collector:4318
+          value: https://nktp-gateway-logs-collector:4318
 
   - it: replaces own log exporters independently
     set:
@@ -543,7 +568,7 @@ tests:
           value: http://127.0.0.1:4319
       - equal:
           path: spec.config.exporters["otlp_http/logs"].endpoint
-          value: http://nktp-gateway-logs-collector:4318
+          value: https://nktp-gateway-logs-collector:4318
 
   - it: replaces own trace exporters independently
     set:
@@ -566,7 +591,7 @@ tests:
           value: http://127.0.0.1:4319
       - equal:
           path: spec.config.exporters["otlp_http/logs"].endpoint
-          value: http://nktp-gateway-logs-collector:4318
+          value: https://nktp-gateway-logs-collector:4318
 
 
   - it: pushes allocator metrics without a local scrape pipeline or LGTM
@@ -766,7 +791,7 @@ tests:
           value: {receivers: [otlp], processors: [memory_limiter, resource/node, redaction/basic_v1], exporters: [otlp_http/traces]}
       - equal:
           path: spec.config.exporters["otlp_http/traces"].endpoint
-          value: http://nktp-gateway-traces-collector:4318
+          value: https://nktp-gateway-traces-collector:4318
       - equal:
           path: spec.config.exporters["otlp_http/traces"].sending_queue
           value:
@@ -798,10 +823,10 @@ tests:
           value: http://traces.example:4318
       - equal:
           path: spec.config.exporters["otlp_http/logs"].endpoint
-          value: http://nktp-gateway-logs-collector:4318
+          value: https://nktp-gateway-logs-collector:4318
       - equal:
           path: spec.config.exporters["otlp_http/metrics"].endpoint
-          value: http://nktp-gateway-metrics-collector:4318
+          value: https://nktp-gateway-metrics-collector:4318
 
   - it: reads new host journal entries and retries downstream failures
     asserts:
@@ -848,10 +873,23 @@ tests:
           content: {name: journal-persistent, mountPath: /hostfs/run/log/journal, readOnly: true}
       - lengthEqual:
           path: spec.volumes
-          count: 9
+          count: 10
       - lengthEqual:
           path: spec.volumeMounts
-          count: 10
+          count: 11
+      - contains:
+          path: spec.volumes
+          content:
+            name: internal-tls-client
+            secret:
+              secretName: nktp-daemonset-client-tls
+              items:
+                - {key: tls.crt, path: tls.crt}
+                - {key: tls.key, path: tls.key}
+                - {key: ca.crt, path: ca.crt}
+      - contains:
+          path: spec.volumeMounts
+          content: {name: internal-tls-client, mountPath: /etc/nktp/internal-tls/client, readOnly: true}
       - contains:
           path: spec.volumeMounts
           content: {name: pod-logs, mountPath: /var/log/pods, readOnly: true}

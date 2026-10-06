@@ -54,7 +54,7 @@ tests:
         documentIndex: 0
       - equal:
           path: "spec.config.exporters.otlp_http.endpoint"
-          value: "http://nktp-gateway-metrics-collector:4318"
+          value: "https://nktp-gateway-metrics-collector:4318"
         documentIndex: 0
       - equal:
           path: "spec.targetAllocator.prometheusCR.denyFSAccessThroughSMs"
@@ -188,7 +188,7 @@ tests:
         documentIndex: 0
       - equal:
           path: "spec.config.exporters.otlp_http.endpoint"
-          value: "http://nktp-gateway-metrics-collector:4318"
+          value: "https://nktp-gateway-metrics-collector:4318"
         documentIndex: 0
 
   - it: pushes allocator metrics directly to watchdog without a Collector scrape pipeline

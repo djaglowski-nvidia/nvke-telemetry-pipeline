@@ -17,14 +17,34 @@ tests:
       - notExists:
           path: spec.targetAllocator
       - equal:
+          path: spec.volumes[0].secret.secretName
+          value: nktp-gateway-logs-server-tls
+      - notExists:
+          path: spec.volumes[1]
+      - equal:
+          path: spec.volumeMounts[0].mountPath
+          value: /etc/nktp/internal-tls/server
+      - notExists:
+          path: spec.volumeMounts[1]
+      - equal:
           path: spec.config.receivers
           value:
             otlp:
               protocols:
                 grpc:
                   endpoint: 0.0.0.0:4317
+                  tls:
+                    cert_file: /etc/nktp/internal-tls/server/tls.crt
+                    key_file: /etc/nktp/internal-tls/server/tls.key
+                    client_ca_file: /etc/nktp/internal-tls/server/ca.crt
+                    reload_interval: 1h
                 http:
                   endpoint: 0.0.0.0:4318
+                  tls:
+                    cert_file: /etc/nktp/internal-tls/server/tls.crt
+                    key_file: /etc/nktp/internal-tls/server/tls.key
+                    client_ca_file: /etc/nktp/internal-tls/server/ca.crt
+                    reload_interval: 1h
       - equal:
           path: spec.config.service.pipelines
           value:
@@ -255,4 +275,10 @@ tests:
       - equal:
           path: spec.config.receivers.otlp.protocols
           value:
-            grpc: {endpoint: "${env:GRPC_LISTEN_ADDR}"}
+            grpc:
+              endpoint: ${env:GRPC_LISTEN_ADDR}
+              tls:
+                cert_file: /etc/nktp/internal-tls/server/tls.crt
+                key_file: /etc/nktp/internal-tls/server/tls.key
+                client_ca_file: /etc/nktp/internal-tls/server/ca.crt
+                reload_interval: 1h

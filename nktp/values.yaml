@@ -16,20 +16,21 @@ global:
   #           repository: <mirror>/open-telemetry/opentelemetry-operator/opentelemetry-operator
   imageRegistry: ""
 
-tls:
-  # Enable mTLS for collector-to-collector communication
-  internal:
+certManager:
+  # Creates Certificate CRs for each collector workload for encrypted collector-to-gateway communication
+  # and creates a self-signed Issuer to act as a in-cluster CA + Issuer to sign collector Certificates
+  # https://cert-manager.io/docs/configuration/selfsigned/#bootstrapping-ca-issuers
+  internalTLS:
     enabled: true
-    certManager:
-      # Leave empty to let NKTP create an internal self-signed CA and Issuer.
-      #
-      # To use an existing Issuer or ClusterIssuer:
-      # issuerRef:
-      #   name: corporate-workload-ca
-      #   kind: ClusterIssuer
-      #   group: cert-manager.io
-      issuerRef: {}
-     
+    # Leave empty to let NKTP create an internal self-signed CA and Issuer.
+    #
+    # To use an existing Issuer or ClusterIssuer:
+    # issuerRef:
+    #   name: corporate-workload-ca
+    #   kind: ClusterIssuer
+    #   group: cert-manager.io
+    issuerRef: {}
+
 # Collector image used by all OTel workloads. global.imageRegistry replaces registry.
 otelcol_image:
   registry: "" # Empty pulls from the image's default registry (Docker Hub for this repository).
@@ -427,6 +428,18 @@ gateway_logs:
       readOnlyRootFilesystem: true
       capabilities:
         drop: [ALL]
+    volumes:
+      - name: internal-tls-server
+        secret:
+          secretName: nktp-gateway-logs-server-tls
+          items:
+            - {key: tls.crt, path: tls.crt}
+            - {key: tls.key, path: tls.key}
+            - {key: ca.crt, path: ca.crt}
+    volumeMounts:
+      - name: internal-tls-server
+        mountPath: /etc/nktp/internal-tls/server
+        readOnly: true
   otelcol:
     # Set a custom image for this workload only.
     # image:
@@ -442,8 +455,18 @@ gateway_logs:
           protocols:
             grpc:
               endpoint: 0.0.0.0:4317
+              tls:
+                cert_file: /etc/nktp/internal-tls/server/tls.crt
+                key_file: /etc/nktp/internal-tls/server/tls.key
+                client_ca_file: /etc/nktp/internal-tls/server/ca.crt
+                reload_interval: 1h
             http:
               endpoint: 0.0.0.0:4318
+              tls:
+                cert_file: /etc/nktp/internal-tls/server/tls.crt
+                key_file: /etc/nktp/internal-tls/server/tls.key
+                client_ca_file: /etc/nktp/internal-tls/server/ca.crt
+                reload_interval: 1h
       processors:
         redaction/basic_v1:
           allow_all_keys: true
@@ -678,6 +701,18 @@ gateway_metrics:
       readOnlyRootFilesystem: true
       capabilities:
         drop: [ALL]
+    volumes:
+      - name: internal-tls-server
+        secret:
+          secretName: nktp-gateway-metrics-server-tls
+          items:
+            - {key: tls.crt, path: tls.crt}
+            - {key: tls.key, path: tls.key}
+            - {key: ca.crt, path: ca.crt}
+    volumeMounts:
+      - name: internal-tls-server
+        mountPath: /etc/nktp/internal-tls/server
+        readOnly: true
   otelcol:
     # Set a custom image for this workload only.
     # image:
@@ -693,8 +728,18 @@ gateway_metrics:
           protocols:
             grpc:
               endpoint: 0.0.0.0:4317
+              tls:
+                cert_file: /etc/nktp/internal-tls/server/tls.crt
+                key_file: /etc/nktp/internal-tls/server/tls.key
+                client_ca_file: /etc/nktp/internal-tls/server/ca.crt
+                reload_interval: 1h
             http:
               endpoint: 0.0.0.0:4318
+              tls:
+                cert_file: /etc/nktp/internal-tls/server/tls.crt
+                key_file: /etc/nktp/internal-tls/server/tls.key
+                client_ca_file: /etc/nktp/internal-tls/server/ca.crt
+                reload_interval: 1h
       processors:
         redaction/basic_v1:
           allow_all_keys: true
@@ -929,6 +974,18 @@ gateway_traces:
       readOnlyRootFilesystem: true
       capabilities:
         drop: [ALL]
+    volumes:
+      - name: internal-tls-server
+        secret:
+          secretName: nktp-gateway-traces-server-tls
+          items:
+            - {key: tls.crt, path: tls.crt}
+            - {key: tls.key, path: tls.key}
+            - {key: ca.crt, path: ca.crt}
+    volumeMounts:
+      - name: internal-tls-server
+        mountPath: /etc/nktp/internal-tls/server
+        readOnly: true
   otelcol:
     # Set a custom image for this workload only.
     # image:
@@ -944,8 +1001,18 @@ gateway_traces:
           protocols:
             grpc:
               endpoint: 0.0.0.0:4317
+              tls:
+                cert_file: /etc/nktp/internal-tls/server/tls.crt
+                key_file: /etc/nktp/internal-tls/server/tls.key
+                client_ca_file: /etc/nktp/internal-tls/server/ca.crt
+                reload_interval: 1h
             http:
               endpoint: 0.0.0.0:4318
+              tls:
+                cert_file: /etc/nktp/internal-tls/server/tls.crt
+                key_file: /etc/nktp/internal-tls/server/tls.key
+                client_ca_file: /etc/nktp/internal-tls/server/ca.crt
+                reload_interval: 1h
       processors:
         redaction/basic_v1:
           allow_all_keys: true
@@ -1276,6 +1343,13 @@ daemonset:
         hostPath:
           path: /var/log
           type: Directory
+      - name: internal-tls-client
+        secret:
+          secretName: nktp-daemonset-client-tls
+          items:
+            - {key: tls.crt, path: tls.crt}
+            - {key: tls.key, path: tls.key}
+            - {key: ca.crt, path: ca.crt}
     volumeMounts:
       - name: pod-logs
         mountPath: /var/log/pods
@@ -1303,6 +1377,9 @@ daemonset:
         readOnly: true
       - name: host-logs
         mountPath: /hostfs/var/log
+        readOnly: true
+      - name: internal-tls-client
+        mountPath: /etc/nktp/internal-tls/client
         readOnly: true
   otelcol:
     # Set a custom image for this workload only.
@@ -1543,7 +1620,12 @@ daemonset:
                 - set(attributes["service.instance.id"], attributes["k8s.pod.name"])
       exporters:
         otlp_http/logs:
-          endpoint: http://nktp-gateway-logs-collector:4318
+          endpoint: https://nktp-gateway-logs-collector:4318
+          tls:
+            ca_file: /etc/nktp/internal-tls/client/ca.crt
+            cert_file: /etc/nktp/internal-tls/client/tls.crt
+            key_file: /etc/nktp/internal-tls/client/tls.key
+            reload_interval: 1h
           retry_on_failure:
             max_elapsed_time: 30m
           sending_queue:
@@ -1557,7 +1639,12 @@ daemonset:
               max_size: 2097152 # Split above 2MiB serialized. Decoded heap can be larger.
               flush_timeout: 1s # Flush partial batches to limit low-volume buffering time.
         otlp_http/metrics:
-          endpoint: http://nktp-gateway-metrics-collector:4318
+          endpoint: https://nktp-gateway-metrics-collector:4318
+          tls:
+            ca_file: /etc/nktp/internal-tls/client/ca.crt
+            cert_file: /etc/nktp/internal-tls/client/tls.crt
+            key_file: /etc/nktp/internal-tls/client/tls.key
+            reload_interval: 1h
           retry_on_failure:
             max_elapsed_time: 30m
           sending_queue:
@@ -1571,7 +1658,12 @@ daemonset:
               max_size: 2097152
               flush_timeout: 1s
         otlp_http/traces:
-          endpoint: http://nktp-gateway-traces-collector:4318
+          endpoint: https://nktp-gateway-traces-collector:4318
+          tls:
+            ca_file: /etc/nktp/internal-tls/client/ca.crt
+            cert_file: /etc/nktp/internal-tls/client/tls.crt
+            key_file: /etc/nktp/internal-tls/client/tls.key
+            reload_interval: 1h
           retry_on_failure:
             max_elapsed_time: 30m
           sending_queue:
@@ -1895,6 +1987,18 @@ large_target_metrics:
       readOnlyRootFilesystem: true
       capabilities:
         drop: [ALL]
+    volumes:
+      - name: internal-tls-client
+        secret:
+          secretName: nktp-large-target-metrics-client-tls
+          items:
+            - {key: tls.crt, path: tls.crt}
+            - {key: tls.key, path: tls.key}
+            - {key: ca.crt, path: ca.crt}
+    volumeMounts:
+      - name: internal-tls-client
+        mountPath: /etc/nktp/internal-tls/client
+        readOnly: true
   otelcol:
     # Set a custom image for this workload only.
     # image:
@@ -1935,7 +2039,12 @@ large_target_metrics:
           spike_limit_percentage: 25 # Subtract from hard threshold for soft refusal at 55% (8.8Gi).
       exporters:
         otlp_http:
-          endpoint: http://nktp-gateway-metrics-collector:4318
+          endpoint: https://nktp-gateway-metrics-collector:4318
+          tls:
+            ca_file: /etc/nktp/internal-tls/client/ca.crt
+            cert_file: /etc/nktp/internal-tls/client/tls.crt
+            key_file: /etc/nktp/internal-tls/client/tls.key
+            reload_interval: 1h
           retry_on_failure:
             max_elapsed_time: 30m
           sending_queue:
@@ -2152,6 +2261,18 @@ cluster_events:
       readOnlyRootFilesystem: true
       capabilities:
         drop: [ALL]
+    volumes:
+      - name: internal-tls-client
+        secret:
+          secretName: nktp-cluster-events-client-tls
+          items:
+            - {key: tls.crt, path: tls.crt}
+            - {key: tls.key, path: tls.key}
+            - {key: ca.crt, path: ca.crt}
+    volumeMounts:
+      - name: internal-tls-client
+        mountPath: /etc/nktp/internal-tls/client
+        readOnly: true
   otelcol:
     # Set a custom image for this workload only.
     # image:
@@ -2187,7 +2308,12 @@ cluster_events:
           spike_limit_percentage: 25 # Subtract from hard threshold for soft refusal at 55% (563.2Mi).
       exporters:
         otlp_http:
-          endpoint: http://nktp-gateway-logs-collector:4318
+          endpoint: https://nktp-gateway-logs-collector:4318
+          tls:
+            ca_file: /etc/nktp/internal-tls/client/ca.crt
+            cert_file: /etc/nktp/internal-tls/client/tls.crt
+            key_file: /etc/nktp/internal-tls/client/tls.key
+            reload_interval: 1h
           retry_on_failure:
             max_elapsed_time: 30m
           sending_queue:

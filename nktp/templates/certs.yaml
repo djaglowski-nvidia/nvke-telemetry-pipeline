@@ -1,5 +1,5 @@
-{{- if .Values.tls.internal.enabled }}
-{{- $issuerRef := .Values.tls.internal.certManager.issuerRef -}}
+{{- if .Values.certManager.internalTLS.enabled }}
+{{- $issuerRef := .Values.certManager.internalTLS.issuerRef -}}
 {{- if empty $issuerRef }}
 apiVersion: cert-manager.io/v1
 kind: Issuer
@@ -39,7 +39,6 @@ spec:
     secretName: nktp-internal-ca
 {{- end }}
 {{- $servers := list
-      (dict "name" "nktp-watchdog-server" "secretName" "nktp-watchdog-server-tls" "serviceName" "nktp-watchdog-collector")
       (dict "name" "nktp-gateway-logs-server" "secretName" "nktp-gateway-logs-server-tls" "serviceName" "nktp-gateway-logs-collector")
       (dict "name" "nktp-gateway-metrics-server" "secretName" "nktp-gateway-metrics-server-tls" "serviceName" "nktp-gateway-metrics-collector")
       (dict "name" "nktp-gateway-traces-server" "secretName" "nktp-gateway-traces-server-tls" "serviceName" "nktp-gateway-traces-collector") -}}
@@ -75,10 +74,7 @@ spec:
 {{- $clients := list
       (dict "name" "nktp-daemonset-client" "commonName" "nktp-daemonset")
       (dict "name" "nktp-large-target-metrics-client" "commonName" "nktp-large-target-metrics")
-      (dict "name" "nktp-cluster-events-client" "commonName" "nktp-cluster-events")
-      (dict "name" "nktp-gateway-logs-client" "commonName" "nktp-gateway-logs")
-      (dict "name" "nktp-gateway-metrics-client" "commonName" "nktp-gateway-metrics")
-      (dict "name" "nktp-gateway-traces-client" "commonName" "nktp-gateway-traces") -}}
+      (dict "name" "nktp-cluster-events-client" "commonName" "nktp-cluster-events") -}}
 {{- range $client := $clients }}
 ---
 apiVersion: cert-manager.io/v1

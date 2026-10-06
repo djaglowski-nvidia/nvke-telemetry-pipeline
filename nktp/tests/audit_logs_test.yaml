@@ -87,7 +87,7 @@ tests:
             exporters: [otlp_http/logs]
       - equal:
           path: spec.config.exporters["otlp_http/logs"].endpoint
-          value: http://nktp-gateway-logs-collector:4318
+          value: https://nktp-gateway-logs-collector:4318
       - equal:
           path: spec.config.service.pipelines.logs
           value:

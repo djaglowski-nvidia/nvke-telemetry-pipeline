@@ -88,8 +88,21 @@ opentelemetry-kube-stack:
 ### Internal mTLS
 
 By default, NKTP uses cert-manager to create a self-signed CA, issuer, and certificates for each collector 
-used for collector-to-gateway traffic encryption. Setting `tls.internal.certManager.issuerRef` allows you to specify
+used for collector-to-gateway traffic encryption. Setting `certManager.internalTLS.issuerRef` allows you to specify
 an existing `Issuer` or `ClusterIssuer`.
+
+```bash
+certManager:
+  internalTLS:
+    enabled: true
+    issuerRef: {}
+```
+
+The cluster event reader, DaemonSet, and large-target metrics collectors each use a client certificate to send
+telemetry to the gateways over mTLS. Each gateway uses a server certificate.
+
+Traffic to watchdog is not covered by this setting. Collector and Target Allocator self-telemetry, and the
+DaemonSet's Target Allocator and Operator logs, are sent to watchdog over plain HTTP.
 
 ```bash
 kubectl get issuers,certs -n nktp
@@ -107,13 +120,7 @@ certificate.cert-manager.io/nktp-internal-ca                   True    nktp-inte
 certificate.cert-manager.io/nktp-large-target-metrics-client   True    nktp-large-target-metrics-client-tls            48s
 ```
 
-The cluster event reader, DaemonSet, and large-target metrics collectors each use a client certificate to send
-telemetry to the gateways over mTLS. Each gateway uses a server certificate.
-
-Traffic to watchdog is not covered by this setting. Collector and Target Allocator self-telemetry, and the
-DaemonSet's Target Allocator and Operator logs, are sent to watchdog over plain HTTP.
-
 **NOTE:** Gateway->Backend encryption requires a manually configured client certificate for the gateways and is not part of this setting.
 
-Disabling `tls.internal` requires you to manually reconfigure the collector configs to use `http` endpoints and not include `tls` blocks.
+Disabling `certManager.internlaTLS` requires you to manually reconfigure the collector configs to use `http` endpoints and not include `tls` blocks.
 
