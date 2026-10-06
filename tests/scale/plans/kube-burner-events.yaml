@@ -94,65 +94,77 @@ stages:
       duration: 5m
       interval: 15s
       query_timeout: 10s
-      queries:
-        producer_running_pods: >-
-          sum(
-            max by (namespace,pod) (
-              kube_pod_status_phase{namespace="nktp",phase="Running"}
-              and (time() - timestamp(kube_pod_status_phase{namespace="nktp",phase="Running"}) < 90)
+      measurements:
+        - name: producer_running_pods
+          units: count
+          query: >-
+            sum(
+              max by (namespace,pod) (
+                kube_pod_status_phase{namespace="nktp",phase="Running"}
+                and (time() - timestamp(kube_pod_status_phase{namespace="nktp",phase="Running"}) < 90)
+              )
+              and on (namespace,pod) max by (namespace,pod) (
+                kube_pod_container_info{namespace="nktp",container="kube-burner-events"}
+                and (time() - timestamp(kube_pod_container_info{namespace="nktp",container="kube-burner-events"}) < 90)
+              )
+              and on (namespace,pod) max by (namespace,pod) (
+                kube_pod_labels{namespace="nktp",label_scale_nktp_io_run_id="{{ .Args.runId }}"}
+                and (time() - timestamp(kube_pod_labels{namespace="nktp",label_scale_nktp_io_run_id="{{ .Args.runId }}"}) < 90)
+              )
             )
-            and on (namespace,pod) max by (namespace,pod) (
-              kube_pod_container_info{namespace="nktp",container="kube-burner-events"}
-              and (time() - timestamp(kube_pod_container_info{namespace="nktp",container="kube-burner-events"}) < 90)
+        - name: producer_cpu_cores
+          units: cores
+          query: >-
+            sum by (pod) (
+              rate(container_cpu_usage_seconds_total{namespace="nktp",container="kube-burner-events"}[2m])
+              and (time() - timestamp(container_cpu_usage_seconds_total{namespace="nktp",container="kube-burner-events"}) < 90)
+              and on (namespace,pod) max by (namespace,pod) (
+                kube_pod_labels{namespace="nktp",label_scale_nktp_io_run_id="{{ .Args.runId }}"}
+                and (time() - timestamp(kube_pod_labels{namespace="nktp",label_scale_nktp_io_run_id="{{ .Args.runId }}"}) < 90)
+              )
             )
-            and on (namespace,pod) max by (namespace,pod) (
-              kube_pod_labels{namespace="nktp",label_scale_nktp_io_run_id="{{ .Args.runId }}"}
-              and (time() - timestamp(kube_pod_labels{namespace="nktp",label_scale_nktp_io_run_id="{{ .Args.runId }}"}) < 90)
+        - name: producer_memory_bytes
+          units: bytes
+          query: >-
+            max by (pod) (
+              container_memory_working_set_bytes{namespace="nktp",container="kube-burner-events"}
+              and (time() - timestamp(container_memory_working_set_bytes{namespace="nktp",container="kube-burner-events"}) < 90)
+              and on (namespace,pod) max by (namespace,pod) (
+                kube_pod_labels{namespace="nktp",label_scale_nktp_io_run_id="{{ .Args.runId }}"}
+                and (time() - timestamp(kube_pod_labels{namespace="nktp",label_scale_nktp_io_run_id="{{ .Args.runId }}"}) < 90)
+              )
             )
-          )
-        producer_cpu_cores: >-
-          sum by (pod) (
-            rate(container_cpu_usage_seconds_total{namespace="nktp",container="kube-burner-events"}[2m])
-            and (time() - timestamp(container_cpu_usage_seconds_total{namespace="nktp",container="kube-burner-events"}) < 90)
-            and on (namespace,pod) max by (namespace,pod) (
-              kube_pod_labels{namespace="nktp",label_scale_nktp_io_run_id="{{ .Args.runId }}"}
-              and (time() - timestamp(kube_pod_labels{namespace="nktp",label_scale_nktp_io_run_id="{{ .Args.runId }}"}) < 90)
-            )
-          )
-        producer_memory_bytes: >-
-          max by (pod) (
-            container_memory_working_set_bytes{namespace="nktp",container="kube-burner-events"}
-            and (time() - timestamp(container_memory_working_set_bytes{namespace="nktp",container="kube-burner-events"}) < 90)
-            and on (namespace,pod) max by (namespace,pod) (
-              kube_pod_labels{namespace="nktp",label_scale_nktp_io_run_id="{{ .Args.runId }}"}
-              and (time() - timestamp(kube_pod_labels{namespace="nktp",label_scale_nktp_io_run_id="{{ .Args.runId }}"}) < 90)
-            )
-          )
-        received_records_per_second: sum by (job,instance,receiver) (rate(otelcol_receiver_accepted_log_records_total{job=~"nktp-cluster-events|nktp-gateway-logs|nktp-kube-burner-events-blackhole|nktp-watchdog"}[2m]))
-        sent_records_per_second: sum by (job,instance,exporter) (rate(otelcol_exporter_sent_log_records_total{job=~"nktp-cluster-events|nktp-gateway-logs|nktp-kube-burner-events-blackhole|nktp-watchdog"}[2m]))
-        component_cpu_cores: sum by (job,instance) (rate(otelcol_process_cpu_seconds_total{job=~"nktp-cluster-events|nktp-gateway-logs|nktp-kube-burner-events-blackhole|nktp-watchdog"}[2m]))
-        component_memory_bytes: otelcol_process_memory_rss_bytes{job=~"nktp-cluster-events|nktp-gateway-logs|nktp-kube-burner-events-blackhole|nktp-watchdog"}
+        - name: received_records_per_second
+          units: records/s
+          query: sum by (job,instance,receiver) (rate(otelcol_receiver_accepted_log_records_total{job=~"nktp-cluster-events|nktp-gateway-logs|nktp-kube-burner-events-blackhole|nktp-watchdog"}[2m]))
+        - name: sent_records_per_second
+          units: records/s
+          query: sum by (job,instance,exporter) (rate(otelcol_exporter_sent_log_records_total{job=~"nktp-cluster-events|nktp-gateway-logs|nktp-kube-burner-events-blackhole|nktp-watchdog"}[2m]))
+        - name: component_cpu_cores
+          units: cores
+          query: sum by (job,instance) (rate(otelcol_process_cpu_seconds_total{job=~"nktp-cluster-events|nktp-gateway-logs|nktp-kube-burner-events-blackhole|nktp-watchdog"}[2m]))
+        - name: component_memory_bytes
+          units: bytes
+          query: otelcol_process_memory_rss_bytes{job=~"nktp-cluster-events|nktp-gateway-logs|nktp-kube-burner-events-blackhole|nktp-watchdog"}
         # These exporters use sending_queue.sizer: bytes, so queue size is serialized bytes.
-        queue_bytes: otelcol_exporter_queue_size{job=~"nktp-cluster-events|nktp-gateway-logs|nktp-kube-burner-events-blackhole|nktp-watchdog"}
-        queue_utilization_ratio: otelcol_exporter_queue_size{job=~"nktp-cluster-events|nktp-gateway-logs|nktp-kube-burner-events-blackhole|nktp-watchdog"}
-          / otelcol_exporter_queue_capacity{job=~"nktp-cluster-events|nktp-gateway-logs|nktp-kube-burner-events-blackhole|nktp-watchdog"}
-        receiver_refused_records_per_second: sum by (job,instance,receiver) (rate(otelcol_receiver_refused_log_records_total{job=~"nktp-cluster-events|nktp-gateway-logs|nktp-kube-burner-events-blackhole|nktp-watchdog"}[2m]))
-        exporter_enqueue_failed_records_per_second: sum by (job,instance,exporter) (rate(otelcol_exporter_enqueue_failed_log_records_total{job=~"nktp-cluster-events|nktp-gateway-logs|nktp-kube-burner-events-blackhole|nktp-watchdog"}[2m]))
-        exporter_send_failed_records_per_second: sum by (job,instance,exporter) (rate(otelcol_exporter_send_failed_log_records_total{job=~"nktp-cluster-events|nktp-gateway-logs|nktp-kube-burner-events-blackhole|nktp-watchdog"}[2m]))
-        self_metrics_age_seconds: max by (job,instance) (time() - timestamp(otelcol_process_memory_rss_bytes{job=~"nktp-cluster-events|nktp-gateway-logs|nktp-kube-burner-events-blackhole|nktp-watchdog"}))
-        container_restarts: max by (pod,container) (increase(kube_pod_container_status_restarts_total{namespace="nktp",pod=~"nktp-cluster-events-.*|nktp-gateway-logs-.*|nktp-kube-burner-events-blackhole-.*|nktp-watchdog-.*|lgtm-.*|scale-.*"}[2m]))
-      units:
-        producer_running_pods: count
-        producer_cpu_cores: cores
-        producer_memory_bytes: bytes
-        received_records_per_second: records/s
-        sent_records_per_second: records/s
-        component_cpu_cores: cores
-        component_memory_bytes: bytes
-        queue_bytes: bytes
-        queue_utilization_ratio: ratio
-        receiver_refused_records_per_second: records/s
-        exporter_enqueue_failed_records_per_second: records/s
-        exporter_send_failed_records_per_second: records/s
-        self_metrics_age_seconds: s
-        container_restarts: count
+        - name: queue_bytes
+          units: bytes
+          query: otelcol_exporter_queue_size{job=~"nktp-cluster-events|nktp-gateway-logs|nktp-kube-burner-events-blackhole|nktp-watchdog"}
+        - name: queue_utilization_ratio
+          units: ratio
+          query: otelcol_exporter_queue_size{job=~"nktp-cluster-events|nktp-gateway-logs|nktp-kube-burner-events-blackhole|nktp-watchdog"} / otelcol_exporter_queue_capacity{job=~"nktp-cluster-events|nktp-gateway-logs|nktp-kube-burner-events-blackhole|nktp-watchdog"}
+        - name: receiver_refused_records_per_second
+          units: records/s
+          query: sum by (job,instance,receiver) (rate(otelcol_receiver_refused_log_records_total{job=~"nktp-cluster-events|nktp-gateway-logs|nktp-kube-burner-events-blackhole|nktp-watchdog"}[2m]))
+        - name: exporter_enqueue_failed_records_per_second
+          units: records/s
+          query: sum by (job,instance,exporter) (rate(otelcol_exporter_enqueue_failed_log_records_total{job=~"nktp-cluster-events|nktp-gateway-logs|nktp-kube-burner-events-blackhole|nktp-watchdog"}[2m]))
+        - name: exporter_send_failed_records_per_second
+          units: records/s
+          query: sum by (job,instance,exporter) (rate(otelcol_exporter_send_failed_log_records_total{job=~"nktp-cluster-events|nktp-gateway-logs|nktp-kube-burner-events-blackhole|nktp-watchdog"}[2m]))
+        - name: self_metrics_age_seconds
+          units: s
+          query: max by (job,instance) (time() - timestamp(otelcol_process_memory_rss_bytes{job=~"nktp-cluster-events|nktp-gateway-logs|nktp-kube-burner-events-blackhole|nktp-watchdog"}))
+        - name: container_restarts
+          units: count
+          query: max by (pod,container) (increase(kube_pod_container_status_restarts_total{namespace="nktp",pod=~"nktp-cluster-events-.*|nktp-gateway-logs-.*|nktp-kube-burner-events-blackhole-.*|nktp-watchdog-.*|lgtm-.*|scale-.*"}[2m]))

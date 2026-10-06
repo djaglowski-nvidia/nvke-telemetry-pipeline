@@ -550,297 +550,340 @@ stages:
       query_timeout: 30s
       # Compare each bucket with the workload table in ../avalanche-100m.md.
       # Missing series stay absent. History queries describe the preceding 30 minutes.
-      units:
-        fresh_targets_by_bucket: targets
-        fresh_scraped_targets_by_bucket: targets
-        minimum_scraped_samples_by_bucket: samples/target
-        maximum_scraped_samples_by_bucket: samples/target
-        scraped_sample_extremes_by_target: samples/target
-        fresh_retained_targets_by_bucket: targets
-        minimum_retained_samples_by_bucket: samples/target
-        maximum_retained_samples_by_bucket: samples/target
-        retained_sample_extremes_by_target: samples/target
-        scrape_duration_by_bucket: seconds
-        observed_targets_by_node: targets
-        successful_targets_30m_by_bucket: targets
-        minimum_scrape_observations_30m_by_bucket: observations/target
-        minimum_sample_observations_30m_by_bucket: observations/target
-        minimum_samples_30m_by_bucket: samples/target
-        maximum_samples_30m_by_bucket: samples/target
-        producer_inventory_by_container: pods
-        producer_ready_by_container: pods
-        producer_cpu_by_container: cores
-        producer_memory_by_node: bytes
-        producer_fresh_cpu_pods_by_container: pods
-        producer_fresh_memory_pods_by_container: pods
-        component_cpu_cores: cores
-        component_memory_bytes: bytes
-        component_cpu_throttled_percent: percent
-        component_resource_budgets: resource units
-        component_restarts: restarts
-        component_ready: ready
-        component_queue_utilization_percent: percent
-        accepted_points_per_second: points/s
-        sent_points_per_second: points/s
-        refused_points_per_second: points/s
-        enqueue_failed_points_per_second: points/s
-        send_failed_points_per_second: points/s
-        memory_limiter_refused_points_per_second: points/s
-        component_self_metric_age_seconds: seconds
-        component_oom_details: pods
-        total_nodes: nodes
-        ready_nodes: nodes
-        fresh_cpu_nodes: nodes
-        fresh_memory_nodes: nodes
-        hpa_replicas: replicas
-        hpa_bad_conditions: conditions
-        lgtm_failed_points_per_second: points/s
-      queries:
-        fresh_targets_by_bucket: |-
-          count by (scale_bucket, scale_scraper_pool) (
-            max by (scale_bucket, scale_scraper_pool, generator_instance) (
-              (up{test_run_id="{{ .Args.runId }}"}
-              and (time() - timestamp(up{test_run_id="{{ .Args.runId }}"}) < 120)) == 1
+      measurements:
+        - name: fresh_targets_by_bucket
+          units: targets
+          query: |-
+            count by (scale_bucket, scale_scraper_pool) (
+              max by (scale_bucket, scale_scraper_pool, generator_instance) (
+                (up{test_run_id="{{ .Args.runId }}"}
+                and (time() - timestamp(up{test_run_id="{{ .Args.runId }}"}) < 120)) == 1
+              )
             )
-          )
-        fresh_scraped_targets_by_bucket: |-
-          count by (scale_bucket, scale_scraper_pool) (
-            group by (scale_bucket, scale_scraper_pool, generator_instance) (
+        - name: fresh_scraped_targets_by_bucket
+          units: targets
+          query: |-
+            count by (scale_bucket, scale_scraper_pool) (
+              group by (scale_bucket, scale_scraper_pool, generator_instance) (
+                scrape_samples_scraped{test_run_id="{{ .Args.runId }}"}
+                and (time() - timestamp(scrape_samples_scraped{test_run_id="{{ .Args.runId }}"}) < 120)
+              )
+            )
+        - name: minimum_scraped_samples_by_bucket
+          units: samples/target
+          query: |-
+            min by (scale_bucket, scale_scraper_pool) (
               scrape_samples_scraped{test_run_id="{{ .Args.runId }}"}
               and (time() - timestamp(scrape_samples_scraped{test_run_id="{{ .Args.runId }}"}) < 120)
             )
-          )
-        minimum_scraped_samples_by_bucket: |-
-          min by (scale_bucket, scale_scraper_pool) (
-            scrape_samples_scraped{test_run_id="{{ .Args.runId }}"}
-            and (time() - timestamp(scrape_samples_scraped{test_run_id="{{ .Args.runId }}"}) < 120)
-          )
-        maximum_scraped_samples_by_bucket: |-
-          max by (scale_bucket, scale_scraper_pool) (
-            scrape_samples_scraped{test_run_id="{{ .Args.runId }}"}
-            and (time() - timestamp(scrape_samples_scraped{test_run_id="{{ .Args.runId }}"}) < 120)
-          )
-        scraped_sample_extremes_by_target: |-
-          topk by (scale_bucket, scale_scraper_pool) (1,
-            scrape_samples_scraped{test_run_id="{{ .Args.runId }}"}
-            and (time() - timestamp(scrape_samples_scraped{test_run_id="{{ .Args.runId }}"}) < 120)
-          )
-          or
-          bottomk by (scale_bucket, scale_scraper_pool) (1,
-            scrape_samples_scraped{test_run_id="{{ .Args.runId }}"}
-            and (time() - timestamp(scrape_samples_scraped{test_run_id="{{ .Args.runId }}"}) < 120)
-          )
-        fresh_retained_targets_by_bucket: |-
-          count by (scale_bucket, scale_scraper_pool) (
-            group by (scale_bucket, scale_scraper_pool, generator_instance) (
+        - name: maximum_scraped_samples_by_bucket
+          units: samples/target
+          query: |-
+            max by (scale_bucket, scale_scraper_pool) (
+              scrape_samples_scraped{test_run_id="{{ .Args.runId }}"}
+              and (time() - timestamp(scrape_samples_scraped{test_run_id="{{ .Args.runId }}"}) < 120)
+            )
+        - name: scraped_sample_extremes_by_target
+          units: samples/target
+          query: |-
+            topk by (scale_bucket, scale_scraper_pool) (1,
+              scrape_samples_scraped{test_run_id="{{ .Args.runId }}"}
+              and (time() - timestamp(scrape_samples_scraped{test_run_id="{{ .Args.runId }}"}) < 120)
+            )
+            or
+            bottomk by (scale_bucket, scale_scraper_pool) (1,
+              scrape_samples_scraped{test_run_id="{{ .Args.runId }}"}
+              and (time() - timestamp(scrape_samples_scraped{test_run_id="{{ .Args.runId }}"}) < 120)
+            )
+        - name: fresh_retained_targets_by_bucket
+          units: targets
+          query: |-
+            count by (scale_bucket, scale_scraper_pool) (
+              group by (scale_bucket, scale_scraper_pool, generator_instance) (
+                scrape_samples_post_metric_relabeling{test_run_id="{{ .Args.runId }}"}
+                and (time() - timestamp(scrape_samples_post_metric_relabeling{test_run_id="{{ .Args.runId }}"}) < 120)
+              )
+            )
+        - name: minimum_retained_samples_by_bucket
+          units: samples/target
+          query: |-
+            min by (scale_bucket, scale_scraper_pool) (
               scrape_samples_post_metric_relabeling{test_run_id="{{ .Args.runId }}"}
               and (time() - timestamp(scrape_samples_post_metric_relabeling{test_run_id="{{ .Args.runId }}"}) < 120)
             )
-          )
-        minimum_retained_samples_by_bucket: |-
-          min by (scale_bucket, scale_scraper_pool) (
-            scrape_samples_post_metric_relabeling{test_run_id="{{ .Args.runId }}"}
-            and (time() - timestamp(scrape_samples_post_metric_relabeling{test_run_id="{{ .Args.runId }}"}) < 120)
-          )
-        maximum_retained_samples_by_bucket: |-
-          max by (scale_bucket, scale_scraper_pool) (
-            scrape_samples_post_metric_relabeling{test_run_id="{{ .Args.runId }}"}
-            and (time() - timestamp(scrape_samples_post_metric_relabeling{test_run_id="{{ .Args.runId }}"}) < 120)
-          )
-        retained_sample_extremes_by_target: |-
-          topk by (scale_bucket, scale_scraper_pool) (1,
-            scrape_samples_post_metric_relabeling{test_run_id="{{ .Args.runId }}"}
-            and (time() - timestamp(scrape_samples_post_metric_relabeling{test_run_id="{{ .Args.runId }}"}) < 120)
-          )
-          or
-          bottomk by (scale_bucket, scale_scraper_pool) (1,
-            scrape_samples_post_metric_relabeling{test_run_id="{{ .Args.runId }}"}
-            and (time() - timestamp(scrape_samples_post_metric_relabeling{test_run_id="{{ .Args.runId }}"}) < 120)
-          )
-        scrape_duration_by_bucket: |-
-          max by (scale_bucket, scale_scraper_pool) (
-            scrape_duration_seconds{test_run_id="{{ .Args.runId }}"}
-            and (time() - timestamp(scrape_duration_seconds{test_run_id="{{ .Args.runId }}"}) < 120)
-          )
-        observed_targets_by_node: |-
-          count by (scale_node, scale_bucket, scale_scraper_pool) (
-            group by (scale_node, scale_bucket, scale_scraper_pool, generator_instance) (
-              up{test_run_id="{{ .Args.runId }}"}
-              and (time() - timestamp(up{test_run_id="{{ .Args.runId }}"}) < 120)
+        - name: maximum_retained_samples_by_bucket
+          units: samples/target
+          query: |-
+            max by (scale_bucket, scale_scraper_pool) (
+              scrape_samples_post_metric_relabeling{test_run_id="{{ .Args.runId }}"}
+              and (time() - timestamp(scrape_samples_post_metric_relabeling{test_run_id="{{ .Args.runId }}"}) < 120)
             )
-          )
-        successful_targets_30m_by_bucket: |-
-          count by (scale_bucket, scale_scraper_pool) (
-            max by (scale_bucket, scale_scraper_pool, generator_instance) (
-              (min_over_time(up{test_run_id="{{ .Args.runId }}"}[30m]) == 1)
-              and (count_over_time(up{test_run_id="{{ .Args.runId }}"}[30m]) >= 30)
-              and (time() - timestamp(up{test_run_id="{{ .Args.runId }}"}) < 120)
-              and on (scale_bucket, scale_scraper_pool, generator_instance)
-              (count_over_time(scrape_samples_post_metric_relabeling{test_run_id="{{ .Args.runId }}"}[30m]) >= 30)
-              and on (scale_bucket, scale_scraper_pool, generator_instance)
-              (time() - timestamp(scrape_samples_post_metric_relabeling{test_run_id="{{ .Args.runId }}"}) < 120)
+        - name: retained_sample_extremes_by_target
+          units: samples/target
+          query: |-
+            topk by (scale_bucket, scale_scraper_pool) (1,
+              scrape_samples_post_metric_relabeling{test_run_id="{{ .Args.runId }}"}
+              and (time() - timestamp(scrape_samples_post_metric_relabeling{test_run_id="{{ .Args.runId }}"}) < 120)
             )
-          )
-        minimum_scrape_observations_30m_by_bucket: |-
-          min by (scale_bucket, scale_scraper_pool) (
-            count_over_time(up{test_run_id="{{ .Args.runId }}"}[30m])
-          )
-        minimum_sample_observations_30m_by_bucket: |-
-          min by (scale_bucket, scale_scraper_pool) (
-            count_over_time(scrape_samples_post_metric_relabeling{test_run_id="{{ .Args.runId }}"}[30m])
-          )
-        minimum_samples_30m_by_bucket: |-
-          min by (scale_bucket, scale_scraper_pool) (
-            min_over_time(scrape_samples_post_metric_relabeling{test_run_id="{{ .Args.runId }}"}[30m])
-          )
-        maximum_samples_30m_by_bucket: |-
-          max by (scale_bucket, scale_scraper_pool) (
-            max_over_time(scrape_samples_post_metric_relabeling{test_run_id="{{ .Args.runId }}"}[30m])
-          )
-        producer_inventory_by_container: |-
-          count by (container) (
-            group by (namespace, pod, uid, container) (
-              kube_pod_container_resource_requests{namespace="nktp",container=~"avalanche-.+",resource="cpu"}
-              and (time() - timestamp(kube_pod_container_resource_requests{namespace="nktp",container=~"avalanche-.+",resource="cpu"}) < 120)
+            or
+            bottomk by (scale_bucket, scale_scraper_pool) (1,
+              scrape_samples_post_metric_relabeling{test_run_id="{{ .Args.runId }}"}
+              and (time() - timestamp(scrape_samples_post_metric_relabeling{test_run_id="{{ .Args.runId }}"}) < 120)
             )
-          )
-        producer_ready_by_container: |-
-          sum by (container) (
-            max by (namespace, pod, uid) (
-              kube_pod_status_ready{namespace="nktp",condition="true"}
-              and (time() - timestamp(kube_pod_status_ready{namespace="nktp",condition="true"}) < 120)
+        - name: scrape_duration_by_bucket
+          units: seconds
+          query: |-
+            max by (scale_bucket, scale_scraper_pool) (
+              scrape_duration_seconds{test_run_id="{{ .Args.runId }}"}
+              and (time() - timestamp(scrape_duration_seconds{test_run_id="{{ .Args.runId }}"}) < 120)
             )
-            * on (namespace, pod, uid) group_left (container)
-            group by (namespace, pod, uid, container) (
-              kube_pod_container_resource_requests{namespace="nktp",container=~"avalanche-.+",resource="cpu"}
-              and (time() - timestamp(kube_pod_container_resource_requests{namespace="nktp",container=~"avalanche-.+",resource="cpu"}) < 120)
+        - name: observed_targets_by_node
+          units: targets
+          query: |-
+            count by (scale_node, scale_bucket, scale_scraper_pool) (
+              group by (scale_node, scale_bucket, scale_scraper_pool, generator_instance) (
+                up{test_run_id="{{ .Args.runId }}"}
+                and (time() - timestamp(up{test_run_id="{{ .Args.runId }}"}) < 120)
+              )
             )
-          )
-        producer_cpu_by_container: |-
-          sum by (container) (
-            max by (namespace, pod, container, node) (
-              rate(container_cpu_usage_seconds_total{job="kubelet-cadvisor",namespace="nktp",container=~"avalanche-.+"}[2m])
-              and (time() - timestamp(container_cpu_usage_seconds_total{job="kubelet-cadvisor",namespace="nktp",container=~"avalanche-.+"}) < 120)
+        - name: successful_targets_30m_by_bucket
+          units: targets
+          query: |-
+            count by (scale_bucket, scale_scraper_pool) (
+              max by (scale_bucket, scale_scraper_pool, generator_instance) (
+                (min_over_time(up{test_run_id="{{ .Args.runId }}"}[30m]) == 1)
+                and (count_over_time(up{test_run_id="{{ .Args.runId }}"}[30m]) >= 30)
+                and (time() - timestamp(up{test_run_id="{{ .Args.runId }}"}) < 120)
+                and on (scale_bucket, scale_scraper_pool, generator_instance)
+                (count_over_time(scrape_samples_post_metric_relabeling{test_run_id="{{ .Args.runId }}"}[30m]) >= 30)
+                and on (scale_bucket, scale_scraper_pool, generator_instance)
+                (time() - timestamp(scrape_samples_post_metric_relabeling{test_run_id="{{ .Args.runId }}"}) < 120)
+              )
             )
-          )
-        producer_memory_by_node: |-
-          sum by (node) (
-            max by (namespace, pod, container, node) (
-              container_memory_working_set_bytes{job="kubelet-cadvisor",namespace="nktp",container=~"avalanche-.+"}
-              and (time() - timestamp(container_memory_working_set_bytes{job="kubelet-cadvisor",namespace="nktp",container=~"avalanche-.+"}) < 120)
+        - name: minimum_scrape_observations_30m_by_bucket
+          units: observations/target
+          query: |-
+            min by (scale_bucket, scale_scraper_pool) (
+              count_over_time(up{test_run_id="{{ .Args.runId }}"}[30m])
             )
-          )
-        producer_fresh_cpu_pods_by_container: |-
-          count by (container) (
-            group by (namespace, pod, container) (
-              container_cpu_usage_seconds_total{job="kubelet-cadvisor",namespace="nktp",container=~"avalanche-.+"}
-              and (time() - timestamp(container_cpu_usage_seconds_total{job="kubelet-cadvisor",namespace="nktp",container=~"avalanche-.+"}) < 120)
+        - name: minimum_sample_observations_30m_by_bucket
+          units: observations/target
+          query: |-
+            min by (scale_bucket, scale_scraper_pool) (
+              count_over_time(scrape_samples_post_metric_relabeling{test_run_id="{{ .Args.runId }}"}[30m])
             )
-          )
-        producer_fresh_memory_pods_by_container: |-
-          count by (container) (
-            group by (namespace, pod, container) (
-              container_memory_working_set_bytes{job="kubelet-cadvisor",namespace="nktp",container=~"avalanche-.+"}
-              and (time() - timestamp(container_memory_working_set_bytes{job="kubelet-cadvisor",namespace="nktp",container=~"avalanche-.+"}) < 120)
+        - name: minimum_samples_30m_by_bucket
+          units: samples/target
+          query: |-
+            min by (scale_bucket, scale_scraper_pool) (
+              min_over_time(scrape_samples_post_metric_relabeling{test_run_id="{{ .Args.runId }}"}[30m])
             )
-          )
-        component_cpu_cores: |-
-          sum by (pod, node) (
-            rate(container_cpu_usage_seconds_total{job="kubelet-cadvisor",namespace="nktp",pod=~"nktp-.+|lgtm-.+",container!="",container!="POD"}[2m])
-            and (time() - timestamp(container_cpu_usage_seconds_total{job="kubelet-cadvisor",namespace="nktp",pod=~"nktp-.+|lgtm-.+",container!="",container!="POD"}) < 120)
-          )
-        component_memory_bytes: |-
-          sum by (pod, node) (
-            container_memory_working_set_bytes{job="kubelet-cadvisor",namespace="nktp",pod=~"nktp-.+|lgtm-.+",container!="",container!="POD"}
-            and (time() - timestamp(container_memory_working_set_bytes{job="kubelet-cadvisor",namespace="nktp",pod=~"nktp-.+|lgtm-.+",container!="",container!="POD"}) < 120)
-          )
-        component_cpu_throttled_percent: |-
-          100 *
-          sum by (pod, node) (
-            rate(container_cpu_cfs_throttled_periods_total{job="kubelet-cadvisor",namespace="nktp",pod=~"nktp-.+|lgtm-.+",container!="",container!="POD"}[2m])
-          )
-          /
-          (sum by (pod, node) (
-            rate(container_cpu_cfs_periods_total{job="kubelet-cadvisor",namespace="nktp",pod=~"nktp-.+|lgtm-.+",container!="",container!="POD"}[2m])
-          ) > 0)
-        component_resource_budgets: |-
-          max by (__name__, pod, container, resource, unit) (
-            {__name__=~"kube_pod_container_resource_(requests|limits)",
-             namespace="nktp",pod=~"nktp-.+|lgtm-.+",resource=~"cpu|memory"}
-          )
-        component_restarts: |-
-          max by(pod,container) (kube_pod_container_status_restarts_total{namespace="nktp",pod=~"nktp-.+|lgtm-.+"})
-        component_ready: |-
-          max by (pod) (
-            kube_pod_status_ready{namespace="nktp",pod=~"nktp-.+|lgtm-.+",condition="true"}
-            and (time() - timestamp(kube_pod_status_ready{namespace="nktp",pod=~"nktp-.+|lgtm-.+",condition="true"}) < 120)
-          )
-        component_queue_utilization_percent: |-
-          100 * otelcol_exporter_queue_size{job=~"nktp-(daemonset|gateway-.+|large-target-metrics|watchdog|cluster-events|scale-blackhole)"}
-          / (otelcol_exporter_queue_capacity{job=~"nktp-(daemonset|gateway-.+|large-target-metrics|watchdog|cluster-events|scale-blackhole)"} > 0)
-        accepted_points_per_second: |-
-          sum by (job, instance, k8s_node_name, receiver, exporter) (
-            rate(otelcol_receiver_accepted_metric_points_total{job=~"nktp-(daemonset|gateway-.+|large-target-metrics|watchdog|cluster-events|scale-blackhole)"}[2m])
-          )
-        sent_points_per_second: |-
-          sum by (job, instance, k8s_node_name, receiver, exporter) (
-            rate(otelcol_exporter_sent_metric_points_total{job=~"nktp-(daemonset|gateway-.+|large-target-metrics|watchdog|cluster-events|scale-blackhole)"}[2m])
-          )
-        refused_points_per_second: |-
-          sum by (job, instance, k8s_node_name, receiver, exporter) (
-            rate(otelcol_receiver_refused_metric_points_total{job=~"nktp-(daemonset|gateway-.+|large-target-metrics|watchdog|cluster-events|scale-blackhole)"}[2m])
-          )
-        enqueue_failed_points_per_second: |-
-          sum by (job, instance, k8s_node_name, receiver, exporter) (
-            rate(otelcol_exporter_enqueue_failed_metric_points_total{job=~"nktp-(daemonset|gateway-.+|large-target-metrics|watchdog|cluster-events|scale-blackhole)"}[2m])
-          )
-        send_failed_points_per_second: |-
-          sum by (job, instance, k8s_node_name, receiver, exporter) (
-            rate(otelcol_exporter_send_failed_metric_points_total{job=~"nktp-(daemonset|gateway-.+|large-target-metrics|watchdog|cluster-events|scale-blackhole)"}[2m])
-          )
-        memory_limiter_refused_points_per_second: |-
-          sum by (job, instance, k8s_node_name, receiver, exporter) (
-            rate(otelcol_processor_memory_limiter_refused_metric_points_total{job=~"nktp-(daemonset|gateway-.+|large-target-metrics|watchdog|cluster-events|scale-blackhole)"}[2m])
-          )
-        component_self_metric_age_seconds: |-
-          max by (job, instance, k8s_node_name) (
-            time() - timestamp(otelcol_process_memory_rss_bytes{job=~"nktp-(daemonset|gateway-.+|large-target-metrics|watchdog|cluster-events|scale-blackhole)"})
-          )
-        component_oom_details: |-
-          kube_pod_container_status_last_terminated_reason{namespace="nktp",pod=~"nktp-.+|lgtm-.+",reason="OOMKilled"} == 1
-        total_nodes: |-
-          count(
-            group by (node) (
-              kube_node_info
-              and (time() - timestamp(kube_node_info) < 120)
+        - name: maximum_samples_30m_by_bucket
+          units: samples/target
+          query: |-
+            max by (scale_bucket, scale_scraper_pool) (
+              max_over_time(scrape_samples_post_metric_relabeling{test_run_id="{{ .Args.runId }}"}[30m])
             )
-          )
-        ready_nodes: |-
-          count(
-            group by (node) (
-              (kube_node_status_condition{condition="Ready",status="true"}
-              and (time() - timestamp(kube_node_status_condition{condition="Ready",status="true"}) < 120)) == 1
+        - name: producer_inventory_by_container
+          units: pods
+          query: |-
+            count by (container) (
+              group by (namespace, pod, uid, container) (
+                kube_pod_container_resource_requests{namespace="nktp",container=~"avalanche-.+",resource="cpu"}
+                and (time() - timestamp(kube_pod_container_resource_requests{namespace="nktp",container=~"avalanche-.+",resource="cpu"}) < 120)
+              )
             )
-          )
-        fresh_cpu_nodes: |-
-          count(
-            group by (node) (
-              container_cpu_usage_seconds_total{job="kubelet-cadvisor",container!="",container!="POD"}
-              and (time() - timestamp(container_cpu_usage_seconds_total{job="kubelet-cadvisor",container!="",container!="POD"}) < 120)
+        - name: producer_ready_by_container
+          units: pods
+          query: |-
+            sum by (container) (
+              max by (namespace, pod, uid) (
+                kube_pod_status_ready{namespace="nktp",condition="true"}
+                and (time() - timestamp(kube_pod_status_ready{namespace="nktp",condition="true"}) < 120)
+              )
+              * on (namespace, pod, uid) group_left (container)
+              group by (namespace, pod, uid, container) (
+                kube_pod_container_resource_requests{namespace="nktp",container=~"avalanche-.+",resource="cpu"}
+                and (time() - timestamp(kube_pod_container_resource_requests{namespace="nktp",container=~"avalanche-.+",resource="cpu"}) < 120)
+              )
             )
-          )
-        fresh_memory_nodes: |-
-          count(
-            group by (node) (
-              container_memory_working_set_bytes{job="kubelet-cadvisor",container!="",container!="POD"}
-              and (time() - timestamp(container_memory_working_set_bytes{job="kubelet-cadvisor",container!="",container!="POD"}) < 120)
+        - name: producer_cpu_by_container
+          units: cores
+          query: |-
+            sum by (container) (
+              max by (namespace, pod, container, node) (
+                rate(container_cpu_usage_seconds_total{job="kubelet-cadvisor",namespace="nktp",container=~"avalanche-.+"}[2m])
+                and (time() - timestamp(container_cpu_usage_seconds_total{job="kubelet-cadvisor",namespace="nktp",container=~"avalanche-.+"}) < 120)
+              )
             )
-          )
-        hpa_replicas: |-
-          {__name__=~"kube_horizontalpodautoscaler_(spec_(min|max)_replicas|status_(current|desired)_replicas)",namespace="nktp"}
-        hpa_bad_conditions: |-
-          kube_horizontalpodautoscaler_status_condition{namespace="nktp",condition=~"AbleToScale|ScalingActive",status="true"} == 0
-          or
-          kube_horizontalpodautoscaler_status_condition{namespace="nktp",condition="ScalingLimited",status="true"} == 1
-        lgtm_failed_points_per_second: |-
-          sum(rate(otelcol_exporter_send_failed_metric_points_total{job="otelcol-contrib",exporter="otlp_http/metrics"}[2m]))
+        - name: producer_memory_by_node
+          units: bytes
+          query: |-
+            sum by (node) (
+              max by (namespace, pod, container, node) (
+                container_memory_working_set_bytes{job="kubelet-cadvisor",namespace="nktp",container=~"avalanche-.+"}
+                and (time() - timestamp(container_memory_working_set_bytes{job="kubelet-cadvisor",namespace="nktp",container=~"avalanche-.+"}) < 120)
+              )
+            )
+        - name: producer_fresh_cpu_pods_by_container
+          units: pods
+          query: |-
+            count by (container) (
+              group by (namespace, pod, container) (
+                container_cpu_usage_seconds_total{job="kubelet-cadvisor",namespace="nktp",container=~"avalanche-.+"}
+                and (time() - timestamp(container_cpu_usage_seconds_total{job="kubelet-cadvisor",namespace="nktp",container=~"avalanche-.+"}) < 120)
+              )
+            )
+        - name: producer_fresh_memory_pods_by_container
+          units: pods
+          query: |-
+            count by (container) (
+              group by (namespace, pod, container) (
+                container_memory_working_set_bytes{job="kubelet-cadvisor",namespace="nktp",container=~"avalanche-.+"}
+                and (time() - timestamp(container_memory_working_set_bytes{job="kubelet-cadvisor",namespace="nktp",container=~"avalanche-.+"}) < 120)
+              )
+            )
+        - name: component_cpu_cores
+          units: cores
+          query: |-
+            sum by (pod, node) (
+              rate(container_cpu_usage_seconds_total{job="kubelet-cadvisor",namespace="nktp",pod=~"nktp-.+|lgtm-.+",container!="",container!="POD"}[2m])
+              and (time() - timestamp(container_cpu_usage_seconds_total{job="kubelet-cadvisor",namespace="nktp",pod=~"nktp-.+|lgtm-.+",container!="",container!="POD"}) < 120)
+            )
+        - name: component_memory_bytes
+          units: bytes
+          query: |-
+            sum by (pod, node) (
+              container_memory_working_set_bytes{job="kubelet-cadvisor",namespace="nktp",pod=~"nktp-.+|lgtm-.+",container!="",container!="POD"}
+              and (time() - timestamp(container_memory_working_set_bytes{job="kubelet-cadvisor",namespace="nktp",pod=~"nktp-.+|lgtm-.+",container!="",container!="POD"}) < 120)
+            )
+        - name: component_cpu_throttled_percent
+          units: percent
+          query: |-
+            100 *
+            sum by (pod, node) (
+              rate(container_cpu_cfs_throttled_periods_total{job="kubelet-cadvisor",namespace="nktp",pod=~"nktp-.+|lgtm-.+",container!="",container!="POD"}[2m])
+            )
+            /
+            (sum by (pod, node) (
+              rate(container_cpu_cfs_periods_total{job="kubelet-cadvisor",namespace="nktp",pod=~"nktp-.+|lgtm-.+",container!="",container!="POD"}[2m])
+            ) > 0)
+        - name: component_resource_budgets
+          units: resource units
+          query: |-
+            max by (__name__, pod, container, resource, unit) (
+              {__name__=~"kube_pod_container_resource_(requests|limits)",
+               namespace="nktp",pod=~"nktp-.+|lgtm-.+",resource=~"cpu|memory"}
+            )
+        - name: component_restarts
+          units: restarts
+          query: |-
+            max by(pod,container) (kube_pod_container_status_restarts_total{namespace="nktp",pod=~"nktp-.+|lgtm-.+"})
+        - name: component_ready
+          units: ready
+          query: |-
+            max by (pod) (
+              kube_pod_status_ready{namespace="nktp",pod=~"nktp-.+|lgtm-.+",condition="true"}
+              and (time() - timestamp(kube_pod_status_ready{namespace="nktp",pod=~"nktp-.+|lgtm-.+",condition="true"}) < 120)
+            )
+        - name: component_queue_utilization_percent
+          units: percent
+          query: |-
+            100 * otelcol_exporter_queue_size{job=~"nktp-(daemonset|gateway-.+|large-target-metrics|watchdog|cluster-events|scale-blackhole)"}
+            / (otelcol_exporter_queue_capacity{job=~"nktp-(daemonset|gateway-.+|large-target-metrics|watchdog|cluster-events|scale-blackhole)"} > 0)
+        - name: accepted_points_per_second
+          units: points/s
+          query: |-
+            sum by (job, instance, k8s_node_name, receiver, exporter) (
+              rate(otelcol_receiver_accepted_metric_points_total{job=~"nktp-(daemonset|gateway-.+|large-target-metrics|watchdog|cluster-events|scale-blackhole)"}[2m])
+            )
+        - name: sent_points_per_second
+          units: points/s
+          query: |-
+            sum by (job, instance, k8s_node_name, receiver, exporter) (
+              rate(otelcol_exporter_sent_metric_points_total{job=~"nktp-(daemonset|gateway-.+|large-target-metrics|watchdog|cluster-events|scale-blackhole)"}[2m])
+            )
+        - name: refused_points_per_second
+          units: points/s
+          query: |-
+            sum by (job, instance, k8s_node_name, receiver, exporter) (
+              rate(otelcol_receiver_refused_metric_points_total{job=~"nktp-(daemonset|gateway-.+|large-target-metrics|watchdog|cluster-events|scale-blackhole)"}[2m])
+            )
+        - name: enqueue_failed_points_per_second
+          units: points/s
+          query: |-
+            sum by (job, instance, k8s_node_name, receiver, exporter) (
+              rate(otelcol_exporter_enqueue_failed_metric_points_total{job=~"nktp-(daemonset|gateway-.+|large-target-metrics|watchdog|cluster-events|scale-blackhole)"}[2m])
+            )
+        - name: send_failed_points_per_second
+          units: points/s
+          query: |-
+            sum by (job, instance, k8s_node_name, receiver, exporter) (
+              rate(otelcol_exporter_send_failed_metric_points_total{job=~"nktp-(daemonset|gateway-.+|large-target-metrics|watchdog|cluster-events|scale-blackhole)"}[2m])
+            )
+        - name: memory_limiter_refused_points_per_second
+          units: points/s
+          query: |-
+            sum by (job, instance, k8s_node_name, receiver, exporter) (
+              rate(otelcol_processor_memory_limiter_refused_metric_points_total{job=~"nktp-(daemonset|gateway-.+|large-target-metrics|watchdog|cluster-events|scale-blackhole)"}[2m])
+            )
+        - name: component_self_metric_age_seconds
+          units: seconds
+          query: |-
+            max by (job, instance, k8s_node_name) (
+              time() - timestamp(otelcol_process_memory_rss_bytes{job=~"nktp-(daemonset|gateway-.+|large-target-metrics|watchdog|cluster-events|scale-blackhole)"})
+            )
+        - name: component_oom_details
+          units: pods
+          query: |-
+            kube_pod_container_status_last_terminated_reason{namespace="nktp",pod=~"nktp-.+|lgtm-.+",reason="OOMKilled"} == 1
+        - name: total_nodes
+          units: nodes
+          query: |-
+            count(
+              group by (node) (
+                kube_node_info
+                and (time() - timestamp(kube_node_info) < 120)
+              )
+            )
+        - name: ready_nodes
+          units: nodes
+          query: |-
+            count(
+              group by (node) (
+                (kube_node_status_condition{condition="Ready",status="true"}
+                and (time() - timestamp(kube_node_status_condition{condition="Ready",status="true"}) < 120)) == 1
+              )
+            )
+        - name: fresh_cpu_nodes
+          units: nodes
+          query: |-
+            count(
+              group by (node) (
+                container_cpu_usage_seconds_total{job="kubelet-cadvisor",container!="",container!="POD"}
+                and (time() - timestamp(container_cpu_usage_seconds_total{job="kubelet-cadvisor",container!="",container!="POD"}) < 120)
+              )
+            )
+        - name: fresh_memory_nodes
+          units: nodes
+          query: |-
+            count(
+              group by (node) (
+                container_memory_working_set_bytes{job="kubelet-cadvisor",container!="",container!="POD"}
+                and (time() - timestamp(container_memory_working_set_bytes{job="kubelet-cadvisor",container!="",container!="POD"}) < 120)
+              )
+            )
+        - name: hpa_replicas
+          units: replicas
+          query: |-
+            {__name__=~"kube_horizontalpodautoscaler_(spec_(min|max)_replicas|status_(current|desired)_replicas)",namespace="nktp"}
+        - name: hpa_bad_conditions
+          units: conditions
+          query: |-
+            kube_horizontalpodautoscaler_status_condition{namespace="nktp",condition=~"AbleToScale|ScalingActive",status="true"} == 0
+            or
+            kube_horizontalpodautoscaler_status_condition{namespace="nktp",condition="ScalingLimited",status="true"} == 1
+        - name: lgtm_failed_points_per_second
+          units: points/s
+          query: |-
+            sum(rate(otelcol_exporter_send_failed_metric_points_total{job="otelcol-contrib",exporter="otlp_http/metrics"}[2m]))

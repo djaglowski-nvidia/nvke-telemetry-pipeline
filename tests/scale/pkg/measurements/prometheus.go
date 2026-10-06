@@ -8,7 +8,6 @@ import (
 	"maps"
 	"net/url"
 	"slices"
-	"strings"
 	"time"
 
 	"github.com/prometheus/client_golang/api"
@@ -26,12 +25,11 @@ type Prometheus struct {
 
 // prometheusConfig defines a collection window independent of generator lifetime.
 type prometheusConfig struct {
-	Endpoint     string            `yaml:"endpoint"`
-	Duration     time.Duration     `yaml:"duration"`
-	Interval     time.Duration     `yaml:"interval"`
-	QueryTimeout time.Duration     `yaml:"query_timeout"`
-	Queries      map[string]string `yaml:"queries"`
-	Units        map[string]string `yaml:"units"`
+	Endpoint     string        `yaml:"endpoint"`
+	Duration     time.Duration `yaml:"duration"`
+	Interval     time.Duration `yaml:"interval"`
+	QueryTimeout time.Duration `yaml:"query_timeout"`
+	Measurements []Measurement `yaml:"measurements"`
 }
 
 // QueryReport retains the expression and completed polling attempts in order.
@@ -53,7 +51,7 @@ type QueryObservation struct {
 
 // NewPrometheus validates configuration without contacting the backend.
 // Endpoint is an HTTP or HTTPS base URL reachable from the test process.
-// Duration and a nonempty queries mapping are required. Interval defaults to
+// Duration and a nonempty measurements sequence are required. Interval defaults to
 // 15 seconds and query_timeout to 10 seconds. Durations must be positive.
 // Queries are checked for nonempty text. PromQL syntax is validated by the backend.
 func NewPrometheus(spec yaml.Node) (*Prometheus, error) {
@@ -80,19 +78,14 @@ func NewPrometheus(spec yaml.Node) (*Prometheus, error) {
 	if cfg.Duration <= 0 || cfg.Interval <= 0 || cfg.QueryTimeout <= 0 {
 		return nil, errors.New("duration, interval and query_timeout must be positive")
 	}
-	if len(cfg.Queries) == 0 {
-		return nil, errors.New("queries must contain at least one named PromQL expression")
-	}
-	for name := range cfg.Units {
-		if _, ok := cfg.Queries[name]; !ok {
-			return nil, fmt.Errorf("unit refers to unknown query %q", name)
-		}
+	if len(cfg.Measurements) == 0 {
+		return nil, errors.New("measurements must contain at least one named PromQL expression")
 	}
 	return &Prometheus{config: cfg}, nil
 }
 
 // validatePrometheusSpec rejects aliases and scalar coercion before typed decoding.
-// Typed decoding additionally rejects duplicate names and unknown configuration.
+// Typed decoding additionally rejects duplicate options and unknown configuration.
 func validatePrometheusSpec(spec yaml.Node) error {
 	if spec.Kind != yaml.MappingNode {
 		return errors.New("prometheus spec must be a mapping")
@@ -102,14 +95,9 @@ func validatePrometheusSpec(spec yaml.Node) error {
 		if key.Kind != yaml.ScalarNode || key.Tag != "!!str" {
 			return errors.New("prometheus option names must be strings")
 		}
-		if key.Value == "queries" || key.Value == "units" {
-			if value.Kind != yaml.MappingNode {
-				return fmt.Errorf("%s must be a mapping of names to strings", key.Value)
-			}
-			for _, entry := range value.Content {
-				if entry.Kind != yaml.ScalarNode || entry.Tag != "!!str" || strings.TrimSpace(entry.Value) == "" {
-					return fmt.Errorf("%s names and values must be nonempty strings", key.Value)
-				}
+		if key.Value == "measurements" {
+			if err := validateMeasurements(*value); err != nil {
+				return err
 			}
 		} else if value.Kind != yaml.ScalarNode || value.Tag != "!!str" {
 			return fmt.Errorf("%s must be a string", key.Value)
@@ -132,9 +120,9 @@ func (p *Prometheus) Run(ctx context.Context) (Report, error) {
 	started := time.Now().UTC()
 	runCtx, cancel := context.WithTimeout(ctx, p.config.Duration)
 	defer cancel()
-	queries := make(map[string]QueryReport, len(p.config.Queries))
-	for name, expression := range p.config.Queries {
-		queries[name] = QueryReport{Expression: expression, Unit: p.config.Units[name], Observations: []QueryObservation{}}
+	queries := make(map[string]QueryReport, len(p.config.Measurements))
+	for _, measurement := range p.config.Measurements {
+		queries[measurement.Name] = QueryReport{Expression: measurement.Query, Unit: measurement.Units, Observations: []QueryObservation{}}
 	}
 	report := Report{"started_at": started, "interval": p.config.Interval.String(), "queries": queries}
 	defer func() { report["finished_at"] = time.Now().UTC() }()

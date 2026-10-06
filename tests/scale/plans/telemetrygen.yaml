@@ -30,25 +30,31 @@ stages:
         duration: 3m
         interval: 15s
         query_timeout: 10s
-        units:
-          active_series: series
-          gateway_received_points_per_second: points/s
-          gateway_sent_points_per_second: points/s
-          gateway_queue_bytes: bytes
-          watchdog_queue_bytes: bytes
-          gateway_memory_bytes: bytes
-          gateway_memory_growth_bytes_per_second: bytes/s
-        queries:
+        measurements:
           # Empty results are retained until this run's metrics reach the backend.
-          active_series: 'count({test_run_id="{{ .Args.runId }}"})'
+          - name: active_series
+            units: series
+            query: count({test_run_id="{{ .Args.runId }}"})
           # Collector self-metrics include all traffic through the service.
-          gateway_received_points_per_second: 'sum(rate(otelcol_receiver_accepted_metric_points_total{job="nktp-gateway-metrics"}[2m]))'
-          gateway_sent_points_per_second: 'sum(rate(otelcol_exporter_sent_metric_points_total{job="nktp-gateway-metrics"}[2m]))'
+          - name: gateway_received_points_per_second
+            units: points/s
+            query: sum(rate(otelcol_receiver_accepted_metric_points_total{job="nktp-gateway-metrics"}[2m]))
+          - name: gateway_sent_points_per_second
+            units: points/s
+            query: sum(rate(otelcol_exporter_sent_metric_points_total{job="nktp-gateway-metrics"}[2m]))
           # Queue size uses bytes with the current NKTP exporter configuration.
-          gateway_queue_bytes: 'sum by (instance, exporter) (otelcol_exporter_queue_size{job="nktp-gateway-metrics",data_type="metrics"})'
-          watchdog_queue_bytes: 'sum by (instance, exporter, data_type) (otelcol_exporter_queue_size{job="nktp-watchdog"})'
-          gateway_memory_bytes: 'otelcol_process_memory_rss_bytes{job="nktp-gateway-metrics"}'
-          gateway_memory_growth_bytes_per_second: 'deriv(otelcol_process_memory_rss_bytes{job="nktp-gateway-metrics"}[2m])'
+          - name: gateway_queue_bytes
+            units: bytes
+            query: sum by (instance, exporter) (otelcol_exporter_queue_size{job="nktp-gateway-metrics",data_type="metrics"})
+          - name: watchdog_queue_bytes
+            units: bytes
+            query: sum by (instance, exporter, data_type) (otelcol_exporter_queue_size{job="nktp-watchdog"})
+          - name: gateway_memory_bytes
+            units: bytes
+            query: otelcol_process_memory_rss_bytes{job="nktp-gateway-metrics"}
+          - name: gateway_memory_growth_bytes_per_second
+            units: bytes/s
+            query: deriv(otelcol_process_memory_rss_bytes{job="nktp-gateway-metrics"}[2m])
   - name: logs
     generator:
       type: job
@@ -72,10 +78,11 @@ stages:
     measurement:
       type: noop
       spec:
-        queries:
+        measurements:
           # LogQL assumes OTLP log attributes are stored as structured metadata.
           # service_name selects indexed streams before filtering the run.
-          log_entries: '{service_name=~".+"} | test_run_id="{{ .Args.runId }}"'
+          - name: log_entries
+            query: '{service_name=~".+"} | test_run_id="{{ .Args.runId }}"'
   - name: traces
     generator:
       type: job
@@ -99,6 +106,7 @@ stages:
     measurement:
       type: noop
       spec:
-        queries:
+        measurements:
           # TraceQL selects spans carrying this run's telemetry attribute.
-          traces: '{ span.test_run_id = "{{ .Args.runId }}" }'
+          - name: traces
+            query: '{ span.test_run_id = "{{ .Args.runId }}" }'

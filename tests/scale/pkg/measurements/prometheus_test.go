@@ -18,35 +18,43 @@ import (
 	prometheusv1 "github.com/prometheus/client_golang/api/prometheus/v1"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.yaml.in/yaml/v3"
 )
 
 // prometheusTestSpec builds a short collection window for HTTP tests.
 func prometheusTestSpec(t *testing.T, endpoint string) yaml.Node {
 	t.Helper()
-	return measurementSpec(t, fmt.Sprintf("endpoint: %q\nduration: 200ms\ninterval: 15ms\nquery_timeout: 1s\nqueries:\n  throughput: 'sum(rate(points_total[5m]))'\n", endpoint))
+	return measurementSpec(t, fmt.Sprintf(`endpoint: %q
+duration: 200ms
+interval: 15ms
+query_timeout: 1s
+measurements:
+  - name: throughput
+    units: points/s
+    query: sum(rate(points_total[5m]))
+`, endpoint))
 }
 
 // measurementSpec decodes test YAML into the component's spec node.
 func measurementSpec(t *testing.T, data string) yaml.Node {
 	t.Helper()
 	var document yaml.Node
-	if err := yaml.Unmarshal([]byte(data), &document); err != nil {
-		t.Fatalf("decode test spec: %v", err)
-	}
+	require.NoError(t, yaml.Unmarshal([]byte(data), &document), "decode test spec")
 	return *document.Content[0]
 }
 
 // TestNewPrometheusRejectsInvalidSpecs checks validation before resource acquisition.
 func TestNewPrometheusRejectsInvalidSpecs(t *testing.T) {
-	const valid = "endpoint: http://127.0.0.1:1\nduration: 1s\nqueries: {load: up}\n"
+	const definitions = "measurements:\n  - name: load\n    query: up\n"
+	const valid = "endpoint: http://127.0.0.1:1\nduration: 1s\n" + definitions
 	for _, test := range []struct {
 		name string
 		spec string
 	}{
 		{name: "sequence", spec: "[]"},
-		{name: "missing endpoint", spec: "duration: 1s\nqueries: {load: up}"},
-		{name: "missing duration", spec: "endpoint: http://localhost:9090\nqueries: {load: up}"},
+		{name: "missing endpoint", spec: "duration: 1s\n" + definitions},
+		{name: "missing duration", spec: "endpoint: http://localhost:9090\n" + definitions},
 		{name: "relative URL", spec: strings.Replace(valid, "http://127.0.0.1:1", "/prometheus", 1)},
 		{name: "unsupported scheme", spec: strings.Replace(valid, "http://", "file://", 1)},
 		{name: "credentials", spec: strings.Replace(valid, "http://", "http://user:password@", 1)},
@@ -59,19 +67,26 @@ func TestNewPrometheusRejectsInvalidSpecs(t *testing.T) {
 		{name: "null duration", spec: strings.Replace(valid, "1s", "null", 1)},
 		{name: "unknown option", spec: valid + "warmup: 1s\n"},
 		{name: "duplicate option", spec: valid + "duration: 2s\n"},
-		{name: "empty queries", spec: strings.Replace(valid, "{load: up}", "{}", 1)},
-		{name: "missing queries", spec: strings.Replace(valid, "queries: {load: up}\n", "", 1)},
-		{name: "null queries", spec: strings.Replace(valid, "{load: up}", "null", 1)},
-		{name: "numeric query", spec: strings.Replace(valid, "{load: up}", "{load: 10}", 1)},
-		{name: "empty query", spec: strings.Replace(valid, "{load: up}", "{load: ' '}", 1)},
-		{name: "empty name", spec: strings.Replace(valid, "{load: up}", "{'': up}", 1)},
-		{name: "duplicate name", spec: strings.Replace(valid, "{load: up}", "{load: up, load: down}", 1)},
-		{name: "alias", spec: strings.Replace(valid, "{load: up}", "{load: &query up, copy: *query}", 1)},
-		{name: "unknown unit query", spec: valid + "units: {typo: bytes}\n"},
-		{name: "numeric unit", spec: valid + "units: {load: 1}\n"},
-		{name: "empty unit", spec: valid + "units: {load: ''}\n"},
-		{name: "units sequence", spec: valid + "units: [bytes]\n"},
-		{name: "duplicate unit", spec: valid + "units: {load: bytes, load: seconds}\n"},
+		{name: "empty measurements", spec: strings.Replace(valid, definitions, "measurements: []\n", 1)},
+		{name: "missing measurements", spec: strings.Replace(valid, definitions, "", 1)},
+		{name: "null measurements", spec: strings.Replace(valid, definitions, "measurements: null\n", 1)},
+		{name: "named map", spec: strings.Replace(valid, definitions, "measurements: {load: {query: up}}\n", 1)},
+		{name: "missing query", spec: strings.Replace(valid, "query: up", "units: bytes", 1)},
+		{name: "numeric query", spec: strings.Replace(valid, "query: up", "query: 10", 1)},
+		{name: "empty query", spec: strings.Replace(valid, "query: up", "query: ' '", 1)},
+		{name: "missing name", spec: strings.Replace(valid, "name: load", "units: bytes", 1)},
+		{name: "empty name", spec: strings.Replace(valid, "name: load", "name: ' '", 1)},
+		{name: "numeric name", spec: strings.Replace(valid, "name: load", "name: 1", 1)},
+		{name: "null name", spec: strings.Replace(valid, "name: load", "name: null", 1)},
+		{name: "duplicate name", spec: valid + "  - name: load\n    query: down\n"},
+		{name: "alias", spec: strings.Replace(valid, "- name: load", "- &measurement\n    name: load", 1) + "  - *measurement\n"},
+		{name: "old queries", spec: valid + "queries: {load: up}\n"},
+		{name: "old units", spec: valid + "units: {load: bytes}\n"},
+		{name: "numeric unit", spec: valid + "    units: 1\n"},
+		{name: "empty unit", spec: valid + "    units: ''\n"},
+		{name: "units sequence", spec: valid + "    units: [bytes]\n"},
+		{name: "duplicate unit", spec: valid + "    units: bytes\n    units: seconds\n"},
+		{name: "unknown entry field", spec: valid + "    unit: bytes\n"},
 		{name: "merge", spec: valid + "<<: {interval: 1s}\n"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -80,12 +95,10 @@ func TestNewPrometheusRejectsInvalidSpecs(t *testing.T) {
 		})
 	}
 	measurement, err := NewPrometheus(measurementSpec(t, valid))
-	if err != nil {
-		t.Fatalf("NewPrometheus() contacted the unavailable backend or rejected valid settings: %v", err)
-	}
-	if measurement.config.Interval != 15*time.Second || measurement.config.QueryTimeout != 10*time.Second {
-		t.Errorf("default timing = %+v, want interval 15s and query timeout 10s", measurement.config)
-	}
+	require.NoError(t, err, "NewPrometheus() must validate without contacting the backend")
+	assert.Equal(t, 15*time.Second, measurement.config.Interval)
+	assert.Equal(t, 10*time.Second, measurement.config.QueryTimeout)
+	assert.Equal(t, []Measurement{{Name: "load", Query: "up"}}, measurement.config.Measurements)
 }
 
 // TestPrometheusRunRetainsObservations checks polling, labels, empty data and annotations.
@@ -119,7 +132,10 @@ func TestPrometheusRunRetainsObservations(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run() error = %v", err)
 	}
-	observations := report["queries"].(map[string]QueryReport)["throughput"].Observations
+	query := report["queries"].(map[string]QueryReport)["throughput"]
+	assert.Equal(t, "sum(rate(points_total[5m]))", query.Expression)
+	assert.Equal(t, "points/s", query.Unit)
+	observations := query.Observations
 	if len(observations) < 2 {
 		t.Fatalf("Run() returned %d observations, want at least two", len(observations))
 	}

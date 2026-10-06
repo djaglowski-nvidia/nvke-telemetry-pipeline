@@ -264,22 +264,27 @@ measurement:
     duration: 3m
     interval: 15s
     query_timeout: 10s
-    units:
-      run_series: series
-      throughput: points/s
-      queue: bytes
-    queries:
-      run_series: 'count({test_run_id="{{ .Args.runId }}"})'
-      throughput: 'sum(rate(otelcol_exporter_sent_metric_points_total{job="nktp-gateway-metrics"}[2m]))'
-      queue: 'otelcol_exporter_queue_size{job="nktp-gateway-metrics",data_type="metrics"}'
+    measurements:
+      - name: run_series
+        units: series
+        query: count({test_run_id="{{ .Args.runId }}"})
+      - name: throughput
+        units: points/s
+        query: sum(rate(otelcol_exporter_sent_metric_points_total{job="nktp-gateway-metrics"}[2m]))
+      - name: queue
+        units: bytes
+        query: otelcol_exporter_queue_size{job="nktp-gateway-metrics",data_type="metrics"}
 ```
 
 The [telemetrygen plan](plans/telemetrygen.yaml) measures series from the current
 run, plus pipeline throughput, queues, and memory across all traffic.
 
 An `endpoint`, a positive `duration`, and at least one named query are required.
-`interval` defaults to `15s` and `query_timeout` to `10s`. Optional `units` labels
-results by query name, with automatic scaling for `bytes` and `bytes/s`.
+`interval` defaults to `15s` and `query_timeout` to `10s`. Each entry in the
+`measurements` list contains a unique `name`, a required `query`, and optional
+`units` for display, with automatic scaling for `bytes` and `bytes/s`. Multiline
+queries can use YAML block scalars. No-op measurements accept the same entries
+as unevaluated examples.
 
 `task scale:install` makes Prometheus available at the example endpoint. For
 another environment, use an endpoint reachable from the test host.

@@ -3,6 +3,8 @@ package measurements
 import (
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.yaml.in/yaml/v3"
 )
 
@@ -11,60 +13,56 @@ func TestNoopAcceptsQueriesWithoutEvaluatingThem(t *testing.T) {
 	for _, spec := range []string{
 		"",
 		"{}",
-		"queries: {}",
-		"queries: {example: 'deliberately invalid query syntax'}",
+		"measurements: []",
+		"measurements:\n  - name: example\n    query: deliberately invalid query syntax\n",
+		"measurements:\n  - name: example\n    units: bytes\n    query: deliberately invalid query syntax\n",
 	} {
 		t.Run(spec, func(t *testing.T) {
 			var node yaml.Node
 			if spec != "" {
-				var document yaml.Node
-				if err := yaml.Unmarshal([]byte(spec), &document); err != nil {
-					t.Fatalf("Unmarshal() error = %v", err)
-				}
-				node = *document.Content[0]
+				node = measurementSpec(t, spec)
 			}
 			measurement, err := NewNoop(node)
-			if err != nil {
-				t.Fatalf("NewNoop() error = %v", err)
-			}
+			require.NoError(t, err)
 			report, err := measurement.Run(t.Context())
-			if err != nil || len(report) != 0 {
-				t.Errorf("Run() = %v, %v, want an empty successful report", report, err)
-			}
+			require.NoError(t, err)
+			assert.Empty(t, report)
 		})
 	}
 }
 
-// TestNoopRejectsInvalidSpecs checks the shape and string values of query mappings.
+// TestNoopRejectsInvalidSpecs checks the shape and string values of measurements.
 func TestNoopRejectsInvalidSpecs(t *testing.T) {
 	for _, spec := range []string{
 		"null",
 		"[]",
 		"rate: 1",
-		"queries: null",
-		"queries: []",
-		"queries: {}\nextra: true",
-		"queries: {}\nqueries: {}",
-		"queries: {'': query}",
-		"queries: {1: query}",
-		"queries: {example: ''}",
-		"queries: {example: ' '}",
-		"queries: {example: 100}",
-		"queries: {example: true}",
-		"queries: {example: null}",
-		"queries: {example: []}",
-		"queries: {example: first, example: second}",
-		"queries: {first: &query text, second: *query}",
-		"queries: {<<: {example: query}}",
+		"queries: {example: query}",
+		"measurements: null",
+		"measurements: {}",
+		"measurements: []\nextra: true",
+		"measurements: []\nmeasurements: []",
+		"measurements:\n  - name: ''\n    query: up",
+		"measurements:\n  - name: 1\n    query: up",
+		"measurements:\n  - name: true\n    query: up",
+		"measurements:\n  - ''",
+		"measurements:\n  - {}",
+		"measurements:\n  - name: example\n    query: ''",
+		"measurements:\n  - name: example\n    query: ' '",
+		"measurements:\n  - name: example\n    query: 100",
+		"measurements:\n  - name: example\n    query: true",
+		"measurements:\n  - name: example\n    query: null",
+		"measurements:\n  - name: example\n    query: []",
+		"measurements:\n  - name: example\n    query: first\n  - name: example\n    query: second",
+		"measurements:\n  - name: example\n    name: second\n    query: up",
+		"measurements:\n  - name: example\n    query: first\n    query: second",
+		"measurements:\n  - name: example\n    query: up\n    units: null",
+		"measurements:\n  - name: first\n    query: &query up\n  - name: second\n    query: *query",
+		"measurements:\n  - name: example\n    <<: {query: up}",
 	} {
 		t.Run(spec, func(t *testing.T) {
-			var document yaml.Node
-			if err := yaml.Unmarshal([]byte(spec), &document); err != nil {
-				t.Fatalf("Unmarshal() error = %v", err)
-			}
-			if _, err := NewNoop(*document.Content[0]); err == nil {
-				t.Error("NewNoop() error = nil, want an invalid spec error")
-			}
+			_, err := NewNoop(measurementSpec(t, spec))
+			assert.Error(t, err)
 		})
 	}
 }

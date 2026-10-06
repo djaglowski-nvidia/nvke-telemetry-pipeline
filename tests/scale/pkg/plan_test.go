@@ -80,7 +80,7 @@ func TestExecuteValidatesComponents(t *testing.T) {
 		{name: "extra option", data: strings.Replace(planYAML, "spec: {}", "spec: {rate: 2}", 1), want: "noop spec must be an empty mapping"},
 		{name: "scalar spec", data: strings.Replace(planYAML, "spec: {}", "spec: 3", 1), want: "noop spec must be an empty mapping"},
 		{name: "null spec", data: strings.Replace(planYAML, "spec: {}", "spec: null", 1), want: "noop spec must be an empty mapping"},
-		{name: "measurement extra option", data: strings.Replace(planYAML, "measurement: {type: noop, spec: {}}", "measurement: {type: noop, spec: {rate: 2}}", 1), want: "measurement: noop spec only supports a queries mapping"},
+		{name: "measurement extra option", data: strings.Replace(planYAML, "measurement: {type: noop, spec: {}}", "measurement: {type: noop, spec: {rate: 2}}", 1), want: "measurement: noop spec only supports a measurements sequence"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			plan, err := Parse([]byte(tc.data), nil)

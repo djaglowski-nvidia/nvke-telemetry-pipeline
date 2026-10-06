@@ -3,8 +3,10 @@ package runner
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 
+	"github.com/NVIDIA-dev/nktp/tests/scale/pkg/measurements"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -39,10 +41,14 @@ func TestExamplePlans(t *testing.T) {
 					if stage.Name == "metrics" {
 						require.Equal(t, "prometheus", stage.Measurement.Type)
 						var spec struct {
-							Queries map[string]string `yaml:"queries"`
+							Measurements []measurements.Measurement `yaml:"measurements"`
 						}
 						require.NoError(t, stage.Measurement.Spec.Decode(&spec))
-						assert.Contains(t, spec.Queries["active_series"], `test_run_id="example-run"`, "stage %q measurement attribution", stage.Name)
+						index := slices.IndexFunc(spec.Measurements, func(m measurements.Measurement) bool {
+							return m.Name == "active_series"
+						})
+						require.GreaterOrEqual(t, index, 0, "stage %q active_series measurement", stage.Name)
+						assert.Contains(t, spec.Measurements[index].Query, `test_run_id="example-run"`, "stage %q measurement attribution", stage.Name)
 					}
 				}
 			}

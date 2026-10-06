@@ -121,117 +121,141 @@ stages:
         endpoint: http://127.0.0.1:9090
         duration: 100m
         interval: 30s
-        queries:
-          producer_records_per_second: >-
-            sum by (scale_node,scale_bucket) (rate(vector_component_sent_events_total{component_id="stdout_load",test_run_id="{{ .Args.runId }}"}[5m]))
-          producer_body_bytes_per_second: >-
-            sum by (scale_node,scale_bucket) (rate(vector_component_sent_bytes_total{component_id="stdout_load",test_run_id="{{ .Args.runId }}"}[5m]))
-            - sum by (scale_node,scale_bucket) (rate(vector_component_sent_events_total{component_id="stdout_load",test_run_id="{{ .Args.runId }}"}[5m]))
+        measurements:
+          - name: producer_records_per_second
+            units: records/s
+            query: >-
+              sum by (scale_node,scale_bucket) (rate(vector_component_sent_events_total{component_id="stdout_load",test_run_id="{{ .Args.runId }}"}[5m]))
+          - name: producer_body_bytes_per_second
+            units: bytes/s
+            query: >-
+              sum by (scale_node,scale_bucket) (rate(vector_component_sent_bytes_total{component_id="stdout_load",test_run_id="{{ .Args.runId }}"}[5m]))
+              - sum by (scale_node,scale_bucket) (rate(vector_component_sent_events_total{component_id="stdout_load",test_run_id="{{ .Args.runId }}"}[5m]))
           # Require one fresh console counter per expected emitter.
-          producer_observed_pods: >-
-            count by (scale_node,scale_bucket) (
-              vector_component_sent_events_total{component_id="stdout_load",test_run_id="{{ .Args.runId }}"}
-              and (time() - timestamp(vector_component_sent_events_total{component_id="stdout_load",test_run_id="{{ .Args.runId }}"}) < 90)
-            )
-          producer_ready_pods: >-
-            sum by (node,label_scale_nktp_io_bucket) (
-              max by (namespace,pod) (kube_pod_status_ready{namespace="nktp",condition="true"})
+          - name: producer_observed_pods
+            units: count
+            query: >-
+              count by (scale_node,scale_bucket) (
+                vector_component_sent_events_total{component_id="stdout_load",test_run_id="{{ .Args.runId }}"}
+                and (time() - timestamp(vector_component_sent_events_total{component_id="stdout_load",test_run_id="{{ .Args.runId }}"}) < 90)
+              )
+          - name: producer_ready_pods
+            units: count
+            query: >-
+              sum by (node,label_scale_nktp_io_bucket) (
+                max by (namespace,pod) (kube_pod_status_ready{namespace="nktp",condition="true"})
+                * on (namespace,pod) group_left(node) max by (namespace,pod,node) (kube_pod_info{namespace="nktp",node!=""})
+                * on (namespace,pod) group_left(label_scale_nktp_io_bucket) max by (namespace,pod,label_scale_nktp_io_bucket) (kube_pod_labels{namespace="nktp",label_scale_nktp_io_run_id="{{ .Args.runId }}"})
+              )
+          - name: producer_cpu_cores
+            units: cores
+            query: >-
+              sum by (node) (
+                (rate(container_cpu_usage_seconds_total{namespace="nktp",container="vector-stdout"}[2m]))
+                * on (namespace,pod) group_left(node) max by (namespace,pod,node) (kube_pod_info{namespace="nktp",node!=""})
+                and on (namespace,pod) kube_pod_labels{namespace="nktp",label_scale_nktp_io_run_id="{{ .Args.runId }}"}
+              )
+          - name: producer_memory_bytes
+            units: bytes
+            query: >-
+              sum by (node) (
+                (container_memory_working_set_bytes{namespace="nktp",container="vector-stdout"})
+                * on (namespace,pod) group_left(node) max by (namespace,pod,node) (kube_pod_info{namespace="nktp",node!=""})
+                and on (namespace,pod) kube_pod_labels{namespace="nktp",label_scale_nktp_io_run_id="{{ .Args.runId }}"}
+              )
+          - name: producer_throttling_ratio
+            units: ratio
+            query: >-
+              (
+                sum by (namespace,pod) (rate(container_cpu_cfs_throttled_periods_total{namespace="nktp",container="vector-stdout"}[2m]))
+                / sum by (namespace,pod) (rate(container_cpu_cfs_periods_total{namespace="nktp",container="vector-stdout"}[2m]))
+              ) and on (namespace,pod) kube_pod_labels{namespace="nktp",label_scale_nktp_io_run_id="{{ .Args.runId }}"}
+          - name: component_cpu_cores
+            units: cores
+            query: >-
+              (rate(container_cpu_usage_seconds_total{namespace="nktp",pod=~"nktp-(daemonset|gateway-logs|stdout-logs-blackhole)-collector-.*",container="otc-container"}[2m]))
               * on (namespace,pod) group_left(node) max by (namespace,pod,node) (kube_pod_info{namespace="nktp",node!=""})
-              * on (namespace,pod) group_left(label_scale_nktp_io_bucket) max by (namespace,pod,label_scale_nktp_io_bucket) (kube_pod_labels{namespace="nktp",label_scale_nktp_io_run_id="{{ .Args.runId }}"})
-            )
-          producer_cpu_cores: >-
-            sum by (node) (
-              (rate(container_cpu_usage_seconds_total{namespace="nktp",container="vector-stdout"}[2m]))
+          - name: component_memory_bytes
+            units: bytes
+            query: >-
+              (container_memory_working_set_bytes{namespace="nktp",pod=~"nktp-(daemonset|gateway-logs|stdout-logs-blackhole)-collector-.*",container="otc-container"})
               * on (namespace,pod) group_left(node) max by (namespace,pod,node) (kube_pod_info{namespace="nktp",node!=""})
-              and on (namespace,pod) kube_pod_labels{namespace="nktp",label_scale_nktp_io_run_id="{{ .Args.runId }}"}
-            )
-          producer_memory_bytes: >-
-            sum by (node) (
-              (container_memory_working_set_bytes{namespace="nktp",container="vector-stdout"})
+          - name: component_throttling_ratio
+            units: ratio
+            query: >-
+              (rate(container_cpu_cfs_throttled_periods_total{namespace="nktp",pod=~"nktp-(daemonset|gateway-logs|stdout-logs-blackhole)-collector-.*",container="otc-container"}[2m])
+              / rate(container_cpu_cfs_periods_total{namespace="nktp",pod=~"nktp-(daemonset|gateway-logs|stdout-logs-blackhole)-collector-.*",container="otc-container"}[2m]))
               * on (namespace,pod) group_left(node) max by (namespace,pod,node) (kube_pod_info{namespace="nktp",node!=""})
-              and on (namespace,pod) kube_pod_labels{namespace="nktp",label_scale_nktp_io_run_id="{{ .Args.runId }}"}
-            )
-          producer_throttling_ratio: >-
-            (
-              sum by (namespace,pod) (rate(container_cpu_cfs_throttled_periods_total{namespace="nktp",container="vector-stdout"}[2m]))
-              / sum by (namespace,pod) (rate(container_cpu_cfs_periods_total{namespace="nktp",container="vector-stdout"}[2m]))
-            ) and on (namespace,pod) kube_pod_labels{namespace="nktp",label_scale_nktp_io_run_id="{{ .Args.runId }}"}
-          component_cpu_cores: >-
-            (rate(container_cpu_usage_seconds_total{namespace="nktp",pod=~"nktp-(daemonset|gateway-logs|stdout-logs-blackhole)-collector-.*",container="otc-container"}[2m]))
-            * on (namespace,pod) group_left(node) max by (namespace,pod,node) (kube_pod_info{namespace="nktp",node!=""})
-          component_memory_bytes: >-
-            (container_memory_working_set_bytes{namespace="nktp",pod=~"nktp-(daemonset|gateway-logs|stdout-logs-blackhole)-collector-.*",container="otc-container"})
-            * on (namespace,pod) group_left(node) max by (namespace,pod,node) (kube_pod_info{namespace="nktp",node!=""})
-          component_throttling_ratio: >-
-            (rate(container_cpu_cfs_throttled_periods_total{namespace="nktp",pod=~"nktp-(daemonset|gateway-logs|stdout-logs-blackhole)-collector-.*",container="otc-container"}[2m])
-            / rate(container_cpu_cfs_periods_total{namespace="nktp",pod=~"nktp-(daemonset|gateway-logs|stdout-logs-blackhole)-collector-.*",container="otc-container"}[2m]))
-            * on (namespace,pod) group_left(node) max by (namespace,pod,node) (kube_pod_info{namespace="nktp",node!=""})
-          pod_inventory: >-
-            kube_pod_info{namespace="nktp"} and on (namespace,pod) (
-              kube_pod_info{namespace="nktp",pod=~"nktp-(daemonset|gateway-logs|stdout-logs-blackhole)-collector-.*"}
-              or kube_pod_labels{namespace="nktp",label_scale_nktp_io_run_id="{{ .Args.runId }}"}
-            )
-          pod_ready: >-
-            kube_pod_status_ready{namespace="nktp",condition="true"} and on (namespace,pod) (
-              kube_pod_info{namespace="nktp",pod=~"nktp-(daemonset|gateway-logs|stdout-logs-blackhole)-collector-.*"}
-              or kube_pod_labels{namespace="nktp",label_scale_nktp_io_run_id="{{ .Args.runId }}"}
-            )
-          container_restarts: >-
-            kube_pod_container_status_restarts_total{namespace="nktp"} and on (namespace,pod) (
-              kube_pod_info{namespace="nktp",pod=~"nktp-(daemonset|gateway-logs|stdout-logs-blackhole)-collector-.*"}
-              or kube_pod_labels{namespace="nktp",label_scale_nktp_io_run_id="{{ .Args.runId }}"}
-            )
-          container_last_termination_reason: >-
-            kube_pod_container_status_last_terminated_reason{namespace="nktp"} and on (namespace,pod) (
-              kube_pod_info{namespace="nktp",pod=~"nktp-(daemonset|gateway-logs|stdout-logs-blackhole)-collector-.*"}
-              or kube_pod_labels{namespace="nktp",label_scale_nktp_io_run_id="{{ .Args.runId }}"}
-            )
-          received_records_per_second: >-
-            sum by (job,instance,receiver) (rate(otelcol_receiver_accepted_log_records_total{job=~"nktp-daemonset|nktp-gateway-logs|nktp-stdout-logs-blackhole"}[4m]))
-          receiver_refused_records_per_second: >-
-            sum by (job,instance,receiver) (rate(otelcol_receiver_refused_log_records_total{job=~"nktp-daemonset|nktp-gateway-logs|nktp-stdout-logs-blackhole"}[4m]))
-          sent_records_per_second: >-
-            sum by (job,instance,exporter) (rate(otelcol_exporter_sent_log_records_total{job=~"nktp-daemonset|nktp-gateway-logs|nktp-stdout-logs-blackhole"}[4m]))
-          exporter_send_failed_records_per_second: >-
-            sum by (job,instance,exporter) (rate(otelcol_exporter_send_failed_log_records_total{job=~"nktp-daemonset|nktp-gateway-logs|nktp-stdout-logs-blackhole"}[4m]))
-          exporter_enqueue_failed_records_per_second: >-
-            sum by (job,instance,exporter) (rate(otelcol_exporter_enqueue_failed_log_records_total{job=~"nktp-daemonset|nktp-gateway-logs|nktp-stdout-logs-blackhole"}[4m]))
-          queue_bytes: >-
-            otelcol_exporter_queue_size{job=~"nktp-daemonset|nktp-gateway-logs",exporter=~"otlp_http/logs|otlp_http"}
-          queue_utilization_ratio: >-
-            otelcol_exporter_queue_size{job=~"nktp-daemonset|nktp-gateway-logs",exporter=~"otlp_http/logs|otlp_http"}
-            / ignoring(data_type) otelcol_exporter_queue_capacity{job=~"nktp-daemonset|nktp-gateway-logs",exporter=~"otlp_http/logs|otlp_http"}
-          gateway_current_replicas: >-
-            kube_horizontalpodautoscaler_status_current_replicas{namespace="nktp",horizontalpodautoscaler="nktp-gateway-logs-collector"}
-          gateway_desired_replicas: >-
-            kube_horizontalpodautoscaler_status_desired_replicas{namespace="nktp",horizontalpodautoscaler="nktp-gateway-logs-collector"}
-          gateway_hpa_conditions: >-
-            kube_horizontalpodautoscaler_status_condition{namespace="nktp",horizontalpodautoscaler="nktp-gateway-logs-collector"}
-          gateway_ready_replicas: >-
-            kube_statefulset_status_replicas_ready{namespace="nktp",statefulset="nktp-gateway-logs-collector"}
-        units:
-          producer_records_per_second: records/s
-          producer_body_bytes_per_second: bytes/s
-          producer_observed_pods: count
-          producer_ready_pods: count
-          producer_cpu_cores: cores
-          producer_memory_bytes: bytes
-          producer_throttling_ratio: ratio
-          component_cpu_cores: cores
-          component_memory_bytes: bytes
-          component_throttling_ratio: ratio
-          pod_inventory: info
-          pod_ready: bool
-          container_restarts: count
-          container_last_termination_reason: info
-          received_records_per_second: records/s
-          receiver_refused_records_per_second: records/s
-          sent_records_per_second: records/s
-          exporter_send_failed_records_per_second: records/s
-          exporter_enqueue_failed_records_per_second: records/s
-          queue_bytes: bytes
-          queue_utilization_ratio: ratio
-          gateway_current_replicas: count
-          gateway_desired_replicas: count
-          gateway_hpa_conditions: bool
-          gateway_ready_replicas: count
+          - name: pod_inventory
+            units: info
+            query: >-
+              kube_pod_info{namespace="nktp"} and on (namespace,pod) (
+                kube_pod_info{namespace="nktp",pod=~"nktp-(daemonset|gateway-logs|stdout-logs-blackhole)-collector-.*"}
+                or kube_pod_labels{namespace="nktp",label_scale_nktp_io_run_id="{{ .Args.runId }}"}
+              )
+          - name: pod_ready
+            units: bool
+            query: >-
+              kube_pod_status_ready{namespace="nktp",condition="true"} and on (namespace,pod) (
+                kube_pod_info{namespace="nktp",pod=~"nktp-(daemonset|gateway-logs|stdout-logs-blackhole)-collector-.*"}
+                or kube_pod_labels{namespace="nktp",label_scale_nktp_io_run_id="{{ .Args.runId }}"}
+              )
+          - name: container_restarts
+            units: count
+            query: >-
+              kube_pod_container_status_restarts_total{namespace="nktp"} and on (namespace,pod) (
+                kube_pod_info{namespace="nktp",pod=~"nktp-(daemonset|gateway-logs|stdout-logs-blackhole)-collector-.*"}
+                or kube_pod_labels{namespace="nktp",label_scale_nktp_io_run_id="{{ .Args.runId }}"}
+              )
+          - name: container_last_termination_reason
+            units: info
+            query: >-
+              kube_pod_container_status_last_terminated_reason{namespace="nktp"} and on (namespace,pod) (
+                kube_pod_info{namespace="nktp",pod=~"nktp-(daemonset|gateway-logs|stdout-logs-blackhole)-collector-.*"}
+                or kube_pod_labels{namespace="nktp",label_scale_nktp_io_run_id="{{ .Args.runId }}"}
+              )
+          - name: received_records_per_second
+            units: records/s
+            query: >-
+              sum by (job,instance,receiver) (rate(otelcol_receiver_accepted_log_records_total{job=~"nktp-daemonset|nktp-gateway-logs|nktp-stdout-logs-blackhole"}[4m]))
+          - name: receiver_refused_records_per_second
+            units: records/s
+            query: >-
+              sum by (job,instance,receiver) (rate(otelcol_receiver_refused_log_records_total{job=~"nktp-daemonset|nktp-gateway-logs|nktp-stdout-logs-blackhole"}[4m]))
+          - name: sent_records_per_second
+            units: records/s
+            query: >-
+              sum by (job,instance,exporter) (rate(otelcol_exporter_sent_log_records_total{job=~"nktp-daemonset|nktp-gateway-logs|nktp-stdout-logs-blackhole"}[4m]))
+          - name: exporter_send_failed_records_per_second
+            units: records/s
+            query: >-
+              sum by (job,instance,exporter) (rate(otelcol_exporter_send_failed_log_records_total{job=~"nktp-daemonset|nktp-gateway-logs|nktp-stdout-logs-blackhole"}[4m]))
+          - name: exporter_enqueue_failed_records_per_second
+            units: records/s
+            query: >-
+              sum by (job,instance,exporter) (rate(otelcol_exporter_enqueue_failed_log_records_total{job=~"nktp-daemonset|nktp-gateway-logs|nktp-stdout-logs-blackhole"}[4m]))
+          - name: queue_bytes
+            units: bytes
+            query: >-
+              otelcol_exporter_queue_size{job=~"nktp-daemonset|nktp-gateway-logs",exporter=~"otlp_http/logs|otlp_http"}
+          - name: queue_utilization_ratio
+            units: ratio
+            query: >-
+              otelcol_exporter_queue_size{job=~"nktp-daemonset|nktp-gateway-logs",exporter=~"otlp_http/logs|otlp_http"}
+              / ignoring(data_type) otelcol_exporter_queue_capacity{job=~"nktp-daemonset|nktp-gateway-logs",exporter=~"otlp_http/logs|otlp_http"}
+          - name: gateway_current_replicas
+            units: count
+            query: >-
+              kube_horizontalpodautoscaler_status_current_replicas{namespace="nktp",horizontalpodautoscaler="nktp-gateway-logs-collector"}
+          - name: gateway_desired_replicas
+            units: count
+            query: >-
+              kube_horizontalpodautoscaler_status_desired_replicas{namespace="nktp",horizontalpodautoscaler="nktp-gateway-logs-collector"}
+          - name: gateway_hpa_conditions
+            units: bool
+            query: >-
+              kube_horizontalpodautoscaler_status_condition{namespace="nktp",horizontalpodautoscaler="nktp-gateway-logs-collector"}
+          - name: gateway_ready_replicas
+            units: count
+            query: >-
+              kube_statefulset_status_replicas_ready{namespace="nktp",statefulset="nktp-gateway-logs-collector"}

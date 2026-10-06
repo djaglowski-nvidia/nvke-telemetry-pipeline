@@ -34,9 +34,10 @@ stages:
         endpoint: %q
         duration: 200ms
         interval: 15ms
-        units: {series: series}
-        queries:
-          series: 'count({test_run_id="{{ .Args.runId }}"})'
+        measurements:
+          - name: series
+            units: series
+            query: count({test_run_id="{{ .Args.runId }}"})
 `, server.URL))
 	args, err := ParseArguments([]string{"run-id=integration-run"})
 	if err != nil {
