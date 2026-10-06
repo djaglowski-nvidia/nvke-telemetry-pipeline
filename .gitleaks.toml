@@ -1,0 +1,12 @@
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Fake webhook certificate fixture: base64 of test-cert, test-key and test-ca."
+condition = "AND"
+paths = [
+  '''^nktp/tests/operator_test\.yaml$''',
+]
+regexes = [
+  '''dGVzdC1jZXJ0|dGVzdC1rZXk=|dGVzdC1jYQ==''',
+]

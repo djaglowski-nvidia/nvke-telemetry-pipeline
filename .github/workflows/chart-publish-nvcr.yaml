@@ -47,7 +47,7 @@ jobs:
           chart_version="$(helm show chart "${chart_path}" | awk '/^version:/ {gsub(/"/, "", $2); print $2}')"
           case "${GITHUB_REF}" in
             "refs/tags/${CHART}/v"*)
-              version="${GITHUB_REF#refs/tags/${CHART}/v}"
+              version="${GITHUB_REF#"refs/tags/${CHART}/v"}"
               if [[ "${version}" != "${chart_version}" ]]; then
                 echo "::error::Release tag version must match ${chart_path}/Chart.yaml (${chart_version})"
                 exit 1
