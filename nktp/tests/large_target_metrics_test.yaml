@@ -50,7 +50,7 @@ tests:
         documentIndex: 0
       - equal:
           path: "spec.config.service.pipelines.metrics"
-          value: {"receivers": ["prometheus"], "processors": ["memory_limiter"], "exporters": ["otlp_http"]}
+          value: {"receivers": ["prometheus"], "processors": ["memory_limiter", "redaction/basic_v1"], "exporters": ["otlp_http"]}
         documentIndex: 0
       - equal:
           path: "spec.config.exporters.otlp_http.endpoint"
@@ -200,7 +200,7 @@ tests:
           value:
             metrics:
               receivers: [prometheus]
-              processors: [memory_limiter]
+              processors: [memory_limiter, redaction/basic_v1]
               exporters: [otlp_http]
       - notExists:
           path: spec.config.exporters["otlp_http/watchdog"]

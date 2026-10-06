@@ -28,14 +28,15 @@ tests:
       - equal:
           path: spec.config.service.pipelines
           value:
-            logs: {receivers: [otlp], processors: [memory_limiter], exporters: [otlp_http]}
+            logs: {receivers: [otlp], processors: [memory_limiter, redaction/basic_v1], exporters: [otlp_http]}
       - equal:
-          path: spec.config.processors
+          path: spec.config.processors.memory_limiter
           value:
-            memory_limiter:
-              check_interval: 500ms
-              limit_percentage: 80
-              spike_limit_percentage: 25
+            check_interval: 500ms
+            limit_percentage: 80
+            spike_limit_percentage: 25
+      - exists:
+          path: spec.config.processors["redaction/basic_v1"]
       - equal:
           path: spec.config.exporters.otlp_http.endpoint
           value: http://lgtm:4318

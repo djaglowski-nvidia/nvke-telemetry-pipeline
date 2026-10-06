@@ -76,14 +76,14 @@ tests:
           path: spec.config.receivers["filelog/kube-api-audit"].resource
           value: {nvidia.telemetry.class: k8s.api.audit, service.name: kube-apiserver}
 
-  - it: forwards classified sources through the existing logs gateway without extra processors
+  - it: forwards classified sources through redaction and the existing logs gateway
     template: templates/daemonset.yaml
     asserts:
       - equal:
           path: spec.config.service.pipelines.logs
           value:
             receivers: [filelog, journald, otlp, filelog/host-auth, filelog/host-audit, filelog/kube-api-audit]
-            processors: [memory_limiter, resource/node]
+            processors: [memory_limiter, resource/node, redaction/basic_v1]
             exporters: [otlp_http/logs]
       - equal:
           path: spec.config.exporters["otlp_http/logs"].endpoint
@@ -92,14 +92,16 @@ tests:
           path: spec.config.service.pipelines.logs
           value:
             receivers: [otlp]
-            processors: [memory_limiter]
+            processors: [memory_limiter, redaction/basic_v1]
             exporters: [otlp_http]
         template: templates/gateway-logs.yaml
       - equal:
-          path: spec.config.processors
+          path: spec.config.processors.memory_limiter
           value:
-            memory_limiter:
-              check_interval: 500ms
-              limit_percentage: 80
-              spike_limit_percentage: 25
+            check_interval: 500ms
+            limit_percentage: 80
+            spike_limit_percentage: 25
+        template: templates/gateway-logs.yaml
+      - exists:
+          path: spec.config.processors["redaction/basic_v1"]
         template: templates/gateway-logs.yaml

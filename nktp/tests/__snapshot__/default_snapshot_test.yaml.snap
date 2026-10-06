@@ -342,6 +342,15 @@ matches the snapshot with default values:
             check_interval: 500ms
             limit_percentage: 80
             spike_limit_percentage: 25
+          redaction/basic_v1:
+            allow_all_keys: true
+            blocked_key_patterns:
+              - (?i)(?:(?:^|[._-])(?:password|passwd|secret|token|(?:access|refresh|id|session|auth)[._-]?token|(?:access|secret|private|api)[._-]?key|secret[._-]?access[._-]?key|client[._-]?secret|authorization|(?:set[._-]?)?cookie)|(?-i:[a-z0-9])(?:(?-i:P)(?:assword|asswd|rivate[._-]?key)|(?-i:S)ecret|(?-i:T)oken|(?-i:A)(?:pi[._-]?key|ccess[._-]?key|uthorization)|(?-i:C)ookie))$$
+            blocked_values:
+              - (?i)\bBearer\s+[A-Za-z0-9._~+/-]+=*
+              - (?i)"?\b(?:[A-Za-z0-9]+[._-])*(?:password|passwd|secret|token|(?:access|refresh|id|session|auth)[._-]?token|(?:access|secret|private|api)[._-]?key|secret[._-]?access[._-]?key|client[._-]?secret|authorization|(?:set[._-]?)?cookie|[A-Za-z0-9]*(?-i:[a-z0-9])(?:(?-i:P)(?:assword|asswd|rivate[._-]?key)|(?-i:S)ecret|(?-i:T)oken|(?-i:A)(?:pi[._-]?key|ccess[._-]?key|uthorization)|(?-i:C)ookie))"?\s*[:=]\s*(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|(?:(?:Bearer|Basic)\s+)?[^\s,;"]+)
+            redact_all_types: true
+            summary: silent
         receivers:
           k8s_events:
             auth_type: serviceAccount
@@ -357,6 +366,7 @@ matches the snapshot with default values:
                 - otlp_http
               processors:
                 - memory_limiter
+                - redaction/basic_v1
               receivers:
                 - k8s_events
           telemetry:
@@ -620,6 +630,15 @@ matches the snapshot with default values:
             check_interval: 500ms
             limit_percentage: 80
             spike_limit_percentage: 25
+          redaction/basic_v1:
+            allow_all_keys: true
+            blocked_key_patterns:
+              - (?i)(?:(?:^|[._-])(?:password|passwd|secret|token|(?:access|refresh|id|session|auth)[._-]?token|(?:access|secret|private|api)[._-]?key|secret[._-]?access[._-]?key|client[._-]?secret|authorization|(?:set[._-]?)?cookie)|(?-i:[a-z0-9])(?:(?-i:P)(?:assword|asswd|rivate[._-]?key)|(?-i:S)ecret|(?-i:T)oken|(?-i:A)(?:pi[._-]?key|ccess[._-]?key|uthorization)|(?-i:C)ookie))$$
+            blocked_values:
+              - (?i)\bBearer\s+[A-Za-z0-9._~+/-]+=*
+              - (?i)"?\b(?:[A-Za-z0-9]+[._-])*(?:password|passwd|secret|token|(?:access|refresh|id|session|auth)[._-]?token|(?:access|secret|private|api)[._-]?key|secret[._-]?access[._-]?key|client[._-]?secret|authorization|(?:set[._-]?)?cookie|[A-Za-z0-9]*(?-i:[a-z0-9])(?:(?-i:P)(?:assword|asswd|rivate[._-]?key)|(?-i:S)ecret|(?-i:T)oken|(?-i:A)(?:pi[._-]?key|ccess[._-]?key|uthorization)|(?-i:C)ookie))"?\s*[:=]\s*(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|(?:(?:Bearer|Basic)\s+)?[^\s,;"]+)
+            redact_all_types: true
+            summary: silent
           resource/node:
             attributes:
               - action: upsert
@@ -854,6 +873,7 @@ matches the snapshot with default values:
               processors:
                 - memory_limiter
                 - resource/node
+                - redaction/basic_v1
               receivers:
                 - filelog
                 - journald
@@ -868,6 +888,7 @@ matches the snapshot with default values:
                 - memory_limiter
                 - resource/node
                 - transform/operator
+                - redaction/basic_v1
               receivers:
                 - filelog/operator
             logs/targetallocator:
@@ -877,6 +898,7 @@ matches the snapshot with default values:
                 - memory_limiter
                 - resource/node
                 - transform/targetallocator
+                - redaction/basic_v1
               receivers:
                 - filelog/targetallocator
             metrics:
@@ -885,6 +907,7 @@ matches the snapshot with default values:
               processors:
                 - memory_limiter
                 - resource/node
+                - redaction/basic_v1
               receivers:
                 - prometheus
                 - prometheus/kubelet
@@ -895,6 +918,7 @@ matches the snapshot with default values:
               processors:
                 - memory_limiter
                 - resource/node
+                - redaction/basic_v1
               receivers:
                 - otlp
           telemetry:
@@ -1176,6 +1200,15 @@ matches the snapshot with default values:
             check_interval: 500ms
             limit_percentage: 80
             spike_limit_percentage: 25
+          redaction/basic_v1:
+            allow_all_keys: true
+            blocked_key_patterns:
+              - (?i)(?:(?:^|[._-])(?:password|passwd|secret|token|(?:access|refresh|id|session|auth)[._-]?token|(?:access|secret|private|api)[._-]?key|secret[._-]?access[._-]?key|client[._-]?secret|authorization|(?:set[._-]?)?cookie)|(?-i:[a-z0-9])(?:(?-i:P)(?:assword|asswd|rivate[._-]?key)|(?-i:S)ecret|(?-i:T)oken|(?-i:A)(?:pi[._-]?key|ccess[._-]?key|uthorization)|(?-i:C)ookie))$$
+            blocked_values:
+              - (?i)\bBearer\s+[A-Za-z0-9._~+/-]+=*
+              - (?i)"?\b(?:[A-Za-z0-9]+[._-])*(?:password|passwd|secret|token|(?:access|refresh|id|session|auth)[._-]?token|(?:access|secret|private|api)[._-]?key|secret[._-]?access[._-]?key|client[._-]?secret|authorization|(?:set[._-]?)?cookie|[A-Za-z0-9]*(?-i:[a-z0-9])(?:(?-i:P)(?:assword|asswd|rivate[._-]?key)|(?-i:S)ecret|(?-i:T)oken|(?-i:A)(?:pi[._-]?key|ccess[._-]?key|uthorization)|(?-i:C)ookie))"?\s*[:=]\s*(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|(?:(?:Bearer|Basic)\s+)?[^\s,;"]+)
+            redact_all_types: true
+            summary: silent
         receivers:
           otlp:
             protocols:
@@ -1192,6 +1225,7 @@ matches the snapshot with default values:
                 - otlp_http
               processors:
                 - memory_limiter
+                - redaction/basic_v1
               receivers:
                 - otlp
           telemetry:
@@ -1339,6 +1373,15 @@ matches the snapshot with default values:
             check_interval: 500ms
             limit_percentage: 80
             spike_limit_percentage: 25
+          redaction/basic_v1:
+            allow_all_keys: true
+            blocked_key_patterns:
+              - (?i)(?:(?:^|[._-])(?:password|passwd|secret|token|(?:access|refresh|id|session|auth)[._-]?token|(?:access|secret|private|api)[._-]?key|secret[._-]?access[._-]?key|client[._-]?secret|authorization|(?:set[._-]?)?cookie)|(?-i:[a-z0-9])(?:(?-i:P)(?:assword|asswd|rivate[._-]?key)|(?-i:S)ecret|(?-i:T)oken|(?-i:A)(?:pi[._-]?key|ccess[._-]?key|uthorization)|(?-i:C)ookie))$$
+            blocked_values:
+              - (?i)\bBearer\s+[A-Za-z0-9._~+/-]+=*
+              - (?i)"?\b(?:[A-Za-z0-9]+[._-])*(?:password|passwd|secret|token|(?:access|refresh|id|session|auth)[._-]?token|(?:access|secret|private|api)[._-]?key|secret[._-]?access[._-]?key|client[._-]?secret|authorization|(?:set[._-]?)?cookie|[A-Za-z0-9]*(?-i:[a-z0-9])(?:(?-i:P)(?:assword|asswd|rivate[._-]?key)|(?-i:S)ecret|(?-i:T)oken|(?-i:A)(?:pi[._-]?key|ccess[._-]?key|uthorization)|(?-i:C)ookie))"?\s*[:=]\s*(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|(?:(?:Bearer|Basic)\s+)?[^\s,;"]+)
+            redact_all_types: true
+            summary: silent
         receivers:
           otlp:
             protocols:
@@ -1355,6 +1398,7 @@ matches the snapshot with default values:
                 - otlp_http
               processors:
                 - memory_limiter
+                - redaction/basic_v1
               receivers:
                 - otlp
           telemetry:
@@ -1502,6 +1546,15 @@ matches the snapshot with default values:
             check_interval: 500ms
             limit_percentage: 80
             spike_limit_percentage: 25
+          redaction/basic_v1:
+            allow_all_keys: true
+            blocked_key_patterns:
+              - (?i)(?:(?:^|[._-])(?:password|passwd|secret|token|(?:access|refresh|id|session|auth)[._-]?token|(?:access|secret|private|api)[._-]?key|secret[._-]?access[._-]?key|client[._-]?secret|authorization|(?:set[._-]?)?cookie)|(?-i:[a-z0-9])(?:(?-i:P)(?:assword|asswd|rivate[._-]?key)|(?-i:S)ecret|(?-i:T)oken|(?-i:A)(?:pi[._-]?key|ccess[._-]?key|uthorization)|(?-i:C)ookie))$$
+            blocked_values:
+              - (?i)\bBearer\s+[A-Za-z0-9._~+/-]+=*
+              - (?i)"?\b(?:[A-Za-z0-9]+[._-])*(?:password|passwd|secret|token|(?:access|refresh|id|session|auth)[._-]?token|(?:access|secret|private|api)[._-]?key|secret[._-]?access[._-]?key|client[._-]?secret|authorization|(?:set[._-]?)?cookie|[A-Za-z0-9]*(?-i:[a-z0-9])(?:(?-i:P)(?:assword|asswd|rivate[._-]?key)|(?-i:S)ecret|(?-i:T)oken|(?-i:A)(?:pi[._-]?key|ccess[._-]?key|uthorization)|(?-i:C)ookie))"?\s*[:=]\s*(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|(?:(?:Bearer|Basic)\s+)?[^\s,;"]+)
+            redact_all_types: true
+            summary: silent
         receivers:
           otlp:
             protocols:
@@ -1518,6 +1571,7 @@ matches the snapshot with default values:
                 - otlp_http
               processors:
                 - memory_limiter
+                - redaction/basic_v1
               receivers:
                 - otlp
           telemetry:
@@ -2876,6 +2930,15 @@ matches the snapshot with default values:
             check_interval: 500ms
             limit_percentage: 80
             spike_limit_percentage: 25
+          redaction/basic_v1:
+            allow_all_keys: true
+            blocked_key_patterns:
+              - (?i)(?:(?:^|[._-])(?:password|passwd|secret|token|(?:access|refresh|id|session|auth)[._-]?token|(?:access|secret|private|api)[._-]?key|secret[._-]?access[._-]?key|client[._-]?secret|authorization|(?:set[._-]?)?cookie)|(?-i:[a-z0-9])(?:(?-i:P)(?:assword|asswd|rivate[._-]?key)|(?-i:S)ecret|(?-i:T)oken|(?-i:A)(?:pi[._-]?key|ccess[._-]?key|uthorization)|(?-i:C)ookie))$$
+            blocked_values:
+              - (?i)\bBearer\s+[A-Za-z0-9._~+/-]+=*
+              - (?i)"?\b(?:[A-Za-z0-9]+[._-])*(?:password|passwd|secret|token|(?:access|refresh|id|session|auth)[._-]?token|(?:access|secret|private|api)[._-]?key|secret[._-]?access[._-]?key|client[._-]?secret|authorization|(?:set[._-]?)?cookie|[A-Za-z0-9]*(?-i:[a-z0-9])(?:(?-i:P)(?:assword|asswd|rivate[._-]?key)|(?-i:S)ecret|(?-i:T)oken|(?-i:A)(?:pi[._-]?key|ccess[._-]?key|uthorization)|(?-i:C)ookie))"?\s*[:=]\s*(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|(?:(?:Bearer|Basic)\s+)?[^\s,;"]+)
+            redact_all_types: true
+            summary: silent
         receivers:
           prometheus:
             config:
@@ -2897,6 +2960,7 @@ matches the snapshot with default values:
                 - otlp_http
               processors:
                 - memory_limiter
+                - redaction/basic_v1
               receivers:
                 - prometheus
           telemetry:
@@ -9638,6 +9702,15 @@ matches the snapshot with default values:
             check_interval: 500ms
             limit_percentage: 80
             spike_limit_percentage: 25
+          redaction/basic_v1:
+            allow_all_keys: true
+            blocked_key_patterns:
+              - (?i)(?:(?:^|[._-])(?:password|passwd|secret|token|(?:access|refresh|id|session|auth)[._-]?token|(?:access|secret|private|api)[._-]?key|secret[._-]?access[._-]?key|client[._-]?secret|authorization|(?:set[._-]?)?cookie)|(?-i:[a-z0-9])(?:(?-i:P)(?:assword|asswd|rivate[._-]?key)|(?-i:S)ecret|(?-i:T)oken|(?-i:A)(?:pi[._-]?key|ccess[._-]?key|uthorization)|(?-i:C)ookie))$$
+            blocked_values:
+              - (?i)\bBearer\s+[A-Za-z0-9._~+/-]+=*
+              - (?i)"?\b(?:[A-Za-z0-9]+[._-])*(?:password|passwd|secret|token|(?:access|refresh|id|session|auth)[._-]?token|(?:access|secret|private|api)[._-]?key|secret[._-]?access[._-]?key|client[._-]?secret|authorization|(?:set[._-]?)?cookie|[A-Za-z0-9]*(?-i:[a-z0-9])(?:(?-i:P)(?:assword|asswd|rivate[._-]?key)|(?-i:S)ecret|(?-i:T)oken|(?-i:A)(?:pi[._-]?key|ccess[._-]?key|uthorization)|(?-i:C)ookie))"?\s*[:=]\s*(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|(?:(?:Bearer|Basic)\s+)?[^\s,;"]+)
+            redact_all_types: true
+            summary: silent
         receivers:
           otlp:
             protocols:
@@ -9679,6 +9752,7 @@ matches the snapshot with default values:
                 - otlp_http
               processors:
                 - memory_limiter
+                - redaction/basic_v1
               receivers:
                 - otlp
             metrics:
@@ -9686,6 +9760,7 @@ matches the snapshot with default values:
                 - otlp_http
               processors:
                 - memory_limiter
+                - redaction/basic_v1
               receivers:
                 - otlp
                 - prometheus
@@ -9694,6 +9769,7 @@ matches the snapshot with default values:
                 - otlp_http
               processors:
                 - memory_limiter
+                - redaction/basic_v1
               receivers:
                 - otlp
           telemetry:
@@ -9731,7 +9807,7 @@ matches the snapshot with default values:
       image: otel/opentelemetry-collector-k8s:0.162.0
       initContainers:
         - args:
-            - --config=yaml:{"exporters":{"otlp_http":{"endpoint":"http://lgtm:4318","retry_on_failure":{"max_elapsed_time":"30m"},"sending_queue":{"batch":{"flush_timeout":"1s","max_size":262144,"min_size":65536,"sizer":"bytes"},"block_on_overflow":false,"num_consumers":2,"queue_size":16777216,"sizer":"bytes"}}},"extensions":{"health_check":{"endpoint":"0.0.0.0:13134"}},"processors":{"memory_limiter":{"check_interval":"500ms","limit_percentage":80,"spike_limit_percentage":25},"tail_sampling":{"decision_cache":{"sampled_cache_size":50000},"decision_wait":"5s","num_traces":5000,"policies":[{"name":"errors","status_code":{"status_codes":["ERROR"]},"type":"status_code"},{"name":"slow","ottl_condition":{"error_mode":"ignore","span":["end_time_unix_nano - start_time_unix_nano \u003e 1000000000"]},"type":"ottl_condition"}]}},"receivers":{"otlp":{"protocols":{"http":{"endpoint":"127.0.0.1:4319","keepalive":{"idle_timeout":"5m"}}}}},"service":{"extensions":["health_check"],"pipelines":{"logs":{"exporters":["otlp_http"],"processors":["memory_limiter"],"receivers":["otlp"]},"metrics":{"exporters":["otlp_http"],"processors":["memory_limiter"],"receivers":["otlp"]},"traces":{"exporters":["otlp_http"],"processors":["memory_limiter","tail_sampling"],"receivers":["otlp"]}},"telemetry":{"logs":{"processors":[{"batch":{"exporter":{"otlp":{"endpoint":"http://127.0.0.1:4319","protocol":"http/protobuf"}}}}]},"metrics":{"readers":[{"periodic":{"exporter":{"otlp":{"endpoint":"http://127.0.0.1:4319","protocol":"http/protobuf"}}}}]},"resource":{"service.instance.id":"${env:POD_NAME}","service.name":"nktp-watchdog-sidecar"},"traces":{"level":"none"}}}}
+            - --config=yaml:{"exporters":{"otlp_http":{"endpoint":"http://lgtm:4318","retry_on_failure":{"max_elapsed_time":"30m"},"sending_queue":{"batch":{"flush_timeout":"1s","max_size":262144,"min_size":65536,"sizer":"bytes"},"block_on_overflow":false,"num_consumers":2,"queue_size":16777216,"sizer":"bytes"}}},"extensions":{"health_check":{"endpoint":"0.0.0.0:13134"}},"processors":{"memory_limiter":{"check_interval":"500ms","limit_percentage":80,"spike_limit_percentage":25},"redaction/basic_v1":{"allow_all_keys":true,"blocked_key_patterns":["(?i)(?:(?:^|[._-])(?:password|passwd|secret|token|(?:access|refresh|id|session|auth)[._-]?token|(?:access|secret|private|api)[._-]?key|secret[._-]?access[._-]?key|client[._-]?secret|authorization|(?:set[._-]?)?cookie)|(?-i:[a-z0-9])(?:(?-i:P)(?:assword|asswd|rivate[._-]?key)|(?-i:S)ecret|(?-i:T)oken|(?-i:A)(?:pi[._-]?key|ccess[._-]?key|uthorization)|(?-i:C)ookie))$$"],"blocked_values":["(?i)\\bBearer\\s+[A-Za-z0-9._~+/-]+=*","(?i)\"?\\b(?:[A-Za-z0-9]+[._-])*(?:password|passwd|secret|token|(?:access|refresh|id|session|auth)[._-]?token|(?:access|secret|private|api)[._-]?key|secret[._-]?access[._-]?key|client[._-]?secret|authorization|(?:set[._-]?)?cookie|[A-Za-z0-9]*(?-i:[a-z0-9])(?:(?-i:P)(?:assword|asswd|rivate[._-]?key)|(?-i:S)ecret|(?-i:T)oken|(?-i:A)(?:pi[._-]?key|ccess[._-]?key|uthorization)|(?-i:C)ookie))\"?\\s*[:=]\\s*(?:\"(?:\\\\.|[^\"\\\\])*\"|'(?:\\\\.|[^'\\\\])*'|(?:(?:Bearer|Basic)\\s+)?[^\\s,;\"]+)"],"redact_all_types":true,"summary":"silent"},"tail_sampling":{"decision_cache":{"sampled_cache_size":50000},"decision_wait":"5s","num_traces":5000,"policies":[{"name":"errors","status_code":{"status_codes":["ERROR"]},"type":"status_code"},{"name":"slow","ottl_condition":{"error_mode":"ignore","span":["end_time_unix_nano - start_time_unix_nano \u003e 1000000000"]},"type":"ottl_condition"}]}},"receivers":{"otlp":{"protocols":{"http":{"endpoint":"127.0.0.1:4319","keepalive":{"idle_timeout":"5m"}}}}},"service":{"extensions":["health_check"],"pipelines":{"logs":{"exporters":["otlp_http"],"processors":["memory_limiter","redaction/basic_v1"],"receivers":["otlp"]},"metrics":{"exporters":["otlp_http"],"processors":["memory_limiter","redaction/basic_v1"],"receivers":["otlp"]},"traces":{"exporters":["otlp_http"],"processors":["memory_limiter","tail_sampling","redaction/basic_v1"],"receivers":["otlp"]}},"telemetry":{"logs":{"processors":[{"batch":{"exporter":{"otlp":{"endpoint":"http://127.0.0.1:4319","protocol":"http/protobuf"}}}}]},"metrics":{"readers":[{"periodic":{"exporter":{"otlp":{"endpoint":"http://127.0.0.1:4319","protocol":"http/protobuf"}}}}]},"resource":{"service.instance.id":"${env:POD_NAME}","service.name":"nktp-watchdog-sidecar"},"traces":{"level":"none"}}}}
           env:
             - name: POD_NAME
               valueFrom:

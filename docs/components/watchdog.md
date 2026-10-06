@@ -19,3 +19,19 @@ Use `watchdog.kubernetes` for Collector CR settings and `watchdog.otelcol.image`
 to override the global `otelcol_image`.
 Include `GOMEMLIMIT` and `GOGC` in any replacement `watchdog.kubernetes.env` list
 to retain these settings.
+
+## Redaction
+
+Watchdog masks recognized credentials, including quoted JSON fields and Basic/Bearer
+credentials, in received telemetry with `****`, following
+[OWASP logging guidance](https://cheatsheetseries.owasp.org/cheatsheets/Logging_Cheat_Sheet.html#data-to-exclude).
+Other collectors' diagnostic exports must pass through watchdog because
+[internal error logs can include samples of rejected data](https://opentelemetry.io/docs/collector/internal-telemetry/#events-observable-with-internal-logs).
+
+Matching covers metric data point, resource, and scope attributes. Span names,
+OTLP `Metric.metadata`, and exemplar `filtered_attributes` pass through unchanged.
+
+Watchdog's sidecar redacts watchdog's own logs, metrics, and traces before export,
+along with its own logs and metrics. Configure its rules under
+`watchdog.sidecar.otelcol.config.processors.redaction/basic_v1`. Watchdog keeps
+`basic` tracing and the sidecar's own tracing stays disabled.

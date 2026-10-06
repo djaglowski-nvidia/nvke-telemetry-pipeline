@@ -53,11 +53,11 @@ tests:
       - equal:
           path: spec.config.service.pipelines
           value:
-            logs: {receivers: [filelog, journald, otlp, filelog/host-auth, filelog/host-audit, filelog/kube-api-audit], processors: [memory_limiter, resource/node], exporters: [otlp_http/logs]}
-            logs/targetallocator: {receivers: [filelog/targetallocator], processors: [memory_limiter, resource/node, transform/targetallocator], exporters: [otlp_http/watchdog]}
-            logs/operator: {receivers: [filelog/operator], processors: [memory_limiter, resource/node, transform/operator], exporters: [otlp_http/watchdog]}
-            metrics: {receivers: [prometheus, prometheus/kubelet, otlp], processors: [memory_limiter, resource/node], exporters: [otlp_http/metrics]}
-            traces: {receivers: [otlp], processors: [memory_limiter, resource/node], exporters: [otlp_http/traces]}
+            logs: {receivers: [filelog, journald, otlp, filelog/host-auth, filelog/host-audit, filelog/kube-api-audit], processors: [memory_limiter, resource/node, redaction/basic_v1], exporters: [otlp_http/logs]}
+            logs/targetallocator: {receivers: [filelog/targetallocator], processors: [memory_limiter, resource/node, transform/targetallocator, redaction/basic_v1], exporters: [otlp_http/watchdog]}
+            logs/operator: {receivers: [filelog/operator], processors: [memory_limiter, resource/node, transform/operator, redaction/basic_v1], exporters: [otlp_http/watchdog]}
+            metrics: {receivers: [prometheus, prometheus/kubelet, otlp], processors: [memory_limiter, resource/node, redaction/basic_v1], exporters: [otlp_http/metrics]}
+            traces: {receivers: [otlp], processors: [memory_limiter, resource/node, redaction/basic_v1], exporters: [otlp_http/traces]}
       - equal:
           path: spec.config.exporters["otlp_http/logs"].endpoint
           value: http://nktp-gateway-logs-collector:4318
@@ -263,7 +263,7 @@ tests:
           path: spec.config.service.pipelines["logs/targetallocator"]
           value:
             receivers: [filelog/targetallocator]
-            processors: [memory_limiter, resource/node, transform/targetallocator]
+            processors: [memory_limiter, resource/node, transform/targetallocator, redaction/basic_v1]
             exporters: [otlp_http/watchdog]
       - equal:
           path: spec.config.exporters["otlp_http/watchdog"].endpoint
@@ -273,7 +273,7 @@ tests:
           value: http://application-logs:4318
       - equal:
           path: spec.config.service.pipelines.logs
-          value: {receivers: [filelog, journald, otlp, filelog/host-auth, filelog/host-audit, filelog/kube-api-audit], processors: [memory_limiter, resource/node], exporters: [otlp_http/logs]}
+          value: {receivers: [filelog, journald, otlp, filelog/host-auth, filelog/host-audit, filelog/kube-api-audit], processors: [memory_limiter, resource/node, redaction/basic_v1], exporters: [otlp_http/logs]}
 
   - it: sends operator manager logs to watchdog independently of application logs
     release:
@@ -307,7 +307,7 @@ tests:
           path: spec.config.service.pipelines["logs/operator"]
           value:
             receivers: [filelog/operator]
-            processors: [memory_limiter, resource/node, transform/operator]
+            processors: [memory_limiter, resource/node, transform/operator, redaction/basic_v1]
             exporters: [otlp_http/watchdog]
       - equal:
           path: spec.config.exporters["otlp_http/watchdog"].endpoint
@@ -688,7 +688,7 @@ tests:
           path: spec.config.service.pipelines.metrics
           value:
             receivers: [prometheus, prometheus/kubelet, otlp]
-            processors: [memory_limiter, resource/node]
+            processors: [memory_limiter, resource/node, redaction/basic_v1]
             exporters: [otlp_http/metrics]
       - notExists:
           path: spec.hostPID
@@ -712,13 +712,13 @@ tests:
           path: spec.config.service.pipelines["metrics/process"]
           value:
             receivers: [hostmetrics]
-            processors: [memory_limiter, resource/node]
+            processors: [memory_limiter, resource/node, redaction/basic_v1]
             exporters: [otlp_http/metrics]
       - equal:
           path: spec.config.service.pipelines.metrics
           value:
             receivers: [prometheus, prometheus/kubelet, otlp]
-            processors: [memory_limiter, resource/node]
+            processors: [memory_limiter, resource/node, redaction/basic_v1]
             exporters: [otlp_http/metrics]
       - equal:
           path: spec.securityContext
@@ -757,13 +757,13 @@ tests:
             http: {endpoint: "0.0.0.0:4318"}
       - equal:
           path: spec.config.service.pipelines.logs
-          value: {receivers: [filelog, journald, otlp, filelog/host-auth, filelog/host-audit, filelog/kube-api-audit], processors: [memory_limiter, resource/node], exporters: [otlp_http/logs]}
+          value: {receivers: [filelog, journald, otlp, filelog/host-auth, filelog/host-audit, filelog/kube-api-audit], processors: [memory_limiter, resource/node, redaction/basic_v1], exporters: [otlp_http/logs]}
       - equal:
           path: spec.config.service.pipelines.metrics
-          value: {receivers: [prometheus, prometheus/kubelet, otlp], processors: [memory_limiter, resource/node], exporters: [otlp_http/metrics]}
+          value: {receivers: [prometheus, prometheus/kubelet, otlp], processors: [memory_limiter, resource/node, redaction/basic_v1], exporters: [otlp_http/metrics]}
       - equal:
           path: spec.config.service.pipelines.traces
-          value: {receivers: [otlp], processors: [memory_limiter, resource/node], exporters: [otlp_http/traces]}
+          value: {receivers: [otlp], processors: [memory_limiter, resource/node, redaction/basic_v1], exporters: [otlp_http/traces]}
       - equal:
           path: spec.config.exporters["otlp_http/traces"].endpoint
           value: http://nktp-gateway-traces-collector:4318
@@ -828,7 +828,7 @@ tests:
           path: spec.config.service.pipelines.logs
           value:
             receivers: [filelog, journald, otlp, filelog/host-auth, filelog/host-audit, filelog/kube-api-audit]
-            processors: [memory_limiter, resource/node]
+            processors: [memory_limiter, resource/node, redaction/basic_v1]
             exporters: [otlp_http/logs]
 
   - it: collects Kind runtime journals while retaining host mounts and OTLP forwarding
@@ -873,5 +873,5 @@ tests:
           path: spec.config.service.pipelines.logs
           value:
             receivers: [filelog, journald, otlp, filelog/host-auth, filelog/host-audit, filelog/kube-api-audit]
-            processors: [memory_limiter, resource/node]
+            processors: [memory_limiter, resource/node, redaction/basic_v1]
             exporters: [otlp_http/logs]
