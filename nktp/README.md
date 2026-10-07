@@ -16,8 +16,10 @@ each component in depth.
 
 Provide the following before installing NKTP.
 
-- **Kubernetes 1.25+**, per the compatibility matrix of the bundled
-  OpenTelemetry Operator 0.159.0.
+- **Kubernetes 1.29+.** Every Collector Pod runs its self-telemetry sidecar as
+  a native sidecar, an init container with `restartPolicy: Always`, which
+  Kubernetes enables by default from 1.29. The bundled OpenTelemetry Operator
+  0.159.0 itself supports 1.25+.
 - **Helm 3.** Tested with Helm 3.20.
 - **cert-manager.** Required with default values. NKTP uses it for internal
   collector TLS, the Operator's admission webhook certificate, and Collector to
@@ -43,7 +45,7 @@ Provide the following before installing NKTP.
   `baseline` and `restricted` Pod Security levels reject these Pods.
 - **Capacity.** The defaults are sized for large clusters: about 10 CPU and
   26 GiB of memory in requests for the cluster-wide components, plus about
-  1.1 CPU and 2.1 GiB on every node for the per-node DaemonSets.
+  1.1 CPU and 2.2 GiB on every node for the per-node DaemonSets.
 
 ## Install
 
@@ -159,7 +161,8 @@ Omit fields at the source when their names or presence are sensitive.
 
 Set `global.imageRegistry` to override the image registry of all the components,
 including the Collectors (`otelcol_image`) and the Target Allocators
-(`targetallocator_image`). Caveat: `metrics-server` dependency and the nested OpenTelemetry Operator do **not**
+(`targetallocator_image`). Caveat: `metrics-server` dependency, the nested OpenTelemetry Operator, and the
+uninstall hook's kubectl image (`opentelemetry-kube-stack.cleanupJob.image`) do **not**
 read this setting. Configure their image repositories explicitly when required.
 
 ## Before production

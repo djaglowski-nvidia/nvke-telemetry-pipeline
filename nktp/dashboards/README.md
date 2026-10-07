@@ -14,7 +14,7 @@ later when importing the examples.
 1. Open Grafana → **Dashboards** → **Import**.
 2. Upload the JSON file (or paste its contents).
 3. Select a Prometheus datasource. Example dashboards declare an input named `DS_PROMETHEUS`.
-4. Confirm the labels required by the dashboard you import. Most example queries use `k8s_cluster_name` (from the OpenTelemetry resource attribute `k8s.cluster.name`); NKE controller inventory queries use `name` or `tenant_cluster`.
+4. Confirm the labels required by the dashboard you import. Most example queries use `k8s_cluster_name` (from the OpenTelemetry resource attribute `k8s.cluster.name`).
 
 ## Default (autoloaded into LGTM)
 
@@ -39,4 +39,3 @@ later when importing the examples.
 | `examples/etcd-reference.json` | Reference - etcd | etcd health, RPCs, storage, memory, and network traffic. Requires a Prometheus datasource that scrapes etcd; the cluster filter uses `k8s_cluster_name` when available. |
 | `examples/kubernetes-health-reference.json` | Reference - Kubernetes Health | Cluster, control-plane, node, pod, and workload health. Requires `k8s_cluster_name`. |
 | `examples/nvsentinel-latency-errors-reference.json` | Reference - NVSentinel Latency and Errors | NVSentinel latency, errors, deployment health, GPU health, node draining, MongoDB, and fault quarantine. Requires `k8s_cluster_name`. See https://github.com/NVIDIA/NVSentinel. |
-| `examples/nke/nke-cluster-upgrade-overview-reference.json` | Reference - NKE Cluster Upgrade Overview | Kubernetes kubelet, Calico, and OS-profile upgrade progress. Control-plane upgrade status and OS profile require NKE controller inventory metrics (`cwe_*` or `nke_controller_*`) (https://github.com/dsx-ai-factory/nke). |
