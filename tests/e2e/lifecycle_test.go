@@ -71,14 +71,9 @@ func TestChartLifecycle(t *testing.T) {
 				after, err := k.Workloads(t.Context(), *namespace)
 				require.NoError(t, err)
 
-				// Helm applies these itself and sets no owner reference on them, so
-				// nothing between the chart and the cluster can touch them: if one
-				// moved, the chart rendered differently on the second pass.
-				//
-				// A chart that generates something at install time, a hook that
-				// writes unique configuration for instance, would move them for a
-				// reason of its own. Nothing in the chart does today, so this holds;
-				// -nktp.stable-reapply=false reports it instead once something does.
+				// Helm-managed generations must stay stable for identical inputs.
+				// If install-time generation is introduced, -nktp.stable-reapply=false
+				// reports changes without enforcing stability.
 				wasHelm, isHelm := generations(before, false), generations(after, false)
 				if *stableReapply {
 					assert.Equal(t, wasHelm, isHelm,
@@ -87,11 +82,8 @@ func TestChartLifecycle(t *testing.T) {
 					t.Log("note: reapplying the release moved a workload Helm manages")
 				}
 
-				// Reported rather than enforced. Reapplying a Collector CR that Helm
-				// renders byte-identically still makes the operator rewrite the
-				// workload it derives from it, rolling every collector pod. That is
-				// the operator's behaviour to fix, not something the chart can be held
-				// to meanwhile.
+				// The Operator rewrites derived workloads even for unchanged Collector
+				// CRs. Report those rollouts without failing the chart's stability check.
 				if !slices.Equal(generations(before, true), generations(after, true)) {
 					t.Log("note: the operator rewrote the workloads it derives from unchanged Collector CRs, so a reapply rolled every collector pod")
 				}

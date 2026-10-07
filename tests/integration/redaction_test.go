@@ -20,6 +20,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"sigs.k8s.io/yaml"
 )
@@ -195,7 +196,7 @@ func captureExports(t *testing.T) (object, <-chan object) {
 	}))
 	listener, err := net.Listen("tcp", "0.0.0.0:0")
 	require.NoError(t, err)
-	sink.Listener.Close()
+	require.NoError(t, sink.Listener.Close())
 	sink.Listener = listener
 	sink.Start()
 	t.Cleanup(sink.Close)
@@ -388,8 +389,7 @@ func runCollector(t *testing.T, image string, config object) string {
 		if err != nil {
 			return false
 		}
-		response.Body.Close()
-		return response.StatusCode == http.StatusNotFound
+		return assert.NoError(t, response.Body.Close()) && response.StatusCode == http.StatusNotFound
 	}, 10*time.Second, 50*time.Millisecond, "Collector did not start")
 	return "http://" + address
 }
@@ -399,7 +399,9 @@ func sendTelemetry(t *testing.T, url string, payload object) {
 	client := &http.Client{Timeout: 5 * time.Second}
 	response, err := client.Post(url, "application/json", bytes.NewReader(marshal(t, payload)))
 	require.NoError(t, err)
-	defer response.Body.Close()
+	defer func() {
+		assert.NoError(t, response.Body.Close())
+	}()
 	body, err := io.ReadAll(response.Body)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, response.StatusCode, "%s", body)

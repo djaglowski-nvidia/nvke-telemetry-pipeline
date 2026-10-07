@@ -1,0 +1,15 @@
+version: "2"
+
+run:
+  # Include every build-tagged suite without executing tests or creating clusters.
+  build-tags: [e2e, integration, scale, perf]
+  timeout: 5m
+
+linters:
+  enable:
+    - commentpolicy
+  settings:
+    custom:
+      commentpolicy:
+        type: module
+        description: Limits inline comment blocks to three lines and 300 characters.

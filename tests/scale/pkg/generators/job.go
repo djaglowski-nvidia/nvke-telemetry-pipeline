@@ -148,7 +148,7 @@ func (g *JobGenerator) runJob(ctx context.Context, batch batchclient.BatchV1Inte
 			return false, err
 		}
 		if current.UID != job.UID {
-			return false, errors.New("Job was replaced")
+			return false, errors.New("job was replaced")
 		}
 		for _, condition := range current.Status.Conditions {
 			if condition.Status != corev1.ConditionTrue {

@@ -150,11 +150,11 @@ func waitForPods(ctx context.Context, pods coreclient.PodInterface, owner string
 			// pod must still have the identity returned by Create.
 			pod := current[expected.Name]
 			if pod == nil || pod.UID != expected.UID {
-				return false, fmt.Errorf("Pod %s/%s disappeared or was replaced", expected.Namespace, expected.Name)
+				return false, fmt.Errorf("pod %s/%s disappeared or was replaced", expected.Namespace, expected.Name)
 			}
 			switch pod.Status.Phase {
 			case corev1.PodFailed:
-				return false, fmt.Errorf("Pod %s/%s failed: %s: %s", pod.Namespace, pod.Name, pod.Status.Reason, pod.Status.Message)
+				return false, fmt.Errorf("pod %s/%s failed: %s: %s", pod.Namespace, pod.Name, pod.Status.Reason, pod.Status.Message)
 			case corev1.PodSucceeded:
 			default:
 				complete = false

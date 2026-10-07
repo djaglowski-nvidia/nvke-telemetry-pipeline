@@ -409,7 +409,7 @@ func logLGTMIngestionDiagnostics(ctx context.Context, t *testing.T, pod corev1.P
 		restarted = status.RestartCount > 0
 		t.Logf("log diagnostics: LGTM ready=%t restarts=%d", status.Ready, status.RestartCount)
 		if terminated := status.LastTerminationState.Terminated; terminated != nil {
-			t.Logf("log diagnostics: LGTM previous exit=%d reason=%s finished=%s", terminated.ExitCode, terminated.Reason, terminated.FinishedAt.Time.Format(time.RFC3339))
+			t.Logf("log diagnostics: LGTM previous exit=%d reason=%s finished=%s", terminated.ExitCode, terminated.Reason, terminated.FinishedAt.Format(time.RFC3339))
 		}
 	}
 	probeCtx, probeCancel := context.WithTimeout(ctx, 3*time.Second)

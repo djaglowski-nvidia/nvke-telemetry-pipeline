@@ -20,7 +20,8 @@ func TestExecutePrometheusPlan(t *testing.T) {
 		if got, want := r.Form.Get("query"), `count({test_run_id="integration-run"})`; got != want {
 			t.Errorf("query = %q, want resolved run ID in %q", got, want)
 		}
-		fmt.Fprint(w, `{"status":"success","data":{"resultType":"vector","result":[{"metric":{},"value":[100,"3"]}]}}`)
+		_, err := fmt.Fprint(w, `{"status":"success","data":{"resultType":"vector","result":[{"metric":{},"value":[100,"3"]}]}}`)
+		assert.NoError(t, err)
 	}))
 	defer server.Close()
 	data := []byte(fmt.Sprintf(`name: query-integration

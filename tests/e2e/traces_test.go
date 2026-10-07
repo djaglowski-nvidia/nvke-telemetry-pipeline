@@ -127,9 +127,8 @@ done
 		if current.Status.Phase != corev1.PodSucceeded {
 			return false, nil
 		}
-		// Grafana's provisioned Tempo datasource proxies the backend without
-		// requiring another LGTM Service port. Tempo uses standard protobuf JSON
-		// (base64 IDs), unlike the generator's OTLP/JSON (hex IDs).
+		// Grafana proxies Tempo without another LGTM Service port.
+		// Tempo returns base64 IDs; the generator sends hex OTLP/JSON IDs.
 		// https://grafana.com/docs/tempo/latest/api_docs/pushing-spans-with-http/
 		body, queryErr := k.ServiceEndpoint(ctx, *namespace, "lgtm", "3000",
 			"/api/datasources/proxy/uid/tempo/api/v2/traces/"+traceID)

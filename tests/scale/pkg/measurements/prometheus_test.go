@@ -118,10 +118,12 @@ func TestPrometheusRunRetainsObservations(t *testing.T) {
 			t.Errorf("evaluation timestamp is invalid: %v", err)
 		}
 		if calls.Add(1) == 1 {
-			fmt.Fprint(w, `{"status":"success","data":{"resultType":"vector","result":[]}}`)
+			_, err := fmt.Fprint(w, `{"status":"success","data":{"resultType":"vector","result":[]}}`)
+			assert.NoError(t, err)
 			return
 		}
-		fmt.Fprint(w, `{"status":"success","data":{"resultType":"vector","result":[{"metric":{"instance":"first"},"value":[100.5,"3"]},{"metric":{"instance":"second"},"value":[100.5,"NaN"]}]},"warnings":["partial response"]}`)
+		_, err := fmt.Fprint(w, `{"status":"success","data":{"resultType":"vector","result":[{"metric":{"instance":"first"},"value":[100.5,"3"]},{"metric":{"instance":"second"},"value":[100.5,"NaN"]}]},"warnings":["partial response"]}`)
+		assert.NoError(t, err)
 	}))
 	defer server.Close()
 	measurement, err := NewPrometheus(prometheusTestSpec(t, server.URL+"/prefix/"))
@@ -166,7 +168,8 @@ func TestPrometheusRunPreservesPartialReport(t *testing.T) {
 			http.Error(w, `{"status":"error","errorType":"unavailable","error":"backend unavailable"}`, http.StatusServiceUnavailable)
 			return
 		}
-		fmt.Fprint(w, `{"status":"success","data":{"resultType":"scalar","result":[100,"12.5"]}}`)
+		_, err := fmt.Fprint(w, `{"status":"success","data":{"resultType":"scalar","result":[100,"12.5"]}}`)
+		assert.NoError(t, err)
 	}))
 	defer server.Close()
 	measurement, err := NewPrometheus(prometheusTestSpec(t, server.URL))
@@ -272,7 +275,8 @@ func TestPrometheusQueryRejectsBadResponses(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				fmt.Fprint(w, test.body)
+				_, err := fmt.Fprint(w, test.body)
+				assert.NoError(t, err)
 			}))
 			defer server.Close()
 			measurement, err := NewPrometheus(prometheusTestSpec(t, server.URL))
@@ -316,7 +320,8 @@ func TestPrometheusQueryFallback(t *testing.T) {
 						<-r.Context().Done()
 						return
 					}
-					fmt.Fprint(w, `{"status":"success","data":{"resultType":"scalar","result":[0,"0"]}}`)
+					_, err := fmt.Fprint(w, `{"status":"success","data":{"resultType":"scalar","result":[0,"0"]}}`)
+					assert.NoError(t, err)
 				default:
 					t.Error("unexpected additional fallback request")
 				}
@@ -350,7 +355,8 @@ func TestPrometheusQueryFallback(t *testing.T) {
 // TestPrometheusModelFormatting verifies the official model's precision and values.
 func TestPrometheusModelFormatting(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprint(w, `{"status":"success","data":{"resultType":"vector","result":[{"metric":{"instance":"first"},"value":[100.1239,"1.00"]},{"metric":{},"value":[100.1239,"+Inf"]},{"metric":{},"value":[100.1239,"-Inf"]}]}}`)
+		_, err := fmt.Fprint(w, `{"status":"success","data":{"resultType":"vector","result":[{"metric":{"instance":"first"},"value":[100.1239,"1.00"]},{"metric":{},"value":[100.1239,"+Inf"]},{"metric":{},"value":[100.1239,"-Inf"]}]}}`)
+		assert.NoError(t, err)
 	}))
 	defer server.Close()
 	client, err := api.NewClient(api.Config{Address: server.URL})
@@ -385,7 +391,8 @@ func TestPrometheusQueryRetainsOfficialResults(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				fmt.Fprint(w, test.body)
+				_, err := fmt.Fprint(w, test.body)
+				assert.NoError(t, err)
 			}))
 			defer server.Close()
 			client, err := api.NewClient(api.Config{Address: server.URL})

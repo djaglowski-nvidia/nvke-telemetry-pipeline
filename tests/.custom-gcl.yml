@@ -1,0 +1,5 @@
+version: v2.13.2
+plugins:
+  - module: "github.com/dsx-ai-factory/cluster-api-provider-nico"
+    import: "github.com/dsx-ai-factory/cluster-api-provider-nico/tools/commentpolicy"
+    version: v0.1.0-rc.2.0.20260929174319-72784d3eaafc

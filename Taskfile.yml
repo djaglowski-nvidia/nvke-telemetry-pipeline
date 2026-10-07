@@ -52,6 +52,27 @@ tasks:
         --set crds.enabled=true
         --wait --timeout 5m
 
+  tests:lint:
+    desc: 'Lint all Go test suites (pass flags: task tests:lint -- --fix)'
+    dir: tests
+    deps: [tests:lint:build]
+    cmds:
+      - ./custom-gcl config verify
+      - ./custom-gcl run {{.CLI_ARGS}} ./...
+
+  tests:lint:build:
+    internal: true
+    dir: tests
+    method: timestamp
+    sources:
+      - .custom-gcl.yml
+      - go.mod
+      - ../Taskfile.yml
+    generates:
+      - custom-gcl
+    cmds:
+      - go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.13.2 custom -v
+
   tests:scale:
     aliases: [test:scale]
     desc: Alias for scale:test

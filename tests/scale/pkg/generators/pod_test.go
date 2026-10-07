@@ -236,9 +236,10 @@ func TestWaitForPods(t *testing.T) {
 					list.Items[1].Status.Phase = corev1.PodSucceeded
 					switch mode {
 					case "mixed phases":
-						if polls == 2 {
+						switch polls {
+						case 2:
 							list.Items[1].Status.Phase = corev1.PodPending
-						} else if polls == 3 {
+						case 3:
 							list.Items[1].Status.Phase = corev1.PodRunning
 						}
 					case "missing":
