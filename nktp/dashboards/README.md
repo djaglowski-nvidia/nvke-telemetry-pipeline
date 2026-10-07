@@ -36,6 +36,7 @@ later when importing the examples.
 | File | Title | Description |
 | --- | --- | --- |
 | `examples/availability-per-cluster-reference.json` | Reference - Cluster Availability | Per-cluster capacity availability (GPUs) and service availability (Kubernetes API). Requires `k8s_cluster_name`. Extra installs: NVIDIA GPU Operator with DCGM Exporter; NVSentinel Janitor. |
+| `examples/etcd-reference.json` | Reference - etcd | etcd health, RPCs, storage, memory, and network traffic. Requires a Prometheus datasource that scrapes etcd; the cluster filter uses `k8s_cluster_name` when available. |
 | `examples/kubernetes-health-reference.json` | Reference - Kubernetes Health | Cluster, control-plane, node, pod, and workload health. Requires `k8s_cluster_name`. |
 | `examples/nvsentinel-latency-errors-reference.json` | Reference - NVSentinel Latency and Errors | NVSentinel latency, errors, deployment health, GPU health, node draining, MongoDB, and fault quarantine. Requires `k8s_cluster_name`. See https://github.com/NVIDIA/NVSentinel. |
 | `examples/nke/nke-cluster-upgrade-overview-reference.json` | Reference - NKE Cluster Upgrade Overview | Kubernetes kubelet, Calico, and OS-profile upgrade progress. Control-plane upgrade status and OS profile require NKE controller inventory metrics (`cwe_*` or `nke_controller_*`) (https://github.com/dsx-ai-factory/nke). |
