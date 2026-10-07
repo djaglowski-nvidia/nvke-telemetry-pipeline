@@ -3,6 +3,7 @@
 - [Plan](plans/mixed-workload.yaml) · [Profile](mixed-workload-values.yaml)
 - Load: 100k series and about 4 GiB/hour each of logs and spans per worker
 - Paths: node, Events and large-target collectors → gateways → blackhole
+- OTLP uses gRPC; Collector-to-gateway connections retain the chart's mTLS defaults.
 - NKTP: default resources and autoscaling
 
 ## Load

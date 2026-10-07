@@ -42,8 +42,7 @@ stages:
                 command: [/telemetrygen]
                 args:
                   - metrics
-                  - --otlp-endpoint=nktp-watchdog-collector.nktp.svc:4318
-                  - --otlp-http
+                  - --otlp-endpoint=nktp-watchdog-collector.nktp.svc:4317
                   - --otlp-insecure
                   - --duration=1h
                   - --workers=1
@@ -78,8 +77,7 @@ stages:
                 command: [/telemetrygen]
                 args:
                   - logs
-                  - --otlp-endpoint=nktp-watchdog-collector.nktp.svc:4318
-                  - --otlp-http
+                  - --otlp-endpoint=nktp-watchdog-collector.nktp.svc:4317
                   - --otlp-insecure
                   - --duration=1h
                   - --workers=1

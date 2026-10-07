@@ -227,15 +227,16 @@ stages:
             units: records/s
             query: >-
               sum by (job,instance,exporter) (rate(otelcol_exporter_enqueue_failed_log_records_total{job=~"nktp-daemonset|nktp-gateway-logs|nktp-stdout-logs-blackhole"}[4m]))
+          # Measure the DaemonSet-to-gateway and gateway-to-blackhole queues.
           - name: queue_bytes
             units: bytes
             query: >-
-              otelcol_exporter_queue_size{job=~"nktp-daemonset|nktp-gateway-logs",exporter=~"otlp_http/logs|otlp_http"}
+              otelcol_exporter_queue_size{job=~"nktp-daemonset|nktp-gateway-logs",exporter=~"otlp/logs|otlp"}
           - name: queue_utilization_ratio
             units: ratio
             query: >-
-              otelcol_exporter_queue_size{job=~"nktp-daemonset|nktp-gateway-logs",exporter=~"otlp_http/logs|otlp_http"}
-              / ignoring(data_type) otelcol_exporter_queue_capacity{job=~"nktp-daemonset|nktp-gateway-logs",exporter=~"otlp_http/logs|otlp_http"}
+              otelcol_exporter_queue_size{job=~"nktp-daemonset|nktp-gateway-logs",exporter=~"otlp/logs|otlp"}
+              / ignoring(data_type) otelcol_exporter_queue_capacity{job=~"nktp-daemonset|nktp-gateway-logs",exporter=~"otlp/logs|otlp"}
           - name: gateway_current_replicas
             units: count
             query: >-

@@ -86,8 +86,10 @@ watchdog:
             - periodic:
                 interval: 30s
                 exporter:
-                  otlpHttp:
-                    endpoint: http://nktp-watchdog-collector:4318
+                  otlpGrpc:
+                    endpoint: nktp-watchdog-collector:4317
+                    tls:
+                      insecure: true
                     temporalityPreference: cumulative
       prometheusCR:
         enabled: false # The future metrics service owns monitor discovery.
@@ -149,8 +151,18 @@ watchdog:
       receivers:
         otlp:
           protocols:
-            http:
-              endpoint: 0.0.0.0:4318
+            grpc:
+              endpoint: 0.0.0.0:4317
+              keepalive:
+                server_parameters:
+                  # GOAWAY at 5m (+/-10% jitter) lets clients reconnect through the Service.
+                  # Five minutes limits routine churn while periodically redistributing telemetry.
+                  # Lower the age if watchdog headroom requires faster relief after scale-up;
+                  # raise it to reduce TCP setup and TLS handshakes when TLS is enabled.
+                  # Reconnects can select the same replica; allow for gradual redistribution.
+                  # gRPC connection management: https://github.com/grpc/proposal/blob/master/A9-server-side-conn-mgt.md
+                  max_connection_age: 5m
+                  max_connection_age_grace: 30s # Increase if in-flight exports need longer before forced closure.
         prometheus:
           config:
             scrape_configs:
@@ -191,8 +203,10 @@ watchdog:
           limit_percentage: 80 # Hard heap threshold, 819.2Mi. Leaves room below the container cap.
           spike_limit_percentage: 25 # Subtract from hard threshold for soft refusal at 55% (563.2Mi).
       exporters:
-        otlp_http:
-          endpoint: http://lgtm:4318
+        otlp:
+          endpoint: lgtm:4317
+          tls:
+            insecure: true
           retry_on_failure:
             max_elapsed_time: 30m
           sending_queue:
@@ -239,17 +253,17 @@ watchdog:
           metrics:
             receivers: [otlp, prometheus]
             processors: [memory_limiter, redaction/basic_v1]
-            exporters: [otlp_http]
+            exporters: [otlp]
           logs:
             receivers: [otlp]
             processors: [memory_limiter, redaction/basic_v1]
-            exporters: [otlp_http]
+            exporters: [otlp]
           traces:
             receivers: [otlp]
             processors: [memory_limiter, redaction/basic_v1]
-            exporters: [otlp_http]
+            exporters: [otlp]
   # Native sidecar for this workload's own telemetry. It buffers through outages,
-  # keeps only error and slow traces, and exports to http://lgtm:4318.
+  # keeps only error and slow traces, and exports over plaintext gRPC to lgtm:4317.
   sidecar:
     kubernetes:
       resources:
@@ -330,8 +344,10 @@ watchdog:
                   span:
                     - end_time_unix_nano - start_time_unix_nano > 1000000000
         exporters:
-          otlp_http:
-            endpoint: http://lgtm:4318
+          otlp:
+            endpoint: lgtm:4317
+            tls:
+              insecure: true
             retry_on_failure:
               max_elapsed_time: 30m
             sending_queue:
@@ -371,15 +387,15 @@ watchdog:
             metrics:
               receivers: [otlp]
               processors: [memory_limiter, redaction/basic_v1]
-              exporters: [otlp_http]
+              exporters: [otlp]
             logs:
               receivers: [otlp]
               processors: [memory_limiter, redaction/basic_v1]
-              exporters: [otlp_http]
+              exporters: [otlp]
             traces:
               receivers: [otlp]
               processors: [memory_limiter, tail_sampling, redaction/basic_v1]
-              exporters: [otlp_http]
+              exporters: [otlp]
 
 # Log gateway. Exports all logs from the cluster.
 gateway_logs:
@@ -460,6 +476,16 @@ gateway_logs:
                 key_file: /etc/nktp/internal-tls/server/tls.key
                 client_ca_file: /etc/nktp/internal-tls/server/ca.crt
                 reload_interval: 1h
+              keepalive:
+                server_parameters:
+                  # GOAWAY at 5m (+/-10% jitter) lets clients reconnect through the Service.
+                  # Five minutes limits routine churn while periodically redistributing telemetry.
+                  # Lower the age if gateway headroom requires faster relief after scale-up;
+                  # raise it to reduce TCP setup and TLS handshakes.
+                  # Reconnects can select the same gateway; allow for gradual redistribution.
+                  # gRPC connection management: https://github.com/grpc/proposal/blob/master/A9-server-side-conn-mgt.md
+                  max_connection_age: 5m
+                  max_connection_age_grace: 30s # Increase if in-flight exports need longer before forced closure.
             http:
               endpoint: 0.0.0.0:4318
               tls:
@@ -482,8 +508,10 @@ gateway_logs:
           limit_percentage: 80 # Hard heap threshold, 6.4Gi. Leaves room below the container cap.
           spike_limit_percentage: 25 # Subtract from hard threshold for soft refusal at 55% (4.4Gi).
       exporters:
-        otlp_http:
-          endpoint: http://lgtm:4318
+        otlp:
+          endpoint: lgtm:4317
+          tls:
+            insecure: true
           retry_on_failure:
             max_elapsed_time: 30m
           sending_queue:
@@ -529,9 +557,9 @@ gateway_logs:
           logs:
             receivers: [otlp]
             processors: [memory_limiter, redaction/basic_v1]
-            exporters: [otlp_http]
+            exporters: [otlp]
   # Native sidecar for this workload's own telemetry. It buffers through outages,
-  # keeps only error and slow traces, and exports to http://nktp-watchdog-collector:4318.
+  # keeps only error and slow traces, and exports over gRPC to nktp-watchdog-collector:4317.
   sidecar:
     kubernetes:
       resources:
@@ -603,8 +631,10 @@ gateway_logs:
                   span:
                     - end_time_unix_nano - start_time_unix_nano > 1000000000
         exporters:
-          otlp_http:
-            endpoint: http://nktp-watchdog-collector:4318
+          otlp:
+            endpoint: nktp-watchdog-collector:4317
+            tls:
+              insecure: true
             retry_on_failure:
               max_elapsed_time: 30m
             sending_queue:
@@ -644,15 +674,15 @@ gateway_logs:
             metrics:
               receivers: [otlp]
               processors: [memory_limiter]
-              exporters: [otlp_http]
+              exporters: [otlp]
             logs:
               receivers: [otlp]
               processors: [memory_limiter]
-              exporters: [otlp_http]
+              exporters: [otlp]
             traces:
               receivers: [otlp]
               processors: [memory_limiter, tail_sampling]
-              exporters: [otlp_http]
+              exporters: [otlp]
 
 # Metric gateway. Exports all metrics from the cluster.
 gateway_metrics:
@@ -733,6 +763,16 @@ gateway_metrics:
                 key_file: /etc/nktp/internal-tls/server/tls.key
                 client_ca_file: /etc/nktp/internal-tls/server/ca.crt
                 reload_interval: 1h
+              keepalive:
+                server_parameters:
+                  # GOAWAY at 5m (+/-10% jitter) lets clients reconnect through the Service.
+                  # Five minutes limits routine churn while periodically redistributing telemetry.
+                  # Lower the age if gateway headroom requires faster relief after scale-up;
+                  # raise it to reduce TCP setup and TLS handshakes.
+                  # Reconnects can select the same gateway; allow for gradual redistribution.
+                  # gRPC connection management: https://github.com/grpc/proposal/blob/master/A9-server-side-conn-mgt.md
+                  max_connection_age: 5m
+                  max_connection_age_grace: 30s # Increase if in-flight exports need longer before forced closure.
             http:
               endpoint: 0.0.0.0:4318
               tls:
@@ -755,8 +795,10 @@ gateway_metrics:
           limit_percentage: 80 # Hard heap threshold, 6.4Gi. Leaves room below the container cap.
           spike_limit_percentage: 25 # Subtract from hard threshold for soft refusal at 55% (4.4Gi).
       exporters:
-        otlp_http:
-          endpoint: http://lgtm:4318
+        otlp:
+          endpoint: lgtm:4317
+          tls:
+            insecure: true
           retry_on_failure:
             max_elapsed_time: 30m
           sending_queue:
@@ -802,9 +844,9 @@ gateway_metrics:
           metrics:
             receivers: [otlp]
             processors: [memory_limiter, redaction/basic_v1]
-            exporters: [otlp_http]
+            exporters: [otlp]
   # Native sidecar for this workload's own telemetry. It buffers through outages,
-  # keeps only error and slow traces, and exports to http://nktp-watchdog-collector:4318.
+  # keeps only error and slow traces, and exports over gRPC to nktp-watchdog-collector:4317.
   sidecar:
     kubernetes:
       resources:
@@ -876,8 +918,10 @@ gateway_metrics:
                   span:
                     - end_time_unix_nano - start_time_unix_nano > 1000000000
         exporters:
-          otlp_http:
-            endpoint: http://nktp-watchdog-collector:4318
+          otlp:
+            endpoint: nktp-watchdog-collector:4317
+            tls:
+              insecure: true
             retry_on_failure:
               max_elapsed_time: 30m
             sending_queue:
@@ -917,15 +961,15 @@ gateway_metrics:
             metrics:
               receivers: [otlp]
               processors: [memory_limiter]
-              exporters: [otlp_http]
+              exporters: [otlp]
             logs:
               receivers: [otlp]
               processors: [memory_limiter]
-              exporters: [otlp_http]
+              exporters: [otlp]
             traces:
               receivers: [otlp]
               processors: [memory_limiter, tail_sampling]
-              exporters: [otlp_http]
+              exporters: [otlp]
 
 # Trace gateway. Exports all traces from the cluster.
 gateway_traces:
@@ -1006,6 +1050,16 @@ gateway_traces:
                 key_file: /etc/nktp/internal-tls/server/tls.key
                 client_ca_file: /etc/nktp/internal-tls/server/ca.crt
                 reload_interval: 1h
+              keepalive:
+                server_parameters:
+                  # GOAWAY at 5m (+/-10% jitter) lets clients reconnect through the Service.
+                  # Five minutes limits routine churn while periodically redistributing telemetry.
+                  # Lower the age if gateway headroom requires faster relief after scale-up;
+                  # raise it to reduce TCP setup and TLS handshakes.
+                  # Reconnects can select the same gateway; allow for gradual redistribution.
+                  # gRPC connection management: https://github.com/grpc/proposal/blob/master/A9-server-side-conn-mgt.md
+                  max_connection_age: 5m
+                  max_connection_age_grace: 30s # Increase if in-flight exports need longer before forced closure.
             http:
               endpoint: 0.0.0.0:4318
               tls:
@@ -1028,8 +1082,10 @@ gateway_traces:
           limit_percentage: 80 # Hard heap threshold, 6.4Gi. Leaves room below the container cap.
           spike_limit_percentage: 25 # Subtract from hard threshold for soft refusal at 55% (4.4Gi).
       exporters:
-        otlp_http:
-          endpoint: http://lgtm:4318
+        otlp:
+          endpoint: lgtm:4317
+          tls:
+            insecure: true
           retry_on_failure:
             max_elapsed_time: 30m
           sending_queue:
@@ -1075,9 +1131,9 @@ gateway_traces:
           traces:
             receivers: [otlp]
             processors: [memory_limiter, redaction/basic_v1]
-            exporters: [otlp_http]
+            exporters: [otlp]
   # Native sidecar for this workload's own telemetry. It buffers through outages,
-  # keeps only error and slow traces, and exports to http://nktp-watchdog-collector:4318.
+  # keeps only error and slow traces, and exports over gRPC to nktp-watchdog-collector:4317.
   sidecar:
     kubernetes:
       resources:
@@ -1149,8 +1205,10 @@ gateway_traces:
                   span:
                     - end_time_unix_nano - start_time_unix_nano > 1000000000
         exporters:
-          otlp_http:
-            endpoint: http://nktp-watchdog-collector:4318
+          otlp:
+            endpoint: nktp-watchdog-collector:4317
+            tls:
+              insecure: true
             retry_on_failure:
               max_elapsed_time: 30m
             sending_queue:
@@ -1190,15 +1248,15 @@ gateway_traces:
             metrics:
               receivers: [otlp]
               processors: [memory_limiter]
-              exporters: [otlp_http]
+              exporters: [otlp]
             logs:
               receivers: [otlp]
               processors: [memory_limiter]
-              exporters: [otlp_http]
+              exporters: [otlp]
             traces:
               receivers: [otlp]
               processors: [memory_limiter, tail_sampling]
-              exporters: [otlp_http]
+              exporters: [otlp]
 
 # Node-level collector. Collects local telemetry and forwards received OTLP signals.
 daemonset:
@@ -1242,8 +1300,10 @@ daemonset:
             - periodic:
                 interval: 30s
                 exporter:
-                  otlpHttp:
-                    endpoint: http://nktp-watchdog-collector:4318
+                  otlpGrpc:
+                    endpoint: nktp-watchdog-collector:4317
+                    tls:
+                      insecure: true
                     temporalityPreference: cumulative
       observability:
         metrics:
@@ -1619,8 +1679,8 @@ daemonset:
                 - set(attributes["service.name"], "nktp-operator")
                 - set(attributes["service.instance.id"], attributes["k8s.pod.name"])
       exporters:
-        otlp_http/logs:
-          endpoint: https://nktp-gateway-logs-collector:4318
+        otlp/logs:
+          endpoint: nktp-gateway-logs-collector:4317
           tls:
             ca_file: /etc/nktp/internal-tls/client/ca.crt
             cert_file: /etc/nktp/internal-tls/client/tls.crt
@@ -1638,8 +1698,8 @@ daemonset:
               min_size: 1048576 # Batch at 1MiB to amortize export overhead.
               max_size: 2097152 # Split above 2MiB serialized. Decoded heap can be larger.
               flush_timeout: 1s # Flush partial batches to limit low-volume buffering time.
-        otlp_http/metrics:
-          endpoint: https://nktp-gateway-metrics-collector:4318
+        otlp/metrics:
+          endpoint: nktp-gateway-metrics-collector:4317
           tls:
             ca_file: /etc/nktp/internal-tls/client/ca.crt
             cert_file: /etc/nktp/internal-tls/client/tls.crt
@@ -1657,8 +1717,8 @@ daemonset:
               min_size: 1048576
               max_size: 2097152
               flush_timeout: 1s
-        otlp_http/traces:
-          endpoint: https://nktp-gateway-traces-collector:4318
+        otlp/traces:
+          endpoint: nktp-gateway-traces-collector:4317
           tls:
             ca_file: /etc/nktp/internal-tls/client/ca.crt
             cert_file: /etc/nktp/internal-tls/client/tls.crt
@@ -1676,8 +1736,10 @@ daemonset:
               min_size: 1048576
               max_size: 2097152
               flush_timeout: 1s
-        otlp_http/watchdog:
-          endpoint: http://nktp-watchdog-collector:4318
+        otlp/watchdog:
+          endpoint: nktp-watchdog-collector:4317
+          tls:
+            insecure: true
           retry_on_failure:
             max_elapsed_time: 30m
           sending_queue:
@@ -1724,25 +1786,25 @@ daemonset:
           logs:
             receivers: [filelog, journald, otlp, filelog/host-auth, filelog/host-audit, filelog/kube-api-audit]
             processors: [memory_limiter, resource/node, redaction/basic_v1]
-            exporters: [otlp_http/logs]
+            exporters: [otlp/logs]
           logs/targetallocator:
             receivers: [filelog/targetallocator]
             processors: [memory_limiter, resource/node, transform/targetallocator, redaction/basic_v1]
-            exporters: [otlp_http/watchdog]
+            exporters: [otlp/watchdog]
           logs/operator:
             receivers: [filelog/operator]
             processors: [memory_limiter, resource/node, transform/operator, redaction/basic_v1]
-            exporters: [otlp_http/watchdog]
+            exporters: [otlp/watchdog]
           metrics:
             receivers: [prometheus, prometheus/kubelet, otlp]
             processors: [memory_limiter, resource/node, redaction/basic_v1]
-            exporters: [otlp_http/metrics]
+            exporters: [otlp/metrics]
           traces:
             receivers: [otlp]
             processors: [memory_limiter, resource/node, redaction/basic_v1]
-            exporters: [otlp_http/traces]
+            exporters: [otlp/traces]
   # Native sidecar for this workload's own telemetry. It buffers through outages,
-  # keeps only error and slow traces, and exports to http://nktp-watchdog-collector:4318.
+  # keeps only error and slow traces, and exports over gRPC to nktp-watchdog-collector:4317.
   sidecar:
     kubernetes:
       resources:
@@ -1818,8 +1880,10 @@ daemonset:
                   span:
                     - end_time_unix_nano - start_time_unix_nano > 1000000000
         exporters:
-          otlp_http:
-            endpoint: http://nktp-watchdog-collector:4318
+          otlp:
+            endpoint: nktp-watchdog-collector:4317
+            tls:
+              insecure: true
             retry_on_failure:
               max_elapsed_time: 30m
             sending_queue:
@@ -1860,15 +1924,15 @@ daemonset:
             metrics:
               receivers: [otlp]
               processors: [memory_limiter]
-              exporters: [otlp_http]
+              exporters: [otlp]
             logs:
               receivers: [otlp]
               processors: [memory_limiter]
-              exporters: [otlp_http]
+              exporters: [otlp]
             traces:
               receivers: [otlp]
               processors: [memory_limiter, tail_sampling]
-              exporters: [otlp_http]
+              exporters: [otlp]
 
 # Scrapes monitoring CRs labeled nktp.nvidia.io/large-target: "true".
 large_target_metrics:
@@ -1897,8 +1961,10 @@ large_target_metrics:
             - periodic:
                 interval: 30s
                 exporter:
-                  otlpHttp:
-                    endpoint: http://nktp-watchdog-collector:4318
+                  otlpGrpc:
+                    endpoint: nktp-watchdog-collector:4317
+                    tls:
+                      insecure: true
                     temporalityPreference: cumulative
       resources:
         requests:
@@ -2038,8 +2104,8 @@ large_target_metrics:
           limit_percentage: 80 # Hard heap threshold, 12.8Gi. The Go runtime target is 8GiB.
           spike_limit_percentage: 25 # Subtract from hard threshold for soft refusal at 55% (8.8Gi).
       exporters:
-        otlp_http:
-          endpoint: https://nktp-gateway-metrics-collector:4318
+        otlp:
+          endpoint: nktp-gateway-metrics-collector:4317
           tls:
             ca_file: /etc/nktp/internal-tls/client/ca.crt
             cert_file: /etc/nktp/internal-tls/client/tls.crt
@@ -2090,9 +2156,9 @@ large_target_metrics:
           metrics:
             receivers: [prometheus]
             processors: [memory_limiter, redaction/basic_v1]
-            exporters: [otlp_http]
+            exporters: [otlp]
   # Native sidecar for this workload's own telemetry. It buffers through outages,
-  # keeps only error and slow traces, and exports to http://nktp-watchdog-collector:4318.
+  # keeps only error and slow traces, and exports over gRPC to nktp-watchdog-collector:4317.
   sidecar:
     kubernetes:
       resources:
@@ -2164,8 +2230,10 @@ large_target_metrics:
                   span:
                     - end_time_unix_nano - start_time_unix_nano > 1000000000
         exporters:
-          otlp_http:
-            endpoint: http://nktp-watchdog-collector:4318
+          otlp:
+            endpoint: nktp-watchdog-collector:4317
+            tls:
+              insecure: true
             retry_on_failure:
               max_elapsed_time: 30m
             sending_queue:
@@ -2205,15 +2273,15 @@ large_target_metrics:
             metrics:
               receivers: [otlp]
               processors: [memory_limiter]
-              exporters: [otlp_http]
+              exporters: [otlp]
             logs:
               receivers: [otlp]
               processors: [memory_limiter]
-              exporters: [otlp_http]
+              exporters: [otlp]
             traces:
               receivers: [otlp]
               processors: [memory_limiter, tail_sampling]
-              exporters: [otlp_http]
+              exporters: [otlp]
 
 # Cluster event reader. One elected replica watches Kubernetes Events.
 cluster_events:
@@ -2307,8 +2375,8 @@ cluster_events:
           limit_percentage: 80 # Hard heap threshold, 819.2Mi. Leaves room below the container cap.
           spike_limit_percentage: 25 # Subtract from hard threshold for soft refusal at 55% (563.2Mi).
       exporters:
-        otlp_http:
-          endpoint: https://nktp-gateway-logs-collector:4318
+        otlp:
+          endpoint: nktp-gateway-logs-collector:4317
           tls:
             ca_file: /etc/nktp/internal-tls/client/ca.crt
             cert_file: /etc/nktp/internal-tls/client/tls.crt
@@ -2359,9 +2427,9 @@ cluster_events:
           logs:
             receivers: [k8s_events]
             processors: [memory_limiter, redaction/basic_v1]
-            exporters: [otlp_http]
+            exporters: [otlp]
   # Native sidecar for this workload's own telemetry. It buffers through outages,
-  # keeps only error and slow traces, and exports to http://nktp-watchdog-collector:4318.
+  # keeps only error and slow traces, and exports over gRPC to nktp-watchdog-collector:4317.
   sidecar:
     kubernetes:
       resources:
@@ -2433,8 +2501,10 @@ cluster_events:
                   span:
                     - end_time_unix_nano - start_time_unix_nano > 1000000000
         exporters:
-          otlp_http:
-            endpoint: http://nktp-watchdog-collector:4318
+          otlp:
+            endpoint: nktp-watchdog-collector:4317
+            tls:
+              insecure: true
             retry_on_failure:
               max_elapsed_time: 30m
             sending_queue:
@@ -2474,15 +2544,15 @@ cluster_events:
             metrics:
               receivers: [otlp]
               processors: [memory_limiter]
-              exporters: [otlp_http]
+              exporters: [otlp]
             logs:
               receivers: [otlp]
               processors: [memory_limiter]
-              exporters: [otlp_http]
+              exporters: [otlp]
             traces:
               receivers: [otlp]
               processors: [memory_limiter, tail_sampling]
-              exporters: [otlp_http]
+              exporters: [otlp]
 
 # Default in-cluster backend. MUST be disabled for production use.
 otel-lgtm:

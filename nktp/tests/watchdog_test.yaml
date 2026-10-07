@@ -71,8 +71,10 @@ tests:
                   - periodic:
                       interval: 30s
                       exporter:
-                        otlpHttp:
-                          endpoint: http://nktp-watchdog-collector:4318
+                        otlpGrpc:
+                          endpoint: nktp-watchdog-collector:4317
+                          tls:
+                            insecure: true
                           temporalityPreference: cumulative
             prometheusCR:
               enabled: false
@@ -125,9 +127,11 @@ tests:
             - name: GOGC
               value: "50"
       - equal:
-          path: spec.config.exporters.otlp_http
+          path: spec.config.exporters.otlp
           value:
-            endpoint: http://lgtm:4318
+            endpoint: lgtm:4317
+            tls:
+              insecure: true
             retry_on_failure:
               max_elapsed_time: 30m
             sending_queue:
@@ -220,23 +224,24 @@ tests:
             - periodic:
                 interval: 30s
                 exporter:
-                  otlpHttp:
-                    endpoint: http://nktp-watchdog-collector:4318
+                  otlpGrpc:
+                    endpoint: nktp-watchdog-collector:4317
+                    tls:
+                      insecure: true
                     temporalityPreference: cumulative
       - equal:
           path: spec.config.receivers.prometheus.config.scrape_configs
           value:
             - job_name: custom
               static_configs: [{targets: ["custom:9090"]}]
-      - equal:
-          path: spec.config.receivers.otlp.protocols.http.endpoint
-          value: 0.0.0.0:4318
+      - notExists:
+          path: spec.config.receivers.otlp.protocols.http
       - equal:
           path: spec.config.service.pipelines.metrics
           value:
             receivers: [otlp, prometheus]
             processors: [memory_limiter, redaction/basic_v1]
-            exporters: [otlp_http]
+            exporters: [otlp]
 
   - it: fills in the empty default registry with global.imageRegistry
     template: templates/watchdog.yaml
@@ -376,11 +381,15 @@ tests:
       - equal:
           path: spec.config.receivers.otlp.protocols
           value:
-            http:
-              endpoint: 0.0.0.0:4318
+            grpc:
+              endpoint: 0.0.0.0:4317
+              keepalive:
+                server_parameters:
+                  max_connection_age: 5m
+                  max_connection_age_grace: 30s
       - equal:
-          path: spec.config.exporters.otlp_http.endpoint
-          value: http://lgtm:4318
+          path: spec.config.exporters.otlp.endpoint
+          value: lgtm:4317
       - equal:
           path: spec.config.processors.memory_limiter
           value:
@@ -393,9 +402,9 @@ tests:
       - equal:
           path: spec.config.service.pipelines
           value:
-            metrics: {receivers: [otlp, prometheus], processors: [memory_limiter, redaction/basic_v1], exporters: [otlp_http]}
-            logs: {receivers: [otlp], processors: [memory_limiter, redaction/basic_v1], exporters: [otlp_http]}
-            traces: {receivers: [otlp], processors: [memory_limiter, redaction/basic_v1], exporters: [otlp_http]}
+            metrics: {receivers: [otlp, prometheus], processors: [memory_limiter, redaction/basic_v1], exporters: [otlp]}
+            logs: {receivers: [otlp], processors: [memory_limiter, redaction/basic_v1], exporters: [otlp]}
+            traces: {receivers: [otlp], processors: [memory_limiter, redaction/basic_v1], exporters: [otlp]}
       - equal:
           path: spec.config.service.telemetry.metrics.readers
           value:
@@ -459,14 +468,14 @@ tests:
                         protocol: http/protobuf
                         endpoint: http://127.0.0.1:4319
       - equal:
-          path: spec.config.exporters.otlp_http.endpoint
-          value: http://lgtm:4318
+          path: spec.config.exporters.otlp.endpoint
+          value: lgtm:4317
       - equal:
           path: spec.config.service.pipelines
           value:
-            metrics: {receivers: [otlp, prometheus], processors: [memory_limiter, redaction/basic_v1], exporters: [otlp_http]}
-            logs: {receivers: [otlp], processors: [memory_limiter, redaction/basic_v1], exporters: [otlp_http]}
-            traces: {receivers: [otlp], processors: [memory_limiter, redaction/basic_v1], exporters: [otlp_http]}
+            metrics: {receivers: [otlp, prometheus], processors: [memory_limiter, redaction/basic_v1], exporters: [otlp]}
+            logs: {receivers: [otlp], processors: [memory_limiter, redaction/basic_v1], exporters: [otlp]}
+            traces: {receivers: [otlp], processors: [memory_limiter, redaction/basic_v1], exporters: [otlp]}
 
   - it: redirects its own logs to gRPC without changing other telemetry
     template: templates/watchdog.yaml
@@ -508,14 +517,14 @@ tests:
                         protocol: http/protobuf
                         endpoint: http://127.0.0.1:4319
       - equal:
-          path: spec.config.exporters.otlp_http.endpoint
-          value: http://lgtm:4318
+          path: spec.config.exporters.otlp.endpoint
+          value: lgtm:4317
       - equal:
           path: spec.config.service.pipelines
           value:
-            metrics: {receivers: [otlp, prometheus], processors: [memory_limiter, redaction/basic_v1], exporters: [otlp_http]}
-            logs: {receivers: [otlp], processors: [memory_limiter, redaction/basic_v1], exporters: [otlp_http]}
-            traces: {receivers: [otlp], processors: [memory_limiter, redaction/basic_v1], exporters: [otlp_http]}
+            metrics: {receivers: [otlp, prometheus], processors: [memory_limiter, redaction/basic_v1], exporters: [otlp]}
+            logs: {receivers: [otlp], processors: [memory_limiter, redaction/basic_v1], exporters: [otlp]}
+            traces: {receivers: [otlp], processors: [memory_limiter, redaction/basic_v1], exporters: [otlp]}
 
   - it: redirects its own traces to gRPC without changing other telemetry
     template: templates/watchdog.yaml
@@ -556,26 +565,26 @@ tests:
                         protocol: grpc
                         endpoint: http://traces.example:4317
       - equal:
-          path: spec.config.exporters.otlp_http.endpoint
-          value: http://lgtm:4318
+          path: spec.config.exporters.otlp.endpoint
+          value: lgtm:4317
       - equal:
           path: spec.config.service.pipelines
           value:
-            metrics: {receivers: [otlp, prometheus], processors: [memory_limiter, redaction/basic_v1], exporters: [otlp_http]}
-            logs: {receivers: [otlp], processors: [memory_limiter, redaction/basic_v1], exporters: [otlp_http]}
-            traces: {receivers: [otlp], processors: [memory_limiter, redaction/basic_v1], exporters: [otlp_http]}
+            metrics: {receivers: [otlp, prometheus], processors: [memory_limiter, redaction/basic_v1], exporters: [otlp]}
+            logs: {receivers: [otlp], processors: [memory_limiter, redaction/basic_v1], exporters: [otlp]}
+            traces: {receivers: [otlp], processors: [memory_limiter, redaction/basic_v1], exporters: [otlp]}
 
   - it: changes forwarding settings independently of its own telemetry
     template: templates/watchdog.yaml
     set:
-      watchdog.otelcol.config.exporters.otlp_http.endpoint: http://telemetry.example:4318
-      watchdog.otelcol.config.exporters.otlp_http.sending_queue.queue_size: 2097152
+      watchdog.otelcol.config.exporters.otlp.endpoint: telemetry.example:4317
+      watchdog.otelcol.config.exporters.otlp.sending_queue.queue_size: 2097152
     asserts:
       - equal:
-          path: spec.config.exporters.otlp_http.endpoint
-          value: http://telemetry.example:4318
+          path: spec.config.exporters.otlp.endpoint
+          value: telemetry.example:4317
       - equal:
-          path: spec.config.exporters.otlp_http.sending_queue
+          path: spec.config.exporters.otlp.sending_queue
           value:
             block_on_overflow: true
             sizer: bytes
@@ -606,18 +615,18 @@ tests:
     template: templates/watchdog.yaml
     set:
       watchdog.otelcol.config.receivers.otlp.protocols.http.endpoint: ${env:WATCHDOG_LISTEN_ADDR}
-      watchdog.otelcol.config.exporters.otlp_http.endpoint: ${env:WATCHDOG_OTLP_ENDPOINT}
-      watchdog.otelcol.config.exporters.otlp_http.headers:
+      watchdog.otelcol.config.exporters.otlp.endpoint: ${env:WATCHDOG_OTLP_ENDPOINT}
+      watchdog.otelcol.config.exporters.otlp.headers:
         x-literal: "{{ preserved }} $$TOKEN"
     asserts:
       - equal:
           path: spec.config.receivers.otlp.protocols.http.endpoint
           value: ${env:WATCHDOG_LISTEN_ADDR}
       - equal:
-          path: spec.config.exporters.otlp_http.endpoint
+          path: spec.config.exporters.otlp.endpoint
           value: ${env:WATCHDOG_OTLP_ENDPOINT}
       - equal:
-          path: spec.config.exporters.otlp_http.headers
+          path: spec.config.exporters.otlp.headers
           value:
             x-literal: "{{ preserved }} $$TOKEN"
 
@@ -637,29 +646,27 @@ tests:
           path: spec.config.exporters.debug
           value: {}
       - equal:
-          path: spec.config.exporters.otlp_http.endpoint
-          value: http://lgtm:4318
+          path: spec.config.exporters.otlp.endpoint
+          value: lgtm:4317
       - equal:
           path: spec.config.service.pipelines.logs.exporters
-          value: [otlp_http]
+          value: [otlp]
       - equal:
           path: spec.config.service.pipelines.traces.exporters
-          value: [otlp_http]
+          value: [otlp]
 
-  - it: replaces HTTP with an explicitly configured gRPC receiver
+  - it: defaults to gRPC only with connection rotation
     template: templates/watchdog.yaml
-    set:
-      watchdog.otelcol.config.receivers.otlp.protocols.http: null
-      watchdog.otelcol.config.receivers.otlp.protocols.grpc.endpoint: 0.0.0.0:4317
     asserts:
       - equal:
           path: spec.config.receivers.otlp.protocols
           value:
             grpc:
               endpoint: 0.0.0.0:4317
-
-      - notExists:
-          path: spec.config.receivers["otlp/self"]
+              keepalive:
+                server_parameters:
+                  max_connection_age: 5m
+                  max_connection_age_grace: 30s
 
   - it: renders for an existing operator and CRDs
     template: templates/watchdog.yaml

@@ -38,6 +38,10 @@ tests:
                     key_file: /etc/nktp/internal-tls/server/tls.key
                     client_ca_file: /etc/nktp/internal-tls/server/ca.crt
                     reload_interval: 1h
+                  keepalive:
+                    server_parameters:
+                      max_connection_age: 5m
+                      max_connection_age_grace: 30s
                 http:
                   endpoint: 0.0.0.0:4318
                   tls:
@@ -48,7 +52,7 @@ tests:
       - equal:
           path: spec.config.service.pipelines
           value:
-            traces: {receivers: [otlp], processors: [memory_limiter, redaction/basic_v1], exporters: [otlp_http]}
+            traces: {receivers: [otlp], processors: [memory_limiter, redaction/basic_v1], exporters: [otlp]}
       - equal:
           path: spec.config.processors.memory_limiter
           value:
@@ -58,8 +62,8 @@ tests:
       - exists:
           path: spec.config.processors["redaction/basic_v1"]
       - equal:
-          path: spec.config.exporters.otlp_http.endpoint
-          value: http://lgtm:4318
+          path: spec.config.exporters.otlp.endpoint
+          value: lgtm:4317
       - equal:
           path: spec.config.service.telemetry
           value:
@@ -131,7 +135,7 @@ tests:
           - name: GOMEMLIMIT
             value: 896MiB
           - name: DESTINATION
-            value: http://telemetry.example:4318
+            value: telemetry.example:4317
     asserts:
       - equal:
           path: spec.image
@@ -156,25 +160,29 @@ tests:
             - name: GOMEMLIMIT
               value: 896MiB
             - name: DESTINATION
-              value: http://telemetry.example:4318
+              value: telemetry.example:4317
       - notExists:
           path: spec.config.ignored
 
   - it: changes forwarding fields without changing own telemetry or native expressions
     set:
-      gateway_traces.otelcol.config.exporters.otlp_http.endpoint: ${env:DESTINATION}
-      gateway_traces.otelcol.config.exporters.otlp_http.headers:
+      gateway_traces.otelcol.config.exporters.otlp.endpoint: ${env:DESTINATION}
+      gateway_traces.otelcol.config.exporters.otlp.tls.insecure: false
+      gateway_traces.otelcol.config.exporters.otlp.headers:
         x-literal: "{{ preserved }} $$TOKEN"
-      gateway_traces.otelcol.config.exporters.otlp_http.sending_queue.queue_size: 4194304
+      gateway_traces.otelcol.config.exporters.otlp.sending_queue.queue_size: 4194304
     asserts:
       - equal:
-          path: spec.config.exporters.otlp_http.endpoint
+          path: spec.config.exporters.otlp.endpoint
           value: ${env:DESTINATION}
       - equal:
-          path: spec.config.exporters.otlp_http.headers
+          path: spec.config.exporters.otlp.tls.insecure
+          value: false
+      - equal:
+          path: spec.config.exporters.otlp.headers
           value: {x-literal: "{{ preserved }} $$TOKEN"}
       - equal:
-          path: spec.config.exporters.otlp_http.sending_queue
+          path: spec.config.exporters.otlp.sending_queue
           value:
             block_on_overflow: true
             sizer: bytes
@@ -211,8 +219,8 @@ tests:
           path: spec.config.service.telemetry.traces.processors[0].batch.exporter.otlp.endpoint
           value: http://127.0.0.1:4319
       - equal:
-          path: spec.config.exporters.otlp_http.endpoint
-          value: http://lgtm:4318
+          path: spec.config.exporters.otlp.endpoint
+          value: lgtm:4317
 
   - it: replaces own log exporters independently
     set:
@@ -234,8 +242,8 @@ tests:
           path: spec.config.service.telemetry.traces.processors[0].batch.exporter.otlp.endpoint
           value: http://127.0.0.1:4319
       - equal:
-          path: spec.config.exporters.otlp_http.endpoint
-          value: http://lgtm:4318
+          path: spec.config.exporters.otlp.endpoint
+          value: lgtm:4317
 
   - it: replaces own trace exporters independently
     set:
@@ -257,8 +265,8 @@ tests:
           path: spec.config.service.telemetry.logs.processors[0].batch.exporter.otlp.endpoint
           value: http://127.0.0.1:4319
       - equal:
-          path: spec.config.exporters.otlp_http.endpoint
-          value: http://lgtm:4318
+          path: spec.config.exporters.otlp.endpoint
+          value: lgtm:4317
 
   - it: removes HTTP and changes the gRPC listener through native overrides
     set:
@@ -275,3 +283,7 @@ tests:
                 key_file: /etc/nktp/internal-tls/server/tls.key
                 client_ca_file: /etc/nktp/internal-tls/server/ca.crt
                 reload_interval: 1h
+              keepalive:
+                server_parameters:
+                  max_connection_age: 5m
+                  max_connection_age_grace: 30s

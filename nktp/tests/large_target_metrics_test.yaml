@@ -49,13 +49,16 @@ tests:
           value: []
         documentIndex: 0
       - equal:
-          path: "spec.config.service.pipelines.metrics"
-          value: {"receivers": ["prometheus"], "processors": ["memory_limiter", "redaction/basic_v1"], "exporters": ["otlp_http"]}
+          path: "spec.config.exporters.otlp.endpoint"
+          value: "nktp-gateway-metrics-collector:4317"
         documentIndex: 0
       - equal:
-          path: "spec.config.exporters.otlp_http.endpoint"
-          value: "https://nktp-gateway-metrics-collector:4318"
-        documentIndex: 0
+          path: spec.config.exporters.otlp.tls
+          value:
+            ca_file: /etc/nktp/internal-tls/client/ca.crt
+            cert_file: /etc/nktp/internal-tls/client/tls.crt
+            key_file: /etc/nktp/internal-tls/client/tls.key
+            reload_interval: 1h
       - equal:
           path: "spec.targetAllocator.prometheusCR.denyFSAccessThroughSMs"
           value: false
@@ -114,7 +117,7 @@ tests:
       large_target_metrics.kubernetes.config: {"ignored": true}
       large_target_metrics.kubernetes.nodeSelector: {"telemetry": "large"}
       large_target_metrics.kubernetes.resources.requests.cpu: "750m"
-      large_target_metrics.otelcol.config.exporters.otlp_http.endpoint: "${env:METRICS_ENDPOINT}"
+      large_target_metrics.otelcol.config.exporters.otlp.endpoint: "${env:METRICS_ENDPOINT}"
       large_target_metrics.otelcol.config.receivers.prometheus.config.scrape_configs: [{"job_name": "custom", "static_configs": [{"targets": ["${env:SCRAPE_TARGET}"]}], "relabel_configs": [{"source_labels": ["__address__"], "target_label": "instance", "replacement": "$1"}]}]
     asserts:
       - equal:
@@ -137,7 +140,7 @@ tests:
           path: "spec.config.ignored"
         documentIndex: 0
       - equal:
-          path: "spec.config.exporters.otlp_http.endpoint"
+          path: "spec.config.exporters.otlp.endpoint"
           value: "${env:METRICS_ENDPOINT}"
         documentIndex: 0
       - equal:
@@ -187,8 +190,8 @@ tests:
           value: [{"batch": {"exporter": {"otlp": {"protocol": "grpc", "endpoint": "http://own-traces:4317"}}}}]
         documentIndex: 0
       - equal:
-          path: "spec.config.exporters.otlp_http.endpoint"
-          value: "https://nktp-gateway-metrics-collector:4318"
+          path: "spec.config.exporters.otlp.endpoint"
+          value: "nktp-gateway-metrics-collector:4317"
         documentIndex: 0
 
   - it: pushes allocator metrics directly to watchdog without a Collector scrape pipeline
@@ -201,9 +204,9 @@ tests:
             metrics:
               receivers: [prometheus]
               processors: [memory_limiter, redaction/basic_v1]
-              exporters: [otlp_http]
+              exporters: [otlp]
       - notExists:
-          path: spec.config.exporters["otlp_http/watchdog"]
+          path: spec.config.exporters["otlp/watchdog"]
       - equal:
           path: spec.targetAllocator.observability.metrics.enableMetrics
           value: false
@@ -213,8 +216,10 @@ tests:
             - periodic:
                 interval: 30s
                 exporter:
-                  otlpHttp:
-                    endpoint: http://nktp-watchdog-collector:4318
+                  otlpGrpc:
+                    endpoint: nktp-watchdog-collector:4317
+                    tls:
+                      insecure: true
                     temporalityPreference: cumulative
       - equal:
           path: spec.targetAllocator.env

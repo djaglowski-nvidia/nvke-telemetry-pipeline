@@ -80,23 +80,24 @@ Everything leaves the cluster through five Collectors: the three gateways, one
 per signal, the watchdog, which carries the other Collectors' own telemetry,
 and the watchdog's [sidecar](architecture/self_telemetry.md), which carries the
 watchdog's own telemetry. Point all of them at your backend and turn off the
-default LGTM backend. Your backend must accept OTLP over HTTP for metrics, logs
-and traces, and accept delta-temporality metrics, which the Target Allocators
-send.
+default LGTM backend. The default exporters use OTLP/gRPC. Check which protocol
+your backend accepts for each signal; see [Secure gateway export](guides/secure_gateway_export.md)
+for HTTP configuration. The metrics backend must also accept delta-temporality
+metrics, which the Target Allocators send.
 
 ```yaml
 otel-lgtm:
   enabled: false
 watchdog:
-  otelcol: {config: {exporters: {otlp_http: {endpoint: https://<backend>}}}}
+  otelcol: {config: {exporters: {otlp: {endpoint: "<backend>:4317", tls: {insecure: false}}}}}
   sidecar:
-    otelcol: {config: {exporters: {otlp_http: {endpoint: https://<backend>}}}}
+    otelcol: {config: {exporters: {otlp: {endpoint: "<backend>:4317", tls: {insecure: false}}}}}
 gateway_logs:
-  otelcol: {config: {exporters: {otlp_http: {endpoint: https://<backend>}}}}
+  otelcol: {config: {exporters: {otlp: {endpoint: "<backend>:4317", tls: {insecure: false}}}}}
 gateway_metrics:
-  otelcol: {config: {exporters: {otlp_http: {endpoint: https://<backend>}}}}
+  otelcol: {config: {exporters: {otlp: {endpoint: "<backend>:4317", tls: {insecure: false}}}}}
 gateway_traces:
-  otelcol: {config: {exporters: {otlp_http: {endpoint: https://<backend>}}}}
+  otelcol: {config: {exporters: {otlp: {endpoint: "<backend>:4317", tls: {insecure: false}}}}}
 ```
 
 - **TLS and mTLS** to the backend: see [Secure gateway export](guides/secure_gateway_export.md).

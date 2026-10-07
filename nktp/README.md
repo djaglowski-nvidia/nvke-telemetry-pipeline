@@ -87,11 +87,18 @@ are silently dropped. Apply the new CRDs before `helm upgrade`.
 | LGTM | `otel-lgtm` | Deployment | Development backend with Grafana, Prometheus, Loki and Tempo. Evaluation only. |
 
 The node collectors, the large-target pool, and the event reader send each
-signal to its gateway, and the gateways export to the backend. Every NKTP
-component sends its own telemetry to the watchdog, which exports it to the
-backend without passing through the gateways. Each Collector Pod runs a sidecar
+signal to its gateway over OTLP/gRPC with mutual TLS, and the gateways export to
+the backend.
+Every NKTP component sends its own telemetry over plaintext OTLP/gRPC to the
+watchdog's gRPC-only receiver, which exports it to the backend without passing
+through the gateways.
+Each Collector Pod runs a sidecar
 Collector that buffers the Collector's own telemetry and samples its traces on
 the way to the watchdog.
+
+Gateways and watchdog rotate connections about every five minutes so clients
+can reach newly added replicas while limiting connection churn. Configure the
+interval under each receiver's `otelcol.config`.
 
 ## Sending telemetry to NKTP
 
@@ -160,10 +167,12 @@ read this setting. Configure their image repositories explicitly when required.
 - **Disable the bundled LGTM backend.** It keeps data in memory, grants
   anonymous admin access to Grafana, and does not scale. Set
   `otel-lgtm.enabled: false`, then set your backend's endpoint in the
-  `otlp_http` exporter of each gateway and the watchdog, and in the watchdog's
-  `service.telemetry` exporters.
+  `otlp` exporter of each gateway, the watchdog, and the watchdog's sidecar.
+  Use `otlp` for gRPC or `otlp_http` for HTTP, matching your backend's supported
+  ingestion protocol. When changing protocol, update each affected pipeline's
+  `exporters` list too.
 - **Secure backend export.** The default LGTM backend uses plaintext OTLP for
-  local development. Configure an HTTPS endpoint before sending gateway traffic
+  local development. Enable TLS before sending gateway traffic
   to a production backend, and mount client certificates into the gateways if
   the backend requires mTLS.
 - **Keep credentials in Secrets.** Add the Secret to the Collector's

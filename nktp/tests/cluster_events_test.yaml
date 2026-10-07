@@ -47,7 +47,7 @@ tests:
       - equal:
           path: spec.config.service.pipelines
           value:
-            logs: {receivers: [k8s_events], processors: [memory_limiter, redaction/basic_v1], exporters: [otlp_http]}
+            logs: {receivers: [k8s_events], processors: [memory_limiter, redaction/basic_v1], exporters: [otlp]}
       - equal:
           path: spec.config.processors.memory_limiter
           value:
@@ -57,8 +57,8 @@ tests:
       - exists:
           path: spec.config.processors["redaction/basic_v1"]
       - equal:
-          path: spec.config.exporters.otlp_http.endpoint
-          value: https://nktp-gateway-logs-collector:4318
+          path: spec.config.exporters.otlp.endpoint
+          value: nktp-gateway-logs-collector:4317
       - equal:
           path: spec.config.service.telemetry
           value:
@@ -169,19 +169,19 @@ tests:
 
   - it: changes forwarding fields without changing own telemetry or native expressions
     set:
-      cluster_events.otelcol.config.exporters.otlp_http.endpoint: ${env:DESTINATION}
-      cluster_events.otelcol.config.exporters.otlp_http.headers:
+      cluster_events.otelcol.config.exporters.otlp.endpoint: ${env:DESTINATION}
+      cluster_events.otelcol.config.exporters.otlp.headers:
         x-literal: "{{ preserved }} $$TOKEN"
-      cluster_events.otelcol.config.exporters.otlp_http.sending_queue.queue_size: 4194304
+      cluster_events.otelcol.config.exporters.otlp.sending_queue.queue_size: 4194304
     asserts:
       - equal:
-          path: spec.config.exporters.otlp_http.endpoint
+          path: spec.config.exporters.otlp.endpoint
           value: ${env:DESTINATION}
       - equal:
-          path: spec.config.exporters.otlp_http.headers
+          path: spec.config.exporters.otlp.headers
           value: {x-literal: "{{ preserved }} $$TOKEN"}
       - equal:
-          path: spec.config.exporters.otlp_http.sending_queue
+          path: spec.config.exporters.otlp.sending_queue
           value:
             block_on_overflow: true
             sizer: bytes
@@ -218,8 +218,8 @@ tests:
           path: spec.config.service.telemetry.traces.processors[0].batch.exporter.otlp.endpoint
           value: http://127.0.0.1:4319
       - equal:
-          path: spec.config.exporters.otlp_http.endpoint
-          value: https://nktp-gateway-logs-collector:4318
+          path: spec.config.exporters.otlp.endpoint
+          value: nktp-gateway-logs-collector:4317
 
   - it: replaces own log exporters independently
     set:
@@ -241,8 +241,8 @@ tests:
           path: spec.config.service.telemetry.traces.processors[0].batch.exporter.otlp.endpoint
           value: http://127.0.0.1:4319
       - equal:
-          path: spec.config.exporters.otlp_http.endpoint
-          value: https://nktp-gateway-logs-collector:4318
+          path: spec.config.exporters.otlp.endpoint
+          value: nktp-gateway-logs-collector:4317
 
   - it: replaces own trace exporters independently
     set:
@@ -264,8 +264,8 @@ tests:
           path: spec.config.service.telemetry.logs.processors[0].batch.exporter.otlp.endpoint
           value: http://127.0.0.1:4319
       - equal:
-          path: spec.config.exporters.otlp_http.endpoint
-          value: https://nktp-gateway-logs-collector:4318
+          path: spec.config.exporters.otlp.endpoint
+          value: nktp-gateway-logs-collector:4317
 
   - it: overrides watched namespaces and the native Lease configuration
     set:
@@ -289,4 +289,4 @@ tests:
       - equal:
           path: spec.config.service.pipelines
           value:
-            logs: {receivers: [k8s_events], processors: [memory_limiter, redaction/basic_v1], exporters: [otlp_http]}
+            logs: {receivers: [k8s_events], processors: [memory_limiter, redaction/basic_v1], exporters: [otlp]}

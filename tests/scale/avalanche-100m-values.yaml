@@ -27,8 +27,8 @@ gateway_metrics:
   otelcol:
     config:
       exporters:
-        otlp_http:
-          endpoint: http://nktp-scale-blackhole-collector:4318
+        otlp:
+          endpoint: nktp-scale-blackhole-collector:4317
 gateway_logs:
   kubernetes:
     nodeSelector:
@@ -318,6 +318,8 @@ opentelemetry-kube-stack:
         receivers:
           otlp:
             protocols:
+              grpc:
+                endpoint: 0.0.0.0:4317
               http:
                 endpoint: 0.0.0.0:4318
         processors:
@@ -327,8 +329,10 @@ opentelemetry-kube-stack:
             spike_limit_percentage: 25
         exporters:
           nop: {}
-          otlp_http/observations:
-            endpoint: http://lgtm:4318
+          otlp/observations:
+            endpoint: lgtm:4317
+            tls:
+              insecure: true
             retry_on_failure:
               max_elapsed_time: 30m
             sending_queue:
@@ -352,22 +356,23 @@ opentelemetry-kube-stack:
               - periodic:
                   exporter:
                     otlp:
-                      protocol: http/protobuf
-                      endpoint: http://nktp-watchdog-collector:4318
+                      # The SDK uses http:// below to select plaintext gRPC.
+                      protocol: grpc
+                      endpoint: http://nktp-watchdog-collector:4317
             logs:
               processors:
               - batch:
                   exporter:
                     otlp:
-                      protocol: http/protobuf
-                      endpoint: http://nktp-watchdog-collector:4318
+                      protocol: grpc
+                      endpoint: http://nktp-watchdog-collector:4317
             traces:
               processors:
               - batch:
                   exporter:
                     otlp:
-                      protocol: http/protobuf
-                      endpoint: http://nktp-watchdog-collector:4318
+                      protocol: grpc
+                      endpoint: http://nktp-watchdog-collector:4317
           pipelines:
             metrics:
               receivers:
@@ -385,7 +390,7 @@ opentelemetry-kube-stack:
               receivers:
               - routing/observations
               exporters:
-              - otlp_http/observations
+              - otlp/observations
         connectors:
           routing/observations:
             error_mode: propagate

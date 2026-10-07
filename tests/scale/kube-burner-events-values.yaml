@@ -24,8 +24,8 @@ gateway_logs:
   otelcol:
     config:
       exporters:
-        otlp_http:
-          endpoint: http://nktp-kube-burner-events-blackhole-collector:4318
+        otlp:
+          endpoint: nktp-kube-burner-events-blackhole-collector:4317
 
 gateway_metrics:
   kubernetes:
@@ -153,6 +153,8 @@ opentelemetry-kube-stack:
           receivers:
             otlp:
               protocols:
+                grpc:
+                  endpoint: 0.0.0.0:4317
                 http:
                   endpoint: 0.0.0.0:4318
           processors:
@@ -172,15 +174,16 @@ opentelemetry-kube-stack:
                   - periodic:
                       exporter:
                         otlp:
-                          protocol: http/protobuf
-                          endpoint: http://nktp-watchdog-collector:4318
+                          # The SDK uses http:// below to select plaintext gRPC.
+                          protocol: grpc
+                          endpoint: http://nktp-watchdog-collector:4317
               logs:
                 processors:
                   - batch:
                       exporter:
                         otlp:
-                          protocol: http/protobuf
-                          endpoint: http://nktp-watchdog-collector:4318
+                          protocol: grpc
+                          endpoint: http://nktp-watchdog-collector:4317
             pipelines:
               logs:
                 receivers: [otlp]

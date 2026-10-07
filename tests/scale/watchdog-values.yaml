@@ -93,6 +93,8 @@ opentelemetry-kube-stack:
         receivers:
           otlp:
             protocols:
+              grpc:
+                endpoint: 0.0.0.0:4317
               http:
                 endpoint: 0.0.0.0:4318
         processors:
@@ -114,15 +116,15 @@ opentelemetry-kube-stack:
               - periodic:
                   exporter:
                     otlp:
-                      protocol: http/protobuf
-                      endpoint: http://lgtm:4318
+                      protocol: grpc
+                      endpoint: http://lgtm:4317
             logs:
               processors:
               - batch:
                   exporter:
                     otlp:
-                      protocol: http/protobuf
-                      endpoint: http://lgtm:4318
+                      protocol: grpc
+                      endpoint: http://lgtm:4317
           pipelines:
             logs:
               receivers:
@@ -209,6 +211,9 @@ opentelemetry-kube-stack:
             limit_mib: 32768
             spike_limit_mib: 8192
         exporters:
+          # Prometheus and Loki's native OTLP ingestion endpoints require HTTP.
+          # https://prometheus.io/docs/guides/opentelemetry/
+          # https://grafana.com/docs/loki/latest/send-data/otel/
           otlp_http/metrics:
             endpoint: http://127.0.0.1:9090/api/v1/otlp
             tls:
@@ -223,8 +228,8 @@ opentelemetry-kube-stack:
                 min_size: 1048576
                 max_size: 2097152
                 flush_timeout: 1s
-          otlp_http/traces:
-            endpoint: http://127.0.0.1:4418
+          otlp_grpc/traces:
+            endpoint: 127.0.0.1:4417
             tls:
               insecure: true
             sending_queue:
@@ -275,7 +280,7 @@ opentelemetry-kube-stack:
               processors:
               - memory_limiter
               exporters:
-              - otlp_http/traces
+              - otlp_grpc/traces
             metrics:
               receivers:
               - otlp
@@ -311,8 +316,10 @@ watchdog:
             - logs/scale_blackhole
           error_mode: propagate
       exporters:
-        otlp_http/scale_blackhole:
-          endpoint: http://nktp-watchdog-blackhole-collector:4318
+        otlp/scale_blackhole:
+          endpoint: nktp-watchdog-blackhole-collector:4317
+          tls:
+            insecure: true
           retry_on_failure:
             max_elapsed_time: 30m
           sending_queue:
@@ -334,9 +341,9 @@ watchdog:
             receivers:
             - routing/scale_logs
             exporters:
-            - otlp_http
+            - otlp
           logs/scale_blackhole:
             receivers:
             - routing/scale_logs
             exporters:
-            - otlp_http/scale_blackhole
+            - otlp/scale_blackhole

@@ -16,14 +16,26 @@ stages:
           metadata:
             namespace: nktp
           spec:
+            # Reuse the chart-issued client certificate for direct gateway mTLS.
+            volumes:
+              - name: internal-tls-client
+                secret:
+                  secretName: nktp-daemonset-client-tls
             containers:
               - name: generator
                 image: ghcr.io/open-telemetry/opentelemetry-collector-contrib/telemetrygen:v0.159.0@sha256:bad7fde3119476a9177cc4b9f04307c9876fca5b5584e009aebd7123d7557658
                 command: [/telemetrygen]
+                volumeMounts:
+                  - name: internal-tls-client
+                    mountPath: /etc/nktp/internal-tls/client
+                    readOnly: true
                 args:
                   - metrics
                   - --otlp-endpoint=nktp-gateway-metrics-collector.nktp.svc:4317
-                  - --otlp-insecure
+                  - --mtls
+                  - --ca-cert=/etc/nktp/internal-tls/client/ca.crt
+                  - --client-cert=/etc/nktp/internal-tls/client/tls.crt
+                  - --client-key=/etc/nktp/internal-tls/client/tls.key
                   - --otlp-metric-name=nktp_scale_e2e
                   - --metric-type=Gauge
                   - --duration=10m
@@ -122,22 +134,22 @@ stages:
             query: otelcol_process_memory_rss_bytes{job="nktp-large-target-metrics"}
           - name: large_pool_queue_utilization_percent
             units: percent
-            query: 100 * (otelcol_exporter_queue_size{job="nktp-large-target-metrics",exporter="otlp_http",data_type="metrics"} / otelcol_exporter_queue_capacity{job="nktp-large-target-metrics",exporter="otlp_http",data_type="metrics"})
+            query: 100 * (otelcol_exporter_queue_size{job="nktp-large-target-metrics",exporter="otlp",data_type="metrics"} / otelcol_exporter_queue_capacity{job="nktp-large-target-metrics",exporter="otlp",data_type="metrics"})
           - name: large_pool_received_points_per_second
             units: points/s
             query: sum by (instance) (rate(otelcol_receiver_accepted_metric_points_total{job="nktp-large-target-metrics"}[2m]))
           - name: large_pool_sent_points_per_second
             units: points/s
-            query: sum by (instance) (rate(otelcol_exporter_sent_metric_points_total{job="nktp-large-target-metrics",exporter="otlp_http"}[2m]))
+            query: sum by (instance) (rate(otelcol_exporter_sent_metric_points_total{job="nktp-large-target-metrics",exporter="otlp"}[2m]))
           - name: large_pool_refused_points_per_second
             units: points/s
             query: sum by (instance) (rate(otelcol_receiver_refused_metric_points_total{job="nktp-large-target-metrics"}[2m]))
           - name: large_pool_enqueue_failed_points_per_second
             units: points/s
-            query: sum by (instance) (rate(otelcol_exporter_enqueue_failed_metric_points_total{job="nktp-large-target-metrics",exporter="otlp_http"}[2m]))
+            query: sum by (instance) (rate(otelcol_exporter_enqueue_failed_metric_points_total{job="nktp-large-target-metrics",exporter="otlp"}[2m]))
           - name: large_pool_send_failed_points_per_second
             units: points/s
-            query: sum by (instance) (rate(otelcol_exporter_send_failed_metric_points_total{job="nktp-large-target-metrics",exporter="otlp_http"}[2m]))
+            query: sum by (instance) (rate(otelcol_exporter_send_failed_metric_points_total{job="nktp-large-target-metrics",exporter="otlp"}[2m]))
           # Receiver acceptance is the endpoint for the blackhole's synchronous discard path.
           - name: blackhole_cpu_cores
             units: cores

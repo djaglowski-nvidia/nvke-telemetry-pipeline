@@ -91,17 +91,19 @@ daemonset:
           traces: {level: none}
         pipelines:
           logs:
-            exporters: [otlp_http/logs, count/scale_payload]
+            exporters: [otlp/logs, count/scale_payload]
             processors: [memory_limiter, resource/node, transform/scale_stdout, redaction/basic_v1]
           traces:
-            exporters: [otlp_http/traces, count/scale_payload]
+            exporters: [otlp/traces, count/scale_payload]
           metrics/scale_payload:
             receivers: [count/scale_payload]
             processors: [batch/scale_payload, transform/scale_payload, deltatocumulative/scale_payload, interval/scale_payload]
-            exporters: [otlp_http/scale_payload]
+            exporters: [otlp/scale_payload]
       exporters:
-        otlp_http/scale_payload:
-          endpoint: http://nktp-watchdog-collector:4318
+        otlp/scale_payload:
+          endpoint: nktp-watchdog-collector:4317
+          tls:
+            insecure: true
           sending_queue:
             sizer: bytes
             queue_size: 8388608
@@ -130,8 +132,8 @@ gateway_metrics:
                 stream: {aggregation: {drop: {}}}
           traces: {level: none}
       exporters:
-        otlp_http:
-          endpoint: http://nktp-mixed-workload-blackhole-collector:4318
+        otlp:
+          endpoint: nktp-mixed-workload-blackhole-collector:4317
 
 gateway_logs:
   kubernetes:
@@ -150,8 +152,8 @@ gateway_logs:
                 stream: {aggregation: {drop: {}}}
           traces: {level: none}
       exporters:
-        otlp_http:
-          endpoint: http://nktp-mixed-workload-blackhole-collector:4318
+        otlp:
+          endpoint: nktp-mixed-workload-blackhole-collector:4317
 
 gateway_traces:
   kubernetes:
@@ -170,8 +172,8 @@ gateway_traces:
                 stream: {aggregation: {drop: {}}}
           traces: {level: none}
       exporters:
-        otlp_http:
-          endpoint: http://nktp-mixed-workload-blackhole-collector:4318
+        otlp:
+          endpoint: nktp-mixed-workload-blackhole-collector:4317
 
 large_target_metrics:
   kubernetes:
@@ -298,7 +300,6 @@ opentelemetry-kube-stack:
           app.kubernetes.io/name: nktp-daemonset-collector
         ports:
           - {name: otlp-grpc, port: 4317, targetPort: 4317}
-          - {name: otlp-http, port: 4318, targetPort: 4318}
     # Keep performance observations while discarding generated telemetry.
     - apiVersion: opentelemetry.io/v1beta1
       kind: OpenTelemetryCollector
@@ -339,8 +340,8 @@ opentelemetry-kube-stack:
           receivers:
             otlp:
               protocols:
-                http:
-                  endpoint: 0.0.0.0:4318
+                grpc:
+                  endpoint: 0.0.0.0:4317
           processors:
             memory_limiter:
               check_interval: 500ms
@@ -348,8 +349,10 @@ opentelemetry-kube-stack:
               spike_limit_percentage: 25
           exporters:
             nop: {}
-            otlp_http/observations:
-              endpoint: http://lgtm:4318
+            otlp/observations:
+              endpoint: lgtm:4317
+              tls:
+                insecure: true
               retry_on_failure:
                 max_elapsed_time: 30m
               sending_queue:
@@ -389,8 +392,9 @@ opentelemetry-kube-stack:
                   - periodic:
                       exporter:
                         otlp:
-                          protocol: http/protobuf
-                          endpoint: http://nktp-watchdog-collector:4318
+                          # The SDK uses http:// to select plaintext gRPC.
+                          protocol: grpc
+                          endpoint: http://nktp-watchdog-collector:4317
             pipelines:
               metrics:
                 receivers: [otlp]
@@ -401,7 +405,7 @@ opentelemetry-kube-stack:
                 exporters: [nop]
               metrics/observations:
                 receivers: [routing/observations]
-                exporters: [otlp_http/observations]
+                exporters: [otlp/observations]
               logs:
                 receivers: [otlp]
                 processors: [memory_limiter]
@@ -711,14 +715,18 @@ opentelemetry-kube-stack:
                   value: ${env:POD_UID}
                   action: upsert
           exporters:
-            otlp_http:
-              endpoint: http://nktp-mixed-workload-local.nktp.svc:4318
+            otlp:
+              endpoint: nktp-mixed-workload-local.nktp.svc:4317
+              tls:
+                insecure: true
               retry_on_failure:
                 max_elapsed_time: 30s
               sending_queue:
                 enabled: false
-            otlp_http/observations:
-              endpoint: http://nktp-watchdog-collector:4318
+            otlp/observations:
+              endpoint: nktp-watchdog-collector:4317
+              tls:
+                insecure: true
               sending_queue:
                 enabled: false
           service:
@@ -733,15 +741,15 @@ opentelemetry-kube-stack:
                   - periodic:
                       exporter:
                         otlp:
-                          protocol: http/protobuf
-                          endpoint: http://nktp-watchdog-collector:4318
+                          protocol: grpc
+                          endpoint: http://nktp-watchdog-collector:4317
               traces: {level: none}
             pipelines:
               metrics/load:
                 receivers: [prometheus]
                 processors: [filter/load, resource/source]
-                exporters: [otlp_http]
+                exporters: [otlp]
               metrics/observations:
                 receivers: [prometheus]
                 processors: [filter/observations, transform/observations, resource/source]
-                exporters: [otlp_http/observations]
+                exporters: [otlp/observations]

@@ -46,6 +46,9 @@ func New(kubeconfig string) (*Client, error) {
 	if err != nil {
 		return nil, fmt.Errorf("loading kubeconfig %s: %w", kubeconfig, err)
 	}
+	// Disable client-side throttling for test clients. Polling deadlines should
+	// reflect API responses rather than time spent waiting for rate-limit tokens.
+	config.QPS = -1
 	clientset, err := kubernetes.NewForConfig(config)
 	if err != nil {
 		return nil, fmt.Errorf("building a client: %w", err)

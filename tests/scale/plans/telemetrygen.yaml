@@ -11,14 +11,26 @@ stages:
           metadata:
             namespace: nktp
           spec:
+            # Reuse the chart-issued client certificate for direct gateway mTLS.
+            volumes:
+              - name: internal-tls-client
+                secret:
+                  secretName: nktp-daemonset-client-tls
             containers:
               - name: generator
                 image: ghcr.io/open-telemetry/opentelemetry-collector-contrib/telemetrygen:v0.159.0@sha256:bad7fde3119476a9177cc4b9f04307c9876fca5b5584e009aebd7123d7557658
                 command: [/telemetrygen]
+                volumeMounts:
+                  - name: internal-tls-client
+                    mountPath: /etc/nktp/internal-tls/client
+                    readOnly: true
                 args:
                   - metrics
                   - --otlp-endpoint=nktp-gateway-metrics-collector.nktp.svc:4317
-                  - --otlp-insecure
+                  - --mtls
+                  - --ca-cert=/etc/nktp/internal-tls/client/ca.crt
+                  - --client-cert=/etc/nktp/internal-tls/client/tls.crt
+                  - --client-key=/etc/nktp/internal-tls/client/tls.key
                   - --duration=3m
                   - --rate=10
                   - --workers=1
@@ -30,14 +42,26 @@ stages:
           metadata:
             namespace: nktp
           spec:
+            # Reuse the chart-issued client certificate for direct gateway mTLS.
+            volumes:
+              - name: internal-tls-client
+                secret:
+                  secretName: nktp-daemonset-client-tls
             containers:
               - name: generator
                 image: ghcr.io/open-telemetry/opentelemetry-collector-contrib/telemetrygen:v0.159.0@sha256:bad7fde3119476a9177cc4b9f04307c9876fca5b5584e009aebd7123d7557658
                 command: [/telemetrygen]
+                volumeMounts:
+                  - name: internal-tls-client
+                    mountPath: /etc/nktp/internal-tls/client
+                    readOnly: true
                 args:
                   - logs
                   - --otlp-endpoint=nktp-gateway-logs-collector.nktp.svc:4317
-                  - --otlp-insecure
+                  - --mtls
+                  - --ca-cert=/etc/nktp/internal-tls/client/ca.crt
+                  - --client-cert=/etc/nktp/internal-tls/client/tls.crt
+                  - --client-key=/etc/nktp/internal-tls/client/tls.key
                   - --duration=3m
                   - --rate=10
                   - --workers=1
@@ -49,14 +73,26 @@ stages:
           metadata:
             namespace: nktp
           spec:
+            # Reuse the chart-issued client certificate for direct gateway mTLS.
+            volumes:
+              - name: internal-tls-client
+                secret:
+                  secretName: nktp-daemonset-client-tls
             containers:
               - name: generator
                 image: ghcr.io/open-telemetry/opentelemetry-collector-contrib/telemetrygen:v0.159.0@sha256:bad7fde3119476a9177cc4b9f04307c9876fca5b5584e009aebd7123d7557658
                 command: [/telemetrygen]
+                volumeMounts:
+                  - name: internal-tls-client
+                    mountPath: /etc/nktp/internal-tls/client
+                    readOnly: true
                 args:
                   - traces
                   - --otlp-endpoint=nktp-gateway-traces-collector.nktp.svc:4317
-                  - --otlp-insecure
+                  - --mtls
+                  - --ca-cert=/etc/nktp/internal-tls/client/ca.crt
+                  - --client-cert=/etc/nktp/internal-tls/client/tls.crt
+                  - --client-key=/etc/nktp/internal-tls/client/tls.key
                   - --duration=3m
                   - --rate=10
                   - --workers=1

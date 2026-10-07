@@ -98,22 +98,23 @@ opentelemetry-kube-stack:
                   - periodic:
                       exporter:
                         otlp:
-                          protocol: http/protobuf
-                          endpoint: http://nktp-watchdog-collector:4318
+                          # The SDK uses http:// below to select plaintext gRPC.
+                          protocol: grpc
+                          endpoint: http://nktp-watchdog-collector:4317
               logs:
                 processors:
                   - batch:
                       exporter:
                         otlp:
-                          protocol: http/protobuf
-                          endpoint: http://nktp-watchdog-collector:4318
+                          protocol: grpc
+                          endpoint: http://nktp-watchdog-collector:4317
               traces:
                 processors:
                   - batch:
                       exporter:
                         otlp:
-                          protocol: http/protobuf
-                          endpoint: http://nktp-watchdog-collector:4318
+                          protocol: grpc
+                          endpoint: http://nktp-watchdog-collector:4317
             pipelines:
               metrics:
                 receivers: [otlp]
@@ -133,8 +134,8 @@ gateway_metrics:
   otelcol:
     config:
       exporters:
-        otlp_http:
-          endpoint: http://nktp-scale-blackhole-collector:4318
+        otlp:
+          endpoint: nktp-scale-blackhole-collector:4317
       processors:
         attributes/scale_instance:
           include:
@@ -155,15 +156,15 @@ gateway_logs:
   otelcol:
     config:
       exporters:
-        otlp_http:
-          endpoint: http://nktp-scale-blackhole-collector:4318
+        otlp:
+          endpoint: nktp-scale-blackhole-collector:4317
 
 gateway_traces:
   otelcol:
     config:
       exporters:
-        otlp_http:
-          endpoint: http://nktp-scale-blackhole-collector:4318
+        otlp:
+          endpoint: nktp-scale-blackhole-collector:4317
 
 # Keep scrape diagnostics without retaining the generated load in LGTM.
 large_target_metrics:
@@ -183,8 +184,10 @@ large_target_metrics:
               action: move
               pipelines: [metrics/scale_diagnostics]
       exporters:
-        otlp_http/scale_diagnostics:
-          endpoint: http://nktp-watchdog-collector:4318
+        otlp/scale_diagnostics:
+          endpoint: nktp-watchdog-collector:4317
+          tls:
+            insecure: true
           retry_on_failure:
             max_elapsed_time: 30s
           sending_queue:
@@ -198,10 +201,10 @@ large_target_metrics:
             exporters: [routing/scale_diagnostics]
           metrics/load:
             receivers: [routing/scale_diagnostics]
-            exporters: [otlp_http]
+            exporters: [otlp]
           metrics/scale_diagnostics:
             receivers: [routing/scale_diagnostics]
-            exporters: [otlp_http/scale_diagnostics]
+            exporters: [otlp/scale_diagnostics]
 
 # Observe the generators through the existing host /proc mount and watchdog path.
 daemonset:
@@ -244,4 +247,4 @@ daemonset:
           metrics/scale_producers:
             receivers: [hostmetrics/scale_producers]
             processors: [memory_limiter, resource/scale_producers, transform/scale_producers]
-            exporters: [otlp_http/watchdog]
+            exporters: [otlp/watchdog]

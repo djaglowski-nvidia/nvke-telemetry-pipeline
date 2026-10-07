@@ -200,6 +200,7 @@ func captureExports(t *testing.T) (object, <-chan object) {
 	sink.Start()
 	t.Cleanup(sink.Close)
 	endpoint := fmt.Sprintf("http://host.docker.internal:%d", listener.Addr().(*net.TCPAddr).Port)
+	// HTTP/JSON lets the test inspect redacted payloads with the local HTTP sink.
 	exporters := object{"otlp_http": object{
 		"endpoint": endpoint, "encoding": "json", "compression": "none",
 		"sending_queue": object{"enabled": false}, "retry_on_failure": object{"enabled": false},

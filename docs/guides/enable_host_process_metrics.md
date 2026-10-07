@@ -34,7 +34,7 @@ daemonset:
           metrics/process:
             receivers: [hostmetrics]
             processors: [memory_limiter, resource/node, redaction/basic_v1]
-            exporters: [otlp_http/metrics]
+            exporters: [otlp/metrics]
 ```
 
 A separate pipeline avoids copying the default `metrics` pipeline's `receivers`

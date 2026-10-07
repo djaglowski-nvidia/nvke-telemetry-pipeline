@@ -102,7 +102,7 @@ The cluster event reader, DaemonSet, and large-target metrics collectors each us
 telemetry to the gateways over mTLS. Each gateway uses a server certificate.
 
 Traffic to watchdog is not covered by this setting. Collector and Target Allocator self-telemetry, and the
-DaemonSet's Target Allocator and Operator logs, are sent to watchdog over plain HTTP.
+DaemonSet's Target Allocator and Operator logs, are sent to watchdog over plaintext OTLP/gRPC.
 
 ```bash
 kubectl get issuers,certs -n nktp
@@ -122,5 +122,7 @@ certificate.cert-manager.io/nktp-large-target-metrics-client   True    nktp-larg
 
 **NOTE:** Gateway->Backend encryption requires a manually configured client certificate for the gateways and is not part of this setting.
 
-Disabling `certManager.internlaTLS` requires you to manually reconfigure the collector configs to use `http` endpoints and not include `tls` blocks.
+Disabling `certManager.internalTLS.enabled` requires you to supply certificates yourself or
+explicitly configure plaintext receivers and exporters. Plaintext gRPC exporters require
+`tls.insecure: true`.
 

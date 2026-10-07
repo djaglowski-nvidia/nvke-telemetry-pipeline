@@ -363,6 +363,9 @@ and waits for their cleanup.
 The telemetrygen plan uses namespace `nktp` and the NKTP services installed by
 `task scale:install`. When using another cluster, adjust the plan namespace and
 endpoints as needed. The test harness itself does not provision a cluster.
+Direct gateway clients mount `nktp-daemonset-client-tls`, issued by cert-manager
+for the chart, and use gRPC with mTLS. The Secret must exist in the generator
+namespace before running the plan.
 
 **Jobs and pods are cleaned up before the test returns**, including after failure
 or cancellation. Workload and cleanup errors fail the test.
@@ -393,9 +396,20 @@ generators:
           args:
           - metrics
           - --otlp-endpoint=nktp-gateway-metrics-collector.nktp.svc:4317
-          - --otlp-insecure
+          - --mtls
+          - --ca-cert=/etc/nktp/internal-tls/client/ca.crt
+          - --client-cert=/etc/nktp/internal-tls/client/tls.crt
+          - --client-key=/etc/nktp/internal-tls/client/tls.key
           - --duration=1m
           - --rate=10
+          volumeMounts:
+          - name: internal-tls-client
+            mountPath: /etc/nktp/internal-tls/client
+            readOnly: true
+        volumes:
+        - name: internal-tls-client
+          secret:
+            secretName: nktp-daemonset-client-tls
 ```
 
 `parallelism` limits concurrent Pods per Job and defaults to one. `completions`

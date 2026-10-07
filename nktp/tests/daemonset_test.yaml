@@ -51,34 +51,24 @@ tests:
       - notExists:
           path: spec.autoscaler
       - equal:
-          path: spec.config.service.pipelines
-          value:
-            logs: {receivers: [filelog, journald, otlp, filelog/host-auth, filelog/host-audit, filelog/kube-api-audit], processors: [memory_limiter, resource/node, redaction/basic_v1], exporters: [otlp_http/logs]}
-            logs/targetallocator: {receivers: [filelog/targetallocator], processors: [memory_limiter, resource/node, transform/targetallocator, redaction/basic_v1], exporters: [otlp_http/watchdog]}
-            logs/operator: {receivers: [filelog/operator], processors: [memory_limiter, resource/node, transform/operator, redaction/basic_v1], exporters: [otlp_http/watchdog]}
-            metrics: {receivers: [prometheus, prometheus/kubelet, otlp], processors: [memory_limiter, resource/node, redaction/basic_v1], exporters: [otlp_http/metrics]}
-            traces: {receivers: [otlp], processors: [memory_limiter, resource/node, redaction/basic_v1], exporters: [otlp_http/traces]}
+          path: spec.config.exporters["otlp/logs"].endpoint
+          value: nktp-gateway-logs-collector:4317
       - equal:
-          path: spec.config.exporters["otlp_http/logs"].endpoint
-          value: https://nktp-gateway-logs-collector:4318
+          path: spec.config.exporters["otlp/metrics"].endpoint
+          value: nktp-gateway-metrics-collector:4317
       - equal:
-          path: spec.config.exporters["otlp_http/metrics"].endpoint
-          value: https://nktp-gateway-metrics-collector:4318
-      - equal:
-          path: spec.config.exporters["otlp_http/logs"].tls
+          path: spec.config.exporters["otlp/logs"].tls
           value: &clientTLS
             ca_file: /etc/nktp/internal-tls/client/ca.crt
             cert_file: /etc/nktp/internal-tls/client/tls.crt
             key_file: /etc/nktp/internal-tls/client/tls.key
             reload_interval: 1h
       - equal:
-          path: spec.config.exporters["otlp_http/metrics"].tls
+          path: spec.config.exporters["otlp/metrics"].tls
           value: *clientTLS
       - equal:
-          path: spec.config.exporters["otlp_http/traces"].tls
+          path: spec.config.exporters["otlp/traces"].tls
           value: *clientTLS
-      - notExists:
-          path: spec.config.exporters["otlp_http/watchdog"].tls
       - equal:
           path: spec.config.receivers.prometheus.config
           value: {scrape_configs: []}
@@ -271,7 +261,7 @@ tests:
   - it: sends allocator container logs to watchdog independently of application logs
     set:
       otel-lgtm.enabled: false
-      daemonset.otelcol.config.exporters.otlp_http/logs.endpoint: http://application-logs:4318
+      daemonset.otelcol.config.exporters.otlp/logs.endpoint: application-logs:4317
     asserts:
       - equal:
           path: spec.config.receivers["filelog/targetallocator"]
@@ -289,23 +279,26 @@ tests:
           value:
             receivers: [filelog/targetallocator]
             processors: [memory_limiter, resource/node, transform/targetallocator, redaction/basic_v1]
-            exporters: [otlp_http/watchdog]
+            exporters: [otlp/watchdog]
       - equal:
-          path: spec.config.exporters["otlp_http/watchdog"].endpoint
-          value: http://nktp-watchdog-collector:4318
+          path: spec.config.exporters["otlp/watchdog"].endpoint
+          value: nktp-watchdog-collector:4317
       - equal:
-          path: spec.config.exporters["otlp_http/logs"].endpoint
-          value: http://application-logs:4318
+          path: spec.config.exporters["otlp/watchdog"].tls
+          value: {insecure: true}
+      - equal:
+          path: spec.config.exporters["otlp/logs"].endpoint
+          value: application-logs:4317
       - equal:
           path: spec.config.service.pipelines.logs
-          value: {receivers: [filelog, journald, otlp, filelog/host-auth, filelog/host-audit, filelog/kube-api-audit], processors: [memory_limiter, resource/node, redaction/basic_v1], exporters: [otlp_http/logs]}
+          value: {receivers: [filelog, journald, otlp, filelog/host-auth, filelog/host-audit, filelog/kube-api-audit], processors: [memory_limiter, resource/node, redaction/basic_v1], exporters: [otlp/logs]}
 
   - it: sends operator manager logs to watchdog independently of application logs
     release:
       namespace: telemetry
     set:
       otel-lgtm.enabled: false
-      daemonset.otelcol.config.exporters.otlp_http/logs.endpoint: http://application-logs:4318
+      daemonset.otelcol.config.exporters.otlp/logs.endpoint: application-logs:4317
     asserts:
       - equal:
           path: metadata.namespace
@@ -333,13 +326,13 @@ tests:
           value:
             receivers: [filelog/operator]
             processors: [memory_limiter, resource/node, transform/operator, redaction/basic_v1]
-            exporters: [otlp_http/watchdog]
+            exporters: [otlp/watchdog]
       - equal:
-          path: spec.config.exporters["otlp_http/watchdog"].endpoint
-          value: http://nktp-watchdog-collector:4318
+          path: spec.config.exporters["otlp/watchdog"].endpoint
+          value: nktp-watchdog-collector:4317
       - equal:
-          path: spec.config.exporters["otlp_http/logs"].endpoint
-          value: http://application-logs:4318
+          path: spec.config.exporters["otlp/logs"].endpoint
+          value: application-logs:4317
 
   - it: carries node identity through native environment references
     asserts:
@@ -404,8 +397,10 @@ tests:
                   - periodic:
                       interval: 30s
                       exporter:
-                        otlpHttp:
-                          endpoint: http://nktp-watchdog-collector:4318
+                        otlpGrpc:
+                          endpoint: nktp-watchdog-collector:4317
+                          tls:
+                            insecure: true
                           temporalityPreference: cumulative
             observability:
               metrics:
@@ -501,8 +496,8 @@ tests:
       daemonset.otelcol.config.receivers.filelog.operators:
         - type: container
         - type: json_parser
-      daemonset.otelcol.config.exporters.otlp_http/logs.endpoint: ${env:LOGS_DESTINATION}
-      daemonset.otelcol.config.exporters.otlp_http/logs.headers:
+      daemonset.otelcol.config.exporters.otlp/logs.endpoint: ${env:LOGS_DESTINATION}
+      daemonset.otelcol.config.exporters.otlp/logs.headers:
         x-literal: "{{ preserved }} $$TOKEN"
     asserts:
       - equal:
@@ -512,14 +507,14 @@ tests:
           path: spec.config.receivers.filelog.operators
           value: [{type: container}, {type: json_parser}]
       - equal:
-          path: spec.config.exporters["otlp_http/logs"].endpoint
+          path: spec.config.exporters["otlp/logs"].endpoint
           value: ${env:LOGS_DESTINATION}
       - equal:
-          path: spec.config.exporters["otlp_http/logs"].headers
+          path: spec.config.exporters["otlp/logs"].headers
           value: {x-literal: "{{ preserved }} $$TOKEN"}
       - equal:
-          path: spec.config.exporters["otlp_http/metrics"].endpoint
-          value: https://nktp-gateway-metrics-collector:4318
+          path: spec.config.exporters["otlp/metrics"].endpoint
+          value: nktp-gateway-metrics-collector:4317
       - equal:
           path: spec.config.service.telemetry.logs.processors[0].batch.exporter.otlp.endpoint
           value: http://127.0.0.1:4319
@@ -544,8 +539,8 @@ tests:
           path: spec.config.service.telemetry.traces.processors[0].batch.exporter.otlp.endpoint
           value: http://127.0.0.1:4319
       - equal:
-          path: spec.config.exporters["otlp_http/logs"].endpoint
-          value: https://nktp-gateway-logs-collector:4318
+          path: spec.config.exporters["otlp/logs"].endpoint
+          value: nktp-gateway-logs-collector:4317
 
   - it: replaces own log exporters independently
     set:
@@ -567,8 +562,8 @@ tests:
           path: spec.config.service.telemetry.traces.processors[0].batch.exporter.otlp.endpoint
           value: http://127.0.0.1:4319
       - equal:
-          path: spec.config.exporters["otlp_http/logs"].endpoint
-          value: https://nktp-gateway-logs-collector:4318
+          path: spec.config.exporters["otlp/logs"].endpoint
+          value: nktp-gateway-logs-collector:4317
 
   - it: replaces own trace exporters independently
     set:
@@ -590,8 +585,8 @@ tests:
           path: spec.config.service.telemetry.logs.processors[0].batch.exporter.otlp.endpoint
           value: http://127.0.0.1:4319
       - equal:
-          path: spec.config.exporters["otlp_http/logs"].endpoint
-          value: https://nktp-gateway-logs-collector:4318
+          path: spec.config.exporters["otlp/logs"].endpoint
+          value: nktp-gateway-logs-collector:4317
 
 
   - it: pushes allocator metrics without a local scrape pipeline or LGTM
@@ -605,8 +600,10 @@ tests:
             - periodic:
                 interval: 30s
                 exporter:
-                  otlpHttp:
-                    endpoint: http://nktp-watchdog-collector:4318
+                  otlpGrpc:
+                    endpoint: nktp-watchdog-collector:4317
+                    tls:
+                      insecure: true
                     temporalityPreference: cumulative
       - notExists:
           path: spec.config.receivers["prometheus/targetallocator"]
@@ -615,8 +612,8 @@ tests:
       - notExists:
           path: spec.config.processors["resource/targetallocator"]
       - equal:
-          path: spec.config.exporters["otlp_http/watchdog"].endpoint
-          value: http://nktp-watchdog-collector:4318
+          path: spec.config.exporters["otlp/watchdog"].endpoint
+          value: nktp-watchdog-collector:4317
       - notExists:
           path: spec.config.service.pipelines["metrics/targetallocator"]
 
@@ -639,9 +636,9 @@ tests:
           memory_limiter: null
           resource/node: null
         exporters:
-          otlp_http/logs: null
-          otlp_http/metrics: null
-          otlp_http/traces: null
+          otlp/logs: null
+          otlp/metrics: null
+          otlp/traces: null
           debug: {}
         service:
           extensions: null
@@ -659,8 +656,8 @@ tests:
           value:
             traces/custom: {receivers: [otlp], exporters: [debug]}
       - equal:
-          path: spec.targetAllocator.telemetry.metrics.readers[0].periodic.exporter.otlpHttp.endpoint
-          value: http://nktp-watchdog-collector:4318
+          path: spec.targetAllocator.telemetry.metrics.readers[0].periodic.exporter.otlpGrpc.endpoint
+          value: nktp-watchdog-collector:4317
       - contains:
           path: spec.targetAllocator.env
           content: {name: OTEL_SERVICE_NAME, value: nktp-targetallocator}
@@ -709,12 +706,6 @@ tests:
     asserts:
       - notExists:
           path: spec.config.receivers.hostmetrics
-      - equal:
-          path: spec.config.service.pipelines.metrics
-          value:
-            receivers: [prometheus, prometheus/kubelet, otlp]
-            processors: [memory_limiter, resource/node, redaction/basic_v1]
-            exporters: [otlp_http/metrics]
       - notExists:
           path: spec.hostPID
 
@@ -738,13 +729,14 @@ tests:
           value:
             receivers: [hostmetrics]
             processors: [memory_limiter, resource/node, redaction/basic_v1]
-            exporters: [otlp_http/metrics]
+            exporters: [otlp/metrics]
+      # Adding the process pipeline must preserve the existing scrape pipeline.
       - equal:
           path: spec.config.service.pipelines.metrics
           value:
             receivers: [prometheus, prometheus/kubelet, otlp]
             processors: [memory_limiter, resource/node, redaction/basic_v1]
-            exporters: [otlp_http/metrics]
+            exporters: [otlp/metrics]
       - equal:
           path: spec.securityContext
           value:
@@ -781,19 +773,18 @@ tests:
             grpc: {endpoint: "0.0.0.0:4317"}
             http: {endpoint: "0.0.0.0:4318"}
       - equal:
-          path: spec.config.service.pipelines.logs
-          value: {receivers: [filelog, journald, otlp, filelog/host-auth, filelog/host-audit, filelog/kube-api-audit], processors: [memory_limiter, resource/node, redaction/basic_v1], exporters: [otlp_http/logs]}
+          path: spec.config.service.pipelines
+          value:
+            logs: {receivers: [filelog, journald, otlp, filelog/host-auth, filelog/host-audit, filelog/kube-api-audit], processors: [memory_limiter, resource/node, redaction/basic_v1], exporters: [otlp/logs]}
+            logs/targetallocator: {receivers: [filelog/targetallocator], processors: [memory_limiter, resource/node, transform/targetallocator, redaction/basic_v1], exporters: [otlp/watchdog]}
+            logs/operator: {receivers: [filelog/operator], processors: [memory_limiter, resource/node, transform/operator, redaction/basic_v1], exporters: [otlp/watchdog]}
+            metrics: {receivers: [prometheus, prometheus/kubelet, otlp], processors: [memory_limiter, resource/node, redaction/basic_v1], exporters: [otlp/metrics]}
+            traces: {receivers: [otlp], processors: [memory_limiter, resource/node, redaction/basic_v1], exporters: [otlp/traces]}
       - equal:
-          path: spec.config.service.pipelines.metrics
-          value: {receivers: [prometheus, prometheus/kubelet, otlp], processors: [memory_limiter, resource/node, redaction/basic_v1], exporters: [otlp_http/metrics]}
+          path: spec.config.exporters["otlp/traces"].endpoint
+          value: nktp-gateway-traces-collector:4317
       - equal:
-          path: spec.config.service.pipelines.traces
-          value: {receivers: [otlp], processors: [memory_limiter, resource/node, redaction/basic_v1], exporters: [otlp_http/traces]}
-      - equal:
-          path: spec.config.exporters["otlp_http/traces"].endpoint
-          value: https://nktp-gateway-traces-collector:4318
-      - equal:
-          path: spec.config.exporters["otlp_http/traces"].sending_queue
+          path: spec.config.exporters["otlp/traces"].sending_queue
           value:
             block_on_overflow: true
             sizer: bytes
@@ -805,28 +796,28 @@ tests:
               max_size: 2097152
               flush_timeout: 1s
       - equal:
-          path: spec.config.exporters["otlp_http/traces"].retry_on_failure.max_elapsed_time
+          path: spec.config.exporters["otlp/traces"].retry_on_failure.max_elapsed_time
           value: 30m
 
   - it: permits disabling one OTLP transport and changing the traces backend
     set:
       daemonset.otelcol.config.receivers.otlp.protocols.grpc: null
       daemonset.otelcol.config.receivers.otlp.protocols.http.endpoint: "0.0.0.0:14318"
-      daemonset.otelcol.config.exporters.otlp_http/traces.endpoint: http://traces.example:4318
+      daemonset.otelcol.config.exporters.otlp/traces.endpoint: traces.example:4317
     asserts:
       - equal:
           path: spec.config.receivers.otlp.protocols
           value:
             http: {endpoint: "0.0.0.0:14318"}
       - equal:
-          path: spec.config.exporters["otlp_http/traces"].endpoint
-          value: http://traces.example:4318
+          path: spec.config.exporters["otlp/traces"].endpoint
+          value: traces.example:4317
       - equal:
-          path: spec.config.exporters["otlp_http/logs"].endpoint
-          value: https://nktp-gateway-logs-collector:4318
+          path: spec.config.exporters["otlp/logs"].endpoint
+          value: nktp-gateway-logs-collector:4317
       - equal:
-          path: spec.config.exporters["otlp_http/metrics"].endpoint
-          value: https://nktp-gateway-metrics-collector:4318
+          path: spec.config.exporters["otlp/metrics"].endpoint
+          value: nktp-gateway-metrics-collector:4317
 
   - it: reads new host journal entries and retries downstream failures
     asserts:
@@ -849,12 +840,6 @@ tests:
                 if: 'body.SYSLOG_IDENTIFIER == "sshd" || body.SYSLOG_IDENTIFIER == "sudo"'
                 field: resource["nvidia.telemetry.class"]
                 value: system.auth
-      - equal:
-          path: spec.config.service.pipelines.logs
-          value:
-            receivers: [filelog, journald, otlp, filelog/host-auth, filelog/host-audit, filelog/kube-api-audit]
-            processors: [memory_limiter, resource/node, redaction/basic_v1]
-            exporters: [otlp_http/logs]
 
   - it: collects Kind runtime journals while retaining host mounts and OTLP forwarding
     values:
@@ -912,4 +897,4 @@ tests:
           value:
             receivers: [filelog, journald, otlp, filelog/host-auth, filelog/host-audit, filelog/kube-api-audit]
             processors: [memory_limiter, resource/node, redaction/basic_v1]
-            exporters: [otlp_http/logs]
+            exporters: [otlp/logs]

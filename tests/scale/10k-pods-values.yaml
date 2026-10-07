@@ -22,8 +22,8 @@ gateway_logs:
   otelcol:
     config:
       exporters:
-        otlp_http:
-          endpoint: http://nktp-10k-pods-blackhole-collector:4318
+        otlp:
+          endpoint: nktp-10k-pods-blackhole-collector:4317
 
 gateway_metrics:
   kubernetes:
@@ -32,8 +32,8 @@ gateway_metrics:
   otelcol:
     config:
       exporters:
-        otlp_http:
-          endpoint: http://nktp-10k-pods-blackhole-collector:4318
+        otlp:
+          endpoint: nktp-10k-pods-blackhole-collector:4317
 
 gateway_traces:
   kubernetes:
@@ -157,6 +157,8 @@ opentelemetry-kube-stack:
           receivers:
             otlp:
               protocols:
+                grpc:
+                  endpoint: 0.0.0.0:4317
                 http:
                   endpoint: 0.0.0.0:4318
           processors:
@@ -174,8 +176,10 @@ opentelemetry-kube-stack:
                   and attributes["namespace"] != "nktp"
           exporters:
             nop: {}
-            otlp_http/evaluation:
-              endpoint: http://lgtm:4318
+            otlp/evaluation:
+              endpoint: lgtm:4317
+              tls:
+                insecure: true
               retry_on_failure:
                 max_elapsed_time: 30m
               sending_queue:
@@ -198,15 +202,16 @@ opentelemetry-kube-stack:
                   - periodic:
                       exporter:
                         otlp:
-                          protocol: http/protobuf
-                          endpoint: http://nktp-watchdog-collector:4318
+                          # The SDK uses http:// below to select plaintext gRPC.
+                          protocol: grpc
+                          endpoint: http://nktp-watchdog-collector:4317
               logs:
                 processors:
                   - batch:
                       exporter:
                         otlp:
-                          protocol: http/protobuf
-                          endpoint: http://nktp-watchdog-collector:4318
+                          protocol: grpc
+                          endpoint: http://nktp-watchdog-collector:4317
             pipelines:
               metrics:
                 receivers:
@@ -215,7 +220,7 @@ opentelemetry-kube-stack:
                 - memory_limiter
                 - filter/ksm_evaluation
                 exporters:
-                - otlp_http/evaluation
+                - otlp/evaluation
               logs:
                 receivers: [otlp]
                 processors: [memory_limiter]

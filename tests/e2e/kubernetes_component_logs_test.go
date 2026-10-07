@@ -233,7 +233,10 @@ func logComponentLogsDiagnostics(ctx context.Context, t *testing.T, cases []comp
 				if component == "" {
 					component = result.Metric["exporter"]
 				}
-				if component != "filelog" && component != "filelog/kube-api-audit" && component != "otlp" && component != "otlp_http" && component != "otlp_http/logs" {
+				// Include gRPC hops and LGTM's HTTP export to Loki.
+				switch component {
+				case "filelog", "filelog/kube-api-audit", "otlp", "otlp/logs", "otlp_http/logs":
+				default:
 					continue
 				}
 				name := strings.NewReplacer(
@@ -289,6 +292,7 @@ func logComponentLogsDiagnostics(ctx context.Context, t *testing.T, cases []comp
 				}
 			case strings.HasPrefix(line, "loki_request_duration_seconds_count{") && strings.Contains(line, `route="otlp_v1_logs"`):
 				if match := label.FindStringSubmatch(line); len(match) == 2 {
+					// These are Loki's HTTP ingestion statuses, independent of gateway transport.
 					summary["otlp_http:"+match[1]] += value
 				}
 			case strings.HasPrefix(line, "loki_distributor_lines_received_total{"):

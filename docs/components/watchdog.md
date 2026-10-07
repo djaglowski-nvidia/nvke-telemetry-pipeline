@@ -1,7 +1,7 @@
 # Watchdog
 
 The watchdog receives internal metrics, logs and traces from NKTP collectors over
-OTLP/HTTP at `http://nktp-watchdog-collector:4318` in the Helm release namespace.
+OTLP/gRPC at `nktp-watchdog-collector:4317` in the Helm release namespace.
 It forwards received telemetry to LGTM by default. Its own telemetry goes through
 its [sidecar](../architecture/self_telemetry.md), which exports to LGTM by default.
 It also scrapes the Operator's metrics endpoint with the `nktp-operator` job in
@@ -14,6 +14,13 @@ Setting `watchdog.kubernetes.targetAllocator.enabled` to `false` will cause Helm
 rendering to fail.
 
 Configure the Collector through `watchdog.otelcol.config`.
+
+Like the signal gateways, watchdog sends GOAWAY after five minutes (+/-10%
+jitter), with 30 seconds for in-flight exports to finish. This lets clients
+reach newly added replicas while limiting connection churn. Tune
+`receivers.otlp.protocols.grpc.keepalive.server_parameters` for the required
+scale-up relief and connection churn. Reconnects can select the same replica.
+See [gRPC connection management](https://github.com/grpc/proposal/blob/master/A9-server-side-conn-mgt.md).
 
 Use `watchdog.kubernetes` for Collector CR settings and `watchdog.otelcol.image`
 to override the global `otelcol_image`.

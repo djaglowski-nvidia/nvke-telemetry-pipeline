@@ -47,8 +47,8 @@ flowchart LR
 | [Watchdog](../components/watchdog.md) | `watchdog` | StatefulSet, 2 to 16 replicas | Self-telemetry from NKTP components | Backend |
 
 Each Collector's exporters name the next hop explicitly. For example, the node
-collector's `otlp_http/metrics` exporter sends to
-`http://nktp-gateway-metrics-collector:4318`. To change where a signal goes,
+collector's `otlp/metrics` exporter sends to
+`nktp-gateway-metrics-collector:4317` over OTLP/gRPC. To change where a signal goes,
 change the exporter in that Collector's configuration.
 
 ## Metrics scraping
@@ -92,7 +92,7 @@ flowchart LR
 ```
 
 The watchdog receives the pipeline's own telemetry at
-`http://nktp-watchdog-collector:4318`:
+`nktp-watchdog-collector:4317` over OTLP/gRPC:
 
 - Every Collector except the watchdog exports its own metrics, logs and traces
   through `service.telemetry` to the sidecar in its Pod, and the sidecar exports

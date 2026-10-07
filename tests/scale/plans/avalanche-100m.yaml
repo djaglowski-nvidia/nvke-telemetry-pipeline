@@ -863,6 +863,7 @@ stages:
             kube_horizontalpodautoscaler_status_condition{namespace="nktp",condition=~"AbleToScale|ScalingActive",status="true"} == 0
             or
             kube_horizontalpodautoscaler_status_condition{namespace="nktp",condition="ScalingLimited",status="true"} == 1
+        # LGTM's internal Collector uses HTTP to reach Prometheus's OTLP endpoint.
         - name: lgtm_failed_points_per_second
           units: points/s
           query: |-
