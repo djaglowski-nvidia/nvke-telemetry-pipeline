@@ -88,21 +88,22 @@ points and 100 log records per minute with 100 KiB log bodies.
 
 | Concept | Meaning |
 | --- | --- |
-| `Plan` | Named configuration with a timeout, execution mode, and ordered stages. |
-| `Stage` | Unique name and one generator/measurement pair. The pair runs concurrently. |
+| `Plan` | Named configuration with a timeout and sequential stages. |
+| `Stage` | Named parallel generators and an optional measurement, all running concurrently. |
 | `ComponentSpec` | Implementation `type` and its implementation-specific `spec`. |
 | Generator | Runnable responsible for the complete generation lifetime and resource cleanup. |
 | Measurement | Runnable that produces findings and returns an error if execution or checks fail. |
 | `measurements.Report` | Measurement-owned structured findings. An empty report is valid. |
-| `PlanReport` | Run ID, plan name, and stage reports with component errors, in declaration order. |
+| `PlanReport` | Run ID, plan name, and started stage reports with named generator outcomes and measurement findings. |
 
 The plan contains configuration, not executable objects. `Executor` validates
 every component specification and constructs fresh runnables before any stage
 starts. Generators support `type: noop`, `type: job`, `type: pod`,
 `type: statefulset` and `type: kubernetes`.
-Measurements support `type: noop` and `type: prometheus`. No-op components accept an empty or omitted
-`spec`. No-op measurements also accept `spec.queries`, a mapping of names to nonempty query
-strings. These strings are resolved by the plan parser but are not evaluated.
+Measurements support `type: noop` and `type: prometheus`. No-op components accept
+an empty or omitted `spec`. No-op measurements also accept named query entries
+in `spec.measurements`. These strings are resolved by the plan parser but are
+not evaluated.
 No-op components return ordinary success and empty measurement reports. This
 does not evaluate NKTP correctness or performance.
 
@@ -111,49 +112,52 @@ flowchart TD
     Flags["Test flags"] --> Arguments["Resolve arguments and default run ID"]
     Arguments --> Parse["Substitute arguments and validate structure"]
     YAML["Plan YAML"] --> Parse
-    Parse --> Plan["Plan: stages, execution, timeout"]
+    Parse --> Plan["Plan: stages, timeout"]
     Plan --> Executor["Executor: validate specs and construct runnables"]
-    Executor --> Schedule["Parallel stages by default, sequential optional"]
+    Executor --> Schedule["Stages in declaration order"]
     Schedule --> Stage["Each stage"]
-    Stage --> Generator["Generator.Run"]
+    Stage --> Generator["Generators run in parallel"]
     Stage --> Measurement["Measurement.Run"]
-    Generator --> Join["Wait for both and retain errors"]
+    Generator --> Join["Wait for all components and cleanup"]
     Measurement --> Join
-    Join --> Reports["Consolidate reports after all stages finish"]
+    Join --> Reports["Advance on success, stop on failure"]
 ```
 
 ## Basic configuration
 
-The following plan runs two independent stages concurrently:
+The following plan runs two generators together in the first stage, waits for
+completion, then starts the second stage:
 
 ```yaml
 name: harness-smoke
-execution: parallel
 timeout: 1m
 stages:
   - name: baseline
-    generator:
+    generators:
+    - name: baseline
       type: noop
-      spec: {}
-    measurement:
+    - name: peer
       type: noop
-      spec: {}
+    measurement: {type: noop}
   - name: second-stage
-    generator:
+    generators:
+    - name: second-stage
       type: noop
-      spec: {}
-    measurement:
-      type: noop
-      spec: {}
 ```
 
-This example is available at [plans/noop.yaml](plans/noop.yaml). Omitted
-`execution` defaults to `parallel`. Set it to `sequential` to finish each stage
-before starting the next. The generator and measurement still run concurrently
-within each stage. A positive `timeout` and unique, nonempty stage names are
-required. Unknown envelope fields, duplicate envelope keys, and multiple YAML
-documents are rejected by the parser. Implementation names and specs are checked by the
-executor before any runnable starts.
+This example is available at [plans/noop.yaml](plans/noop.yaml). Stages always run
+in declaration order. Generators within a stage run in parallel with its measurement.
+The next stage starts only after all current components finish, including cleanup.
+Any component error stops the plan.
+
+Omit `measurement` for load-only stages. Omit `generators` for an observation-only
+baseline. Each stage must contain at least one generator or a measurement.
+Use a positive plan `timeout`, unique stage names and unique generator names
+within each stage. All configuration is validated before any workload starts.
+
+To migrate an older plan, replace `generator` with named entries in `generators`
+and remove `execution`. Group formerly parallel stages into one stage to retain
+concurrent load. Keep their shared measurement once in that stage.
 
 ## Running
 
@@ -246,9 +250,15 @@ distinguish.
 
 Reference `{{ .Args.runId }}` in query filters too, for example
 `count({test_run_id="{{ .Args.runId }}"})`. The
-[telemetrygen plan](plans/telemetrygen.yaml) includes examples for metrics, logs
-and traces. The metrics stage executes PromQL queries against the in-cluster
-Prometheus. The logs and traces stages retain no-op query examples.
+[telemetrygen plan](plans/telemetrygen.yaml) generates metrics, logs and traces
+concurrently and measures the metrics pipeline through Prometheus.
+For manual log and trace inspection, use these examples in the corresponding
+backend, replacing the run ID reference with the ID printed by the test:
+
+- LogQL: `{service_name=~".+"} | test_run_id="{{ .Args.runId }}"`
+- TraceQL: `{ span.test_run_id = "{{ .Args.runId }}" }`
+
+The LogQL example assumes log attributes are stored as structured metadata.
 
 Quote references that should remain strings, as in the YAML example. Escape
 supplied values for the surrounding YAML and query syntax. To include the
@@ -317,11 +327,11 @@ returning a runnable, without acquiring resources.
 executor's interfaces without importing the runner package. `main_test.go`
 imports `tests/scale/pkg` as `runner`.
 
-A component error cancels its peer in the same stage. Other stages continue,
-including later sequential stages. Successful completion does not cancel a peer.
-Plan timeout or caller cancellation stops active work and prevents unstarted
-components from running. Their report entries contain cancellation errors.
-Partial reports are retained, and report order is independent of completion order.
+A component error cancels the other components in its stage and prevents later
+stages from starting. Successful completion does not cancel other components.
+Plan timeout or caller cancellation also stops active work. Reports contain the
+stages that started, with generator outcomes in declaration order and any partial
+measurement findings.
 
 Every runnable must honor its context and finish its goroutines and bounded
 cleanup before returning, including after partial startup. The executor waits
@@ -364,7 +374,8 @@ The [telemetrygen example](plans/telemetrygen.yaml) sends metrics, logs and trac
 to the NKTP collectors.
 
 ```yaml
-generator:
+generators:
+- name: load
   type: job
   spec:
     count: 2
@@ -412,7 +423,8 @@ own Kubernetes node template. KWOK simulates their capacity without allocating
 real CPUs or memory.
 
 ```yaml
-generator:
+generators:
+- name: nodes
   type: kubernetes
   spec:
     duration: 10m
@@ -465,7 +477,8 @@ The [KWOK example](plans/kwok-pods.yaml) simulates 1,000 Pods that complete afte
 30 seconds of Running time.
 
 ```yaml
-generator:
+generators:
+- name: pods
   type: pod
   spec:
     count: 1000
@@ -520,7 +533,8 @@ The StatefulSet generator runs long-lived replicas from a native Kubernetes Pod
 template. It keeps each replica's name when Kubernetes replaces its Pod.
 
 ```yaml
-generator:
+generators:
+- name: load
   type: statefulset
   spec:
     count: 2
@@ -573,7 +587,7 @@ The plan and profile use namespace `nktp`. Adjust both when using another namesp
 Adjust `replicas`, `duration` or the container arguments to change the load.
 The Pod name supplies Avalanche's `generator_instance` label, so that label
 survives replacement of a replica. Other scrape labels can still change.
-The measurement is no-op, so success confirms workload readiness and cleanup
+This plan has no measurement, so success confirms workload readiness and cleanup
 without verifying backend delivery or complete time-series identity.
 
 ## Continuous metrics load
@@ -622,7 +636,7 @@ Limitations:
 - Watchdog outages can cause missing scrape diagnostics and collection errors.
 - All kind nodes share the Docker VM's resources. Even placement adds no CPU or
   memory. The blackhole also consumes resources and can limit throughput.
-  A measurement timeout stops its paired generator.
+  A query failure stops all generators in the stage.
 - Spreading balances pod counts, not resource use. Insufficient capacity can
   leave pods Pending, and node failures do not trigger automatic rebalancing.
 - Telemetrygen's [upstream throughput issue](https://github.com/open-telemetry/opentelemetry-collector-contrib/issues/49950)

@@ -27,7 +27,8 @@ func TestExecutePrometheusPlan(t *testing.T) {
 timeout: 5s
 stages:
   - name: metrics
-    generator: {type: noop}
+    generators:
+      - {name: load, type: noop}
     measurement:
       type: prometheus
       spec:

@@ -7,6 +7,9 @@
 
 ## Load
 
+The plan runs nine generators in parallel within one stage, alongside a shared
+Prometheus measurement.
+
 Each of 100 workers runs 100 local generator Pods:
 
 | Group | Pods/node | Metrics/Pod | Logs/Pod | Spans/Pod |

@@ -1,18 +1,14 @@
 name: harness-smoke
-execution: parallel
 timeout: 1m
 stages:
   - name: baseline
-    generator:
+    generators:
+    - name: baseline
       type: noop
-      spec: {}
-    measurement:
+    - name: peer
       type: noop
-      spec: {}
+    measurement: {type: noop}
   - name: second-stage
-    generator:
+    generators:
+    - name: second-stage
       type: noop
-      spec: {}
-    measurement:
-      type: noop
-      spec: {}

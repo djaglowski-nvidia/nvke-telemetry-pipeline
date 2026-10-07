@@ -4,13 +4,13 @@ import (
 	"context"
 	"errors"
 	"log/slog"
-	"reflect"
 	"testing"
 	"testing/synctest"
 	"time"
 
-	"github.com/NVIDIA-dev/nktp/tests/scale/pkg/generators"
 	"github.com/NVIDIA-dev/nktp/tests/scale/pkg/measurements"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // generatorFunc implements a generator with test-controlled behavior.
@@ -25,207 +25,190 @@ type measurementFunc func(context.Context) (measurements.Report, error)
 // Run executes the configured measurement behavior.
 func (f measurementFunc) Run(ctx context.Context) (measurements.Report, error) { return f(ctx) }
 
-// TestStageComponentsOverlap requires each runnable to observe the other's start.
-func TestStageComponentsOverlap(t *testing.T) {
-	synctest.Test(t, func(t *testing.T) {
-		generatorStarted := make(chan struct{})
-		measurementStarted := make(chan struct{})
-		stage := preparedStage{
-			name: "overlap", measurementType: "test",
-			generator: generatorFunc(func(context.Context) error {
-				close(generatorStarted)
-				<-measurementStarted
-				return nil
-			}),
-			measurement: measurementFunc(func(context.Context) (measurements.Report, error) {
-				close(measurementStarted)
-				<-generatorStarted
-				return measurements.Report{"observed": true}, nil
-			}),
-		}
-		report := executeStage(t.Context(), slog.Default(), stage)
-		if report.GeneratorError != nil || report.MeasurementError != nil || report.Report["observed"] != true {
-			t.Errorf("executeStage() = %+v, want both runnables to finish successfully", report)
-		}
-	})
-}
-
-// TestStageScheduling checks overlap, successful peer completion, and report order.
+// TestStageScheduling checks parallel components, sequential stages and ordered reports.
 func TestStageScheduling(t *testing.T) {
-	for _, mode := range []Execution{Parallel, Sequential} {
-		t.Run(string(mode), func(t *testing.T) {
+	for _, last := range []string{"generator", "measurement"} {
+		t.Run(last+" finishes last", func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
-				releaseFirst := make(chan struct{})
-				started := [2]bool{}
-				stages := make([]preparedStage, 2)
-				for i, name := range []string{"first", "second"} {
-					stages[i] = preparedStage{
-						name: name, measurementType: "test",
-						generator: generatorFunc(func(context.Context) error {
-							started[i] = true
-							if i == 0 {
-								<-releaseFirst
-							}
-							return nil
-						}),
-						measurement: measurementFunc(func(context.Context) (measurements.Report, error) {
-							return measurements.Report{"name": name}, nil
-						}),
-					}
-				}
-				var reports []StageReport
-				var err error
-				done := make(chan struct{})
-				go func() {
-					reports, err = executeStages(t.Context(), slog.Default(), mode, stages)
-					close(done)
-				}()
-				synctest.Wait()
-				if want := [2]bool{true, mode == Parallel}; started != want {
-					t.Errorf("started = %v, want %v", started, want)
-				}
-				select {
-				case <-done:
-					t.Error("executeStages() returned before the first generator finished")
-				default:
-				}
-				close(releaseFirst)
-				<-done
-				if err != nil {
-					t.Fatalf("executeStages() error = %v", err)
-				}
-				want := []StageReport{
-					{Name: "first", Measurement: "test", Report: measurements.Report{"name": "first"}},
-					{Name: "second", Measurement: "test", Report: measurements.Report{"name": "second"}},
-				}
-				if !reflect.DeepEqual(reports, want) {
-					t.Errorf("executeStages() reports = %+v, want %+v", reports, want)
-				}
-			})
-		})
-	}
-}
-
-// TestStageFailureIsIsolated checks both failure directions and partial reports.
-func TestStageFailureIsIsolated(t *testing.T) {
-	boom := errors.New("component failed")
-	for _, tc := range []struct {
-		name           string
-		generatorError error
-		measureError   error
-	}{
-		{name: "generator", generatorError: boom},
-		{name: "measurement", measureError: boom},
-	} {
-		for _, mode := range []Execution{Parallel, Sequential} {
-			t.Run(tc.name+"/"+string(mode), func(t *testing.T) {
-				synctest.Test(t, func(t *testing.T) {
-					generatorStarted := make(chan struct{})
-					measurementStarted := make(chan struct{})
-					peerCleaned := false
-					// cleanup models a resource owner finishing after cancellation.
-					cleanup := func(ctx context.Context) error {
-						<-ctx.Done()
-						cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), time.Second)
-						defer cancel()
-						time.Sleep(10 * time.Millisecond)
-						peerCleaned = cleanupCtx.Err() == nil
-						return ctx.Err()
-					}
-					stages := []preparedStage{
-						{
-							name: "failing", measurementType: "test",
-							generator: generatorFunc(func(ctx context.Context) error {
-								close(generatorStarted)
-								<-measurementStarted
-								if tc.generatorError != nil {
-									return tc.generatorError
+				release := make(chan struct{})
+				started := [3]bool{}
+				cleaned, nextStarted := false, false
+				stages := []preparedStage{
+					{
+						name: "first", measurementType: "test",
+						generators: []preparedGenerator{
+							{name: "slow", generator: generatorFunc(func(context.Context) error {
+								started[0] = true
+								if last == "generator" {
+									<-release
 								}
-								return cleanup(ctx)
-							}),
-							measurement: measurementFunc(func(ctx context.Context) (measurements.Report, error) {
-								close(measurementStarted)
-								<-generatorStarted
-								report := measurements.Report{"samples": 2}
-								if tc.measureError != nil {
-									return report, tc.measureError
-								}
-								return report, cleanup(ctx)
-							}),
+								// Cleanup is part of the generator lifetime.
+								time.Sleep(time.Second)
+								cleaned = true
+								return nil
+							})},
+							{name: "fast", generator: generatorFunc(func(context.Context) error {
+								started[1] = true
+								return nil
+							})},
 						},
-						{name: "healthy", measurementType: "noop", generator: generators.Noop{}, measurement: measurements.Noop{}},
-					}
-					reports, err := executeStages(t.Context(), slog.Default(), mode, stages)
-					if !errors.Is(err, boom) || !errors.Is(err, context.Canceled) {
-						t.Errorf("executeStages() error = %v, want component failure and canceled peer", err)
-					}
-					if !peerCleaned {
-						t.Error("executeStages() returned before peer cleanup completed")
-					}
-					if reports[0].Report["samples"] != 2 {
-						t.Errorf("partial report = %v, want samples=2", reports[0].Report)
-					}
-					if reports[1].GeneratorError != nil || reports[1].MeasurementError != nil || reports[1].Report == nil {
-						t.Errorf("healthy stage = %+v, want successful execution", reports[1])
-					}
-				})
-			})
-		}
-	}
-}
-
-// TestPlanCancellation checks active peers stop and sequential stages stay unstarted.
-func TestPlanCancellation(t *testing.T) {
-	for _, mode := range []Execution{Parallel, Sequential} {
-		t.Run(string(mode), func(t *testing.T) {
-			synctest.Test(t, func(t *testing.T) {
-				ctx, cancel := context.WithCancel(t.Context())
-				defer cancel()
-				started := [2][2]bool{}
-				stages := make([]preparedStage, 2)
-				for i, name := range []string{"first", "second"} {
-					stages[i] = preparedStage{
-						name: name, measurementType: "test",
-						generator: generatorFunc(func(ctx context.Context) error {
-							started[i][0] = true
-							<-ctx.Done()
-							return ctx.Err()
+						measurement: measurementFunc(func(context.Context) (measurements.Report, error) {
+							started[2] = true
+							if last == "measurement" {
+								<-release
+							}
+							return measurements.Report{"samples": 2}, nil
 						}),
-						measurement: measurementFunc(func(ctx context.Context) (measurements.Report, error) {
-							started[i][1] = true
-							<-ctx.Done()
-							return measurements.Report{"partial": true}, ctx.Err()
+					},
+					{
+						name: "second", measurementType: "test",
+						measurement: measurementFunc(func(context.Context) (measurements.Report, error) {
+							nextStarted = true
+							assert.True(t, cleaned, "next stage started before generator cleanup")
+							return measurements.Report{}, nil
 						}),
-					}
+					},
 				}
 				var reports []StageReport
 				var err error
 				done := make(chan struct{})
 				go func() {
-					reports, err = executeStages(ctx, slog.Default(), mode, stages)
+					reports, err = executeStages(t.Context(), slog.Default(), stages)
 					close(done)
 				}()
 				synctest.Wait()
-				cancel()
+				assert.Equal(t, [3]bool{true, true, true}, started)
+				assert.False(t, nextStarted)
+				close(release)
 				<-done
-				if !errors.Is(err, context.Canceled) {
-					t.Errorf("executeStages() error = %v, want context.Canceled", err)
-				}
-				wantStarted := [2][2]bool{{true, true}, {mode == Parallel, mode == Parallel}}
-				if started != wantStarted {
-					t.Errorf("started = %v, want %v", started, wantStarted)
-				}
-				for i, report := range reports {
-					if !errors.Is(report.GeneratorError, context.Canceled) || !errors.Is(report.MeasurementError, context.Canceled) {
-						t.Errorf("reports[%d] = %+v, want cancellation attributed to both components", i, report)
-					}
-					if started[i][1] && report.Report["partial"] != true {
-						t.Errorf("reports[%d].Report = %v, want partial findings", i, report.Report)
-					}
-				}
+				require.NoError(t, err)
+				assert.True(t, nextStarted)
+				require.Len(t, reports, 2)
+				assert.Equal(t, "first", reports[0].Name)
+				assert.Equal(t, "second", reports[1].Name)
+				assert.Equal(t, []GeneratorReport{{Name: "slow"}, {Name: "fast"}}, reports[0].Generators)
+				assert.Equal(t, measurements.Report{"samples": 2}, reports[0].Report)
 			})
 		})
 	}
+}
+
+// TestStageFailureStopsPlan checks peer cancellation, cleanup and partial findings.
+func TestStageFailureStopsPlan(t *testing.T) {
+	for _, source := range []string{"generator", "measurement"} {
+		t.Run(source, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				failure := errors.New("component failed")
+				started := make(chan struct{}, 3)
+				release := make(chan struct{})
+				cleaned := [2]bool{}
+				nextStarted := false
+				stages := []preparedStage{
+					{
+						name: "failing", measurementType: "test",
+						generators: []preparedGenerator{
+							{name: "load", generator: generatorFunc(func(ctx context.Context) error {
+								started <- struct{}{}
+								<-release
+								if source == "generator" {
+									return failure
+								}
+								<-ctx.Done()
+								cleaned[0] = true
+								return ctx.Err()
+							})},
+							{name: "peer", generator: generatorFunc(func(ctx context.Context) error {
+								started <- struct{}{}
+								<-ctx.Done()
+								time.Sleep(time.Second)
+								cleaned[1] = true
+								return ctx.Err()
+							})},
+						},
+						measurement: measurementFunc(func(ctx context.Context) (measurements.Report, error) {
+							started <- struct{}{}
+							<-release
+							report := measurements.Report{"samples": 2}
+							if source == "measurement" {
+								return report, failure
+							}
+							<-ctx.Done()
+							cleaned[0] = true
+							return report, ctx.Err()
+						}),
+					},
+					{name: "unstarted", generators: []preparedGenerator{
+						{name: "load", generator: generatorFunc(func(context.Context) error {
+							nextStarted = true
+							return nil
+						})},
+					}},
+				}
+				var reports []StageReport
+				var err error
+				done := make(chan struct{})
+				go func() {
+					reports, err = executeStages(t.Context(), slog.Default(), stages)
+					close(done)
+				}()
+				for range 3 {
+					<-started
+				}
+				close(release)
+				<-done
+				assert.ErrorIs(t, err, failure)
+				assert.ErrorIs(t, err, context.Canceled)
+				assert.Equal(t, [2]bool{true, true}, cleaned)
+				assert.False(t, nextStarted)
+				require.Len(t, reports, 1)
+				assert.Equal(t, 2, reports[0].Report["samples"])
+				assert.ErrorIs(t, reports[0].Generators[1].Error, context.Canceled)
+			})
+		})
+	}
+}
+
+// TestPlanCancellation checks active components stop and later stages stay unstarted.
+func TestPlanCancellation(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx, cancel := context.WithCancel(t.Context())
+		defer cancel()
+		started := [2][2]bool{}
+		stages := make([]preparedStage, 2)
+		for i, name := range []string{"first", "second"} {
+			stages[i] = preparedStage{
+				name: name, measurementType: "test",
+				generators: []preparedGenerator{
+					{name: "load", generator: generatorFunc(func(ctx context.Context) error {
+						started[i][0] = true
+						<-ctx.Done()
+						return ctx.Err()
+					})},
+				},
+				measurement: measurementFunc(func(ctx context.Context) (measurements.Report, error) {
+					started[i][1] = true
+					<-ctx.Done()
+					return measurements.Report{"partial": true}, ctx.Err()
+				}),
+			}
+		}
+		var reports []StageReport
+		var err error
+		done := make(chan struct{})
+		go func() {
+			reports, err = executeStages(ctx, slog.Default(), stages)
+			close(done)
+		}()
+		synctest.Wait()
+		cancel()
+		<-done
+		assert.ErrorIs(t, err, context.Canceled)
+		assert.Equal(t, [2][2]bool{{true, true}, {}}, started)
+		require.Len(t, reports, 1)
+		assert.ErrorIs(t, reports[0].Generators[0].Error, context.Canceled)
+		assert.ErrorIs(t, reports[0].MeasurementError, context.Canceled)
+		assert.Equal(t, true, reports[0].Report["partial"])
+	})
 }
 
 // TestIgnoredDeadlineCannotPass checks a runnable returning nil after cancellation.
@@ -234,16 +217,15 @@ func TestIgnoredDeadlineCannotPass(t *testing.T) {
 		ctx, cancel := context.WithTimeout(t.Context(), time.Second)
 		defer cancel()
 		stage := preparedStage{
-			name: "late", measurementType: "noop",
-			generator: generatorFunc(func(context.Context) error {
-				time.Sleep(2 * time.Second)
-				return nil
-			}),
-			measurement: measurements.Noop{},
+			name: "late",
+			generators: []preparedGenerator{
+				{name: "load", generator: generatorFunc(func(context.Context) error {
+					time.Sleep(2 * time.Second)
+					return nil
+				})},
+			},
 		}
-		_, err := executeStages(ctx, slog.Default(), Parallel, []preparedStage{stage})
-		if !errors.Is(err, context.DeadlineExceeded) {
-			t.Errorf("executeStages() error = %v, want context.DeadlineExceeded", err)
-		}
+		_, err := executeStages(ctx, slog.Default(), []preparedStage{stage})
+		assert.ErrorIs(t, err, context.DeadlineExceeded)
 	})
 }

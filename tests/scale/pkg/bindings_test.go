@@ -17,6 +17,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.yaml.in/yaml/v3"
 	batchv1 "k8s.io/api/batch/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -28,10 +30,10 @@ import (
 func TestParseSubstitutesArguments(t *testing.T) {
 	data := []byte(`name: 'experiment-{{ .Args.name }}'
 timeout: '{{ .Args.duration }}'
-execution: '{{ .Args.execution }}'
 stages:
   - name: '{{ .Args.stage }}'
-    generator:
+    generators:
+    - name: load
       type: '{{ .Args.generator }}'
       spec:
         args:
@@ -48,47 +50,31 @@ stages:
 	args := map[string]string{
 		"name":      "smoke",
 		"duration":  "1m",
-		"execution": "sequential",
 		"stage":     "load",
 		"generator": "custom",
 		"runId":     "ci-123",
 	}
 	originalData, originalArgs := bytes.Clone(data), maps.Clone(args)
 	plan, err := Parse(data, args)
-	if err != nil {
-		t.Fatalf("Parse() error = %v", err)
-	}
-	if plan.Name != "experiment-smoke" || plan.Timeout != time.Minute || plan.Execution != Sequential {
-		t.Errorf("Parse() = %+v, want substituted name, timeout, and execution", plan)
-	}
-	if len(plan.Stages) != 1 {
-		t.Fatalf("Parse().Stages has %d stages, want 1", len(plan.Stages))
-	}
+	require.NoError(t, err)
+	assert.Equal(t, "experiment-smoke", plan.Name)
+	assert.Equal(t, time.Minute, plan.Timeout)
+	require.Len(t, plan.Stages, 1)
 	stage := plan.Stages[0]
-	if stage.Name != "load" || stage.Generator.Type != "custom" {
-		t.Errorf("Parse().Stages[0] = %+v, want substituted name and generator type", stage)
-	}
+	assert.Equal(t, "load", stage.Name)
+	require.Len(t, stage.Generators, 1)
+	assert.Equal(t, "custom", stage.Generators[0].Type)
 	var got map[string]any
-	if err := stage.Generator.Spec.Decode(&got); err != nil {
-		t.Fatalf("decode generator spec: %v", err)
-	}
-	want := map[string]any{
+	require.NoError(t, stage.Generators[0].Spec.Decode(&got))
+	assert.Equal(t, map[string]any{
 		"args":   []any{`--telemetry-attributes=test_run_id="ci-123"`},
 		"nested": map[string]any{"count": 42, "enabled": true, "empty": nil},
-	}
-	if !reflect.DeepEqual(got, want) {
-		t.Errorf("generator spec = %#v, want %#v", got, want)
-	}
+	}, got)
 	var measurement map[string]string
-	if err := stage.Measurement.Spec.Decode(&measurement); err != nil {
-		t.Fatalf("decode measurement spec: %v", err)
-	}
-	if got, want := measurement["query"], `sum(metric{test_run_id="ci-123"})`; got != want {
-		t.Errorf("measurement query = %q, want %q", got, want)
-	}
-	if !bytes.Equal(data, originalData) || !maps.Equal(args, originalArgs) {
-		t.Error("Parse() changed its source or argument map")
-	}
+	require.NoError(t, stage.Measurement.Spec.Decode(&measurement))
+	assert.Equal(t, `sum(metric{test_run_id="ci-123"})`, measurement["query"])
+	assert.Equal(t, originalData, data)
+	assert.Equal(t, originalArgs, args)
 }
 
 // TestParseReportsMissingArgument checks that execution rejects an absent value.
@@ -97,7 +83,8 @@ func TestParseReportsMissingArgument(t *testing.T) {
 timeout: 1m
 stages:
   - name: load
-    generator:
+    generators:
+    - name: load
       type: custom
       spec:
         args:
@@ -176,7 +163,7 @@ func TestParseSubstitutesBeforeYAMLDecoding(t *testing.T) {
 		t.Fatalf("Parse() error = %v", err)
 	}
 	var got map[string]any
-	if err := plan.Stages[0].Generator.Spec.Decode(&got); err != nil {
+	if err := plan.Stages[0].Generators[0].Spec.Decode(&got); err != nil {
 		t.Fatalf("Decode() error = %v", err)
 	}
 	if want := map[string]any{"count": 100}; !reflect.DeepEqual(got, want) {
@@ -208,7 +195,7 @@ func TestParsePreservesStrictDecoding(t *testing.T) {
 		t.Fatalf("Parse() error = %v", err)
 	}
 	var got map[string]any
-	if err := plan.Stages[0].Generator.Spec.Decode(&got); err != nil {
+	if err := plan.Stages[0].Generators[0].Spec.Decode(&got); err != nil {
 		t.Fatalf("decode generator spec: %v", err)
 	}
 	if want := map[string]any{"count": "100", "enabled": "true"}; !reflect.DeepEqual(got, want) {
@@ -217,7 +204,7 @@ func TestParsePreservesStrictDecoding(t *testing.T) {
 	var typed struct {
 		Count int `yaml:"count"`
 	}
-	if err := plan.Stages[0].Generator.Spec.Decode(&typed); err == nil {
+	if err := plan.Stages[0].Generators[0].Spec.Decode(&typed); err == nil {
 		t.Error("substituted string decoded into an integer, want a type error")
 	}
 }
@@ -235,7 +222,7 @@ func TestParseConcurrentSharedInputs(t *testing.T) {
 				t.Errorf("Parse() error = %v", err)
 				return
 			}
-			spec := &plan.Stages[0].Generator.Spec
+			spec := &plan.Stages[0].Generators[0].Spec
 			if got := spec.Content[1].Value; got != "shared-input" {
 				t.Errorf("resolved value = %q, want shared-input", got)
 			}
@@ -253,7 +240,7 @@ func TestParseConcurrentSharedInputs(t *testing.T) {
 // API that captures Job arguments and rejects creation without needing a cluster.
 func TestConcurrentExecuteUsesResolvedJobArguments(t *testing.T) {
 	const executions = 4
-	created := make(chan []string, executions*2)
+	created := make(chan []string, executions)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		if r.Method == http.MethodPost && r.URL.Path == "/apis/batch/v1/namespaces/load/jobs" {
@@ -291,7 +278,8 @@ func TestConcurrentExecuteUsesResolvedJobArguments(t *testing.T) {
 timeout: 10s
 stages:
   - name: first
-    generator:
+    generators:
+    - name: load
       type: job
       spec:
         podTemplate:
@@ -385,18 +373,12 @@ stages:
 			t.Errorf("report RunID = %q, want a nonempty unique ID", report.RunID)
 		}
 		seen[report.RunID] = true
-		if len(report.Stages) != 2 {
-			t.Errorf("report has %d stages, want 2", len(report.Stages))
-		}
-		for _, stage := range report.Stages {
-			if stage.GeneratorError == nil {
-				t.Errorf("stage %q lost the generator error", stage.Name)
-			}
-		}
+		// The first stage fails, so the second must never submit its Job.
+		require.Len(t, report.Stages, 1)
+		require.Len(t, report.Stages[0].Generators, 1)
+		assert.Error(t, report.Stages[0].Generators[0].Error)
 		jobs := byRun[report.RunID]
-		if len(jobs) != 2 {
-			t.Errorf("run %q submitted %d Jobs, want 2", report.RunID, len(jobs))
-		}
+		require.Len(t, jobs, 1)
 		want := []string{report.RunID, `--telemetry-attributes=test_run_id="` + report.RunID + `"`, "{{ .Args.keep-literal }}", "${OTHER} $RUN_ID $(echo untouched)"}
 		for _, got := range jobs {
 			if !slices.Equal(got, want) {

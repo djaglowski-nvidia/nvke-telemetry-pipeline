@@ -23,7 +23,10 @@ func TestExamplePlans(t *testing.T) {
 			plan, err := Parse(data, map[string]string{runIDArgument: "example-run"})
 			require.NoError(t, err, "Parse()")
 			if filepath.Base(path) == "telemetrygen.yaml" {
-				for _, stage := range plan.Stages {
+				require.Len(t, plan.Stages, 1)
+				stage := plan.Stages[0]
+				require.Len(t, stage.Generators, 3)
+				for _, generator := range stage.Generators {
 					var spec struct {
 						PodTemplate struct {
 							Spec struct {
@@ -33,24 +36,22 @@ func TestExamplePlans(t *testing.T) {
 							} `yaml:"spec"`
 						} `yaml:"podTemplate"`
 					}
-					require.NoError(t, stage.Generator.Spec.Decode(&spec), "Decode()")
-					want := `--telemetry-attributes=test_run_id="example-run"`
+					require.NoError(t, generator.Spec.Decode(&spec), "Decode()")
 					containers := spec.PodTemplate.Spec.Containers
-					require.Len(t, containers, 1, "stage %q containers", stage.Name)
-					assert.Contains(t, containers[0].Args, want, "stage %q telemetry attribute", stage.Name)
-					if stage.Name == "metrics" {
-						require.Equal(t, "prometheus", stage.Measurement.Type)
-						var spec struct {
-							Measurements []measurements.Measurement `yaml:"measurements"`
-						}
-						require.NoError(t, stage.Measurement.Spec.Decode(&spec))
-						index := slices.IndexFunc(spec.Measurements, func(m measurements.Measurement) bool {
-							return m.Name == "active_series"
-						})
-						require.GreaterOrEqual(t, index, 0, "stage %q active_series measurement", stage.Name)
-						assert.Contains(t, spec.Measurements[index].Query, `test_run_id="example-run"`, "stage %q measurement attribution", stage.Name)
-					}
+					require.Len(t, containers, 1, "generator %q containers", generator.Name)
+					assert.Contains(t, containers[0].Args, `--telemetry-attributes=test_run_id="example-run"`, "generator %q telemetry attribute", generator.Name)
 				}
+				require.NotNil(t, stage.Measurement)
+				require.Equal(t, "prometheus", stage.Measurement.Type)
+				var spec struct {
+					Measurements []measurements.Measurement `yaml:"measurements"`
+				}
+				require.NoError(t, stage.Measurement.Spec.Decode(&spec))
+				index := slices.IndexFunc(spec.Measurements, func(m measurements.Measurement) bool {
+					return m.Name == "active_series"
+				})
+				require.GreaterOrEqual(t, index, 0, "active_series measurement")
+				assert.Contains(t, spec.Measurements[index].Query, `test_run_id="example-run"`)
 			}
 			_, err = prepareStages(plan.Stages, "/example/kubeconfig")
 			assert.NoError(t, err, "prepareStages()")

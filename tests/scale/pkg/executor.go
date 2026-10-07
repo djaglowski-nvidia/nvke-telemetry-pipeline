@@ -17,7 +17,7 @@ type generator interface {
 	Run(context.Context) error
 }
 
-// measurement observes and evaluates a stage concurrently with its generator.
+// measurement observes and evaluates a stage concurrently with its generators.
 // Run is called once per instance, must honor cancellation, and must finish its
 // goroutines and bounded cleanup before returning. It may return a partial report
 // with an error. A successful report may be empty. Failed checks return errors.
@@ -31,11 +31,17 @@ type StageReport struct {
 	Name             string
 	Measurement      string
 	Report           measurements.Report
-	GeneratorError   error
+	Generators       []GeneratorReport
 	MeasurementError error
 }
 
-// PlanReport consolidates one execution's results in stage declaration order.
+// GeneratorReport attributes a generator's outcome to its configured name.
+type GeneratorReport struct {
+	Name  string
+	Error error
+}
+
+// PlanReport contains started stages in declaration order.
 type PlanReport struct {
 	Plan   string
 	RunID  string
@@ -53,7 +59,7 @@ type Executor struct {
 }
 
 // Execute constructs all runnables before starting any stage, then runs them
-// under the plan timeout. Stage failures cancel their peer but not other stages.
+// under the plan timeout. A stage failure cancels its peers and stops the plan.
 // Cancellation stops unstarted stages and waits for started runnables to return.
 // Reports, including partial findings, accompany execution errors. Invalid plans
 // return an empty PlanReport. Completion uses the default slog logger.
@@ -70,7 +76,6 @@ func (e Executor) Execute(ctx context.Context, plan Plan, runID string) (PlanRep
 	if plan.runID != "" && plan.runID != runID {
 		return PlanReport{}, fmt.Errorf("run-id %q does not match parsed plan run-id %q", runID, plan.runID)
 	}
-	plan.setDefaults()
 	if err := plan.validate(); err != nil {
 		return PlanReport{}, err
 	}
@@ -81,97 +86,122 @@ func (e Executor) Execute(ctx context.Context, plan Plan, runID string) (PlanRep
 	logger := slog.With("plan", plan.Name, "run_id", runID)
 	runCtx, cancel := context.WithTimeout(ctx, plan.Timeout)
 	defer cancel()
-	reports, err := executeStages(runCtx, logger, plan.Execution, stages)
+	reports, err := executeStages(runCtx, logger, stages)
 	logger.InfoContext(ctx, "plan completed", "stages", len(reports), "error", err)
 	return PlanReport{Plan: plan.Name, RunID: runID, Stages: reports}, err
 }
 
 // preparedStage binds validated specifications to fresh, inert runnables.
 type preparedStage struct {
-	name            string
+	// name identifies the stage in reports and logs.
+	name string
+	// generators retain declaration order for reporting.
+	generators []preparedGenerator
+	// measurementType identifies the observer implementation when present.
 	measurementType string
-	generator       generator
-	measurement     measurement
+	// measurement is nil for a load-only stage.
+	measurement measurement
+}
+
+// preparedGenerator binds a configured name to a validated generator.
+type preparedGenerator struct {
+	// name identifies the generator within its stage.
+	name string
+	// generator owns the workload and its cleanup.
+	generator generator
 }
 
 // prepareStages validates every implementation before execution acquires resources.
 func prepareStages(stages []Stage, kubeconfig string) ([]preparedStage, error) {
 	prepared := make([]preparedStage, 0, len(stages))
 	for _, stage := range stages {
-		g, err := newGenerator(stage.Generator, kubeconfig)
-		if err != nil {
-			return nil, fmt.Errorf("stage %q generator: %w", stage.Name, err)
+		p := preparedStage{name: stage.Name}
+		for _, spec := range stage.Generators {
+			g, err := newGenerator(spec.ComponentSpec, kubeconfig)
+			if err != nil {
+				return nil, fmt.Errorf("stage %q generator %q: %w", stage.Name, spec.Name, err)
+			}
+			p.generators = append(p.generators, preparedGenerator{name: spec.Name, generator: g})
 		}
-		m, err := newMeasurement(stage.Measurement)
-		if err != nil {
-			return nil, fmt.Errorf("stage %q measurement: %w", stage.Name, err)
+		if stage.Measurement != nil {
+			m, err := newMeasurement(*stage.Measurement)
+			if err != nil {
+				return nil, fmt.Errorf("stage %q measurement: %w", stage.Name, err)
+			}
+			p.measurementType, p.measurement = stage.Measurement.Type, m
 		}
-		prepared = append(prepared, preparedStage{
-			name: stage.Name, measurementType: stage.Measurement.Type,
-			generator: g, measurement: m,
-		})
+		prepared = append(prepared, p)
 	}
 	return prepared, nil
 }
 
-// executeStages schedules independent stages and joins every started goroutine.
-// Each stage owns one result slot. Aggregation starts only after all writers exit.
-func executeStages(ctx context.Context, logger *slog.Logger, execution Execution, stages []preparedStage) ([]StageReport, error) {
-	reports := make([]StageReport, len(stages))
-	var wg sync.WaitGroup
-	for i, stage := range stages {
-		if execution == Parallel {
-			wg.Go(func() { reports[i] = executeStage(ctx, logger, stage) })
-		} else {
-			reports[i] = executeStage(ctx, logger, stage)
+// executeStages runs stages in order and stops after the first failed stage.
+// Only stages that started are included in the report.
+func executeStages(ctx context.Context, logger *slog.Logger, stages []preparedStage) ([]StageReport, error) {
+	reports := make([]StageReport, 0, len(stages))
+	for _, stage := range stages {
+		if err := ctx.Err(); err != nil {
+			return reports, err
 		}
-	}
-	wg.Wait()
-	var errs []error
-	for _, report := range reports {
-		if report.GeneratorError != nil {
-			errs = append(errs, fmt.Errorf("stage %q generator: %w", report.Name, report.GeneratorError))
+		report := executeStage(ctx, logger, stage)
+		reports = append(reports, report)
+		var errs []error
+		for _, g := range report.Generators {
+			if g.Error != nil {
+				errs = append(errs, fmt.Errorf("stage %q generator %q: %w", report.Name, g.Name, g.Error))
+			}
 		}
 		if report.MeasurementError != nil {
 			errs = append(errs, fmt.Errorf("stage %q measurement: %w", report.Name, report.MeasurementError))
 		}
+		err := errors.Join(append(errs, ctx.Err())...)
+		logger.InfoContext(ctx, "stage completed", "stage", stage.name, "error", err)
+		if err != nil {
+			return reports, err
+		}
 	}
-	return reports, errors.Join(append(errs, ctx.Err())...)
+	return reports, ctx.Err()
 }
 
-// executeStage runs both components to completion, canceling the peer on error.
-// Successful completion does not stop the other component. Cancellation is checked
-// before each Run and after it returns, so an ignored deadline cannot pass.
+// executeStage runs all components to completion, canceling peers on error.
+// Successful completion does not stop other components. Each goroutine owns a
+// separate result slot, and all resource cleanup finishes before the report returns.
 func executeStage(ctx context.Context, logger *slog.Logger, stage preparedStage) StageReport {
-	report := StageReport{Name: stage.name, Measurement: stage.measurementType}
+	report := StageReport{
+		Name: stage.name, Measurement: stage.measurementType,
+		Generators: make([]GeneratorReport, len(stage.generators)),
+	}
 	stageCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	if stageCtx.Err() == nil {
 		logger.InfoContext(stageCtx, "stage started", "stage", stage.name)
 	}
 	var wg sync.WaitGroup
-	wg.Go(func() {
-		err := stageCtx.Err()
-		if err == nil {
-			err = stage.generator.Run(stageCtx)
-		}
-		report.GeneratorError = errors.Join(err, stageCtx.Err())
-		if report.GeneratorError != nil {
-			cancel()
-		}
-	})
-	wg.Go(func() {
-		err := stageCtx.Err()
-		if err == nil {
-			report.Report, err = stage.measurement.Run(stageCtx)
-		}
-		report.MeasurementError = errors.Join(err, stageCtx.Err())
-		if report.MeasurementError != nil {
-			cancel()
-		}
-	})
+	for i, g := range stage.generators {
+		report.Generators[i].Name = g.name
+		wg.Go(func() {
+			err := stageCtx.Err()
+			if err == nil {
+				err = g.generator.Run(stageCtx)
+			}
+			report.Generators[i].Error = err
+			if report.Generators[i].Error != nil {
+				cancel()
+			}
+		})
+	}
+	if stage.measurement != nil {
+		wg.Go(func() {
+			err := stageCtx.Err()
+			if err == nil {
+				report.Report, err = stage.measurement.Run(stageCtx)
+			}
+			report.MeasurementError = err
+			if report.MeasurementError != nil {
+				cancel()
+			}
+		})
+	}
 	wg.Wait()
-	logger.InfoContext(ctx, "stage completed", "stage", stage.name,
-		"generator_error", report.GeneratorError, "measurement_error", report.MeasurementError)
 	return report
 }

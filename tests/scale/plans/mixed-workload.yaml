@@ -1,11 +1,11 @@
 # Mixed workload on 100 real workers. See ../mixed-workload.md.
 # Install ../mixed-workload-values.yaml first. Only runId is a plan argument.
 name: mixed-workload
-execution: parallel
 timeout: 105m
 stages:
-  - name: small-scraped
-    generator:
+  - name: load
+    generators:
+    - name: small-scraped
       type: statefulset
       spec:
         count: 10
@@ -89,10 +89,8 @@ stages:
             volumes:
               - name: vector-config
                 configMap: {name: nktp-mixed-workload-stdout-small}
-    measurement: {type: noop}
 
-  - name: small-instrumented
-    generator:
+    - name: small-instrumented
       type: statefulset
       spec:
         count: 10
@@ -243,10 +241,8 @@ stages:
                 configMap: {name: nktp-mixed-workload-stdout-small}
               - name: metrics-config
                 configMap: {name: nktp-mixed-workload-otlp-metrics}
-    measurement: {type: noop}
 
-  - name: node-local-targets
-    generator:
+    - name: node-local-targets
       type: statefulset
       spec:
         count: 4
@@ -309,10 +305,8 @@ stages:
                 env:
                   - name: POD_UID
                     valueFrom: {fieldRef: {fieldPath: "metadata.uid"}}
-    measurement: {type: noop}
 
-  - name: large-logs
-    generator:
+    - name: large-logs
       type: statefulset
       spec:
         count: 4
@@ -366,10 +360,8 @@ stages:
             volumes:
               - name: vector-config
                 configMap: {name: nktp-mixed-workload-stdout-large}
-    measurement: {type: noop}
 
-  - name: large-traces
-    generator:
+    - name: large-traces
       type: statefulset
       spec:
         count: 2
@@ -442,10 +434,8 @@ stages:
                   allowPrivilegeEscalation: false
                   readOnlyRootFilesystem: true
                   capabilities: {drop: [ALL]}
-    measurement: {type: noop}
 
-  - name: events
-    generator:
+    - name: events
       type: pod
       spec:
         count: 100
@@ -503,10 +493,8 @@ stages:
             volumes:
               - name: events-config
                 configMap: {name: nktp-mixed-workload-events}
-    measurement: {type: noop}
 
-  - name: large-150k
-    generator:
+    - name: large-150k
       type: statefulset
       spec:
         replicas: 24
@@ -558,10 +546,8 @@ stages:
                   allowPrivilegeEscalation: false
                   readOnlyRootFilesystem: true
                   capabilities: {drop: [ALL]}
-    measurement: {type: noop}
 
-  - name: large-300k
-    generator:
+    - name: large-300k
       type: statefulset
       spec:
         replicas: 24
@@ -613,10 +599,8 @@ stages:
                   allowPrivilegeEscalation: false
                   readOnlyRootFilesystem: true
                   capabilities: {drop: [ALL]}
-    measurement: {type: noop}
 
-  - name: large-600k
-    generator:
+    - name: large-600k
       type: statefulset
       spec:
         replicas: 6
@@ -668,11 +652,7 @@ stages:
                   allowPrivilegeEscalation: false
                   readOnlyRootFilesystem: true
                   capabilities: {drop: [ALL]}
-    measurement: {type: noop}
 
-  - name: observations
-    generator:
-      type: noop
     measurement:
       type: prometheus
       spec:

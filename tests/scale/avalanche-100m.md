@@ -1,8 +1,8 @@
 # Avalanche 100M
 
 Reproduce the completed experiment's **100M active-series workload** with 15,658
-stock Avalanche Pods. Six generator stages run in parallel with one shared
-observation stage. Each Pod exposes one target with stable counters and no churn.
+stock Avalanche Pods. Six generators run in parallel within one stage with a shared
+measurement. Each Pod exposes one target with stable counters and no churn.
 
 | Series per target | Pods | Total series | Scraper |
 | ---: | ---: | ---: | --- |
@@ -135,7 +135,7 @@ Queries record evidence without enforcing performance thresholds. Blackhole
 cannot prove unique-series persistence or complete delivery. Missing or delayed
 observations invalidate coverage claims. Missing failure counters are not zero.
 
-Parallel stages fail independently. Stop the whole run if a stage fails.
+A generator or measurement failure stops the whole run.
 The current framework can report an error when completed Pods disappear. Its
 five-minute automatic cleanup budget can also leave Pods at this scale. After
 stopping the harness, remove any remaining producers from that run:

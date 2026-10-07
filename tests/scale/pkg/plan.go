@@ -11,34 +11,29 @@ import (
 	"go.yaml.in/yaml/v3"
 )
 
-// Execution controls scheduling between stages, not within a stage.
-type Execution string
-
-const (
-	// Parallel runs stages concurrently and is the default execution mode.
-	Parallel Execution = "parallel"
-	// Sequential completes each stage before starting the next.
-	Sequential Execution = "sequential"
-)
-
-// Plan describes a named test whose stages share an execution deadline.
-// The empty Execution value means Parallel. Timeout must be positive.
+// Plan describes sequential stages that share an execution deadline.
+// Timeout must be positive.
 type Plan struct {
-	Name      string        `yaml:"name"`
-	Execution Execution     `yaml:"execution"`
-	Timeout   time.Duration `yaml:"timeout"`
-	Stages    []Stage       `yaml:"stages"`
+	Name    string        `yaml:"name"`
+	Timeout time.Duration `yaml:"timeout"`
+	Stages  []Stage       `yaml:"stages"`
 
 	// runID retains the validated argument supplied to Parse and is empty when omitted.
 	runID string
 }
 
-// Stage pairs one generator with one measurement, which run concurrently.
+// Stage runs its generators and optional measurement concurrently.
 // Names must be nonempty and unique within the plan.
 type Stage struct {
-	Name        string        `yaml:"name"`
-	Generator   ComponentSpec `yaml:"generator"`
-	Measurement ComponentSpec `yaml:"measurement"`
+	Name        string          `yaml:"name"`
+	Generators  []GeneratorSpec `yaml:"generators,omitempty"`
+	Measurement *ComponentSpec  `yaml:"measurement,omitempty"`
+}
+
+// GeneratorSpec names a generator within its stage.
+type GeneratorSpec struct {
+	Name          string `yaml:"name"`
+	ComponentSpec `yaml:",inline"`
 }
 
 // ComponentSpec selects an implementation and preserves its configuration.
@@ -53,7 +48,7 @@ type ComponentSpec struct {
 // must fit the surrounding YAML syntax and quoting.
 // Parse validates and retains runId when supplied so Executor.Execute can
 // reject mismatched attribution. It does not generate argument defaults or change
-// args or data. It defaults execution to Parallel and validates the plan structure.
+// args or data. It validates the plan structure.
 // Executor.Execute validates component specs before execution.
 func Parse(data []byte, args map[string]string) (Plan, error) {
 	if runID, supplied := args[runIDArgument]; supplied {
@@ -75,27 +70,16 @@ func Parse(data []byte, args map[string]string) (Plan, error) {
 	if err := decoder.Decode(&extra); err != io.EOF {
 		return Plan{}, errors.New("plan must contain exactly one YAML document")
 	}
-	plan.setDefaults()
 	if err := plan.validate(); err != nil {
 		return Plan{}, err
 	}
 	return plan, nil
 }
 
-// setDefaults supplies omitted execution settings without changing stage data.
-func (p *Plan) setDefaults() {
-	if p.Execution == "" {
-		p.Execution = Parallel
-	}
-}
-
 // validate checks the envelope for both parsed and programmatically built plans.
 func (p Plan) validate() error {
 	if strings.TrimSpace(p.Name) == "" {
 		return errors.New("plan name is required")
-	}
-	if p.Execution != Parallel && p.Execution != Sequential {
-		return fmt.Errorf("execution %q: want parallel or sequential", p.Execution)
 	}
 	if p.Timeout <= 0 {
 		return errors.New("plan timeout must be positive")
@@ -112,8 +96,24 @@ func (p Plan) validate() error {
 			return fmt.Errorf("duplicate stage name %q", stage.Name)
 		}
 		names[stage.Name] = true
-		if stage.Generator.Type == "" || stage.Measurement.Type == "" {
-			return fmt.Errorf("stage %q requires generator.type and measurement.type", stage.Name)
+		if len(stage.Generators) == 0 && stage.Measurement == nil {
+			return fmt.Errorf("stage %q requires generators or a measurement", stage.Name)
+		}
+		generatorNames := make(map[string]bool, len(stage.Generators))
+		for j, generator := range stage.Generators {
+			if strings.TrimSpace(generator.Name) == "" {
+				return fmt.Errorf("stage %q generators[%d].name is required", stage.Name, j)
+			}
+			if generatorNames[generator.Name] {
+				return fmt.Errorf("stage %q has duplicate generator name %q", stage.Name, generator.Name)
+			}
+			generatorNames[generator.Name] = true
+			if generator.Type == "" {
+				return fmt.Errorf("stage %q generator %q requires type", stage.Name, generator.Name)
+			}
+		}
+		if stage.Measurement != nil && stage.Measurement.Type == "" {
+			return fmt.Errorf("stage %q requires measurement.type", stage.Name)
 		}
 	}
 	return nil

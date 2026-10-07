@@ -3,7 +3,8 @@ name: watchdog-5000
 timeout: 45m
 stages:
   - name: node-collectors
-    generator:
+    generators:
+    - name: node-collectors
       type: statefulset
       spec:
         count: 5

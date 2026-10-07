@@ -3,7 +3,8 @@ name: pod-churn-10k
 timeout: 45m
 stages:
 - name: churn
-  generator:
+  generators:
+  - name: churn
     type: job
     spec:
       count: 100

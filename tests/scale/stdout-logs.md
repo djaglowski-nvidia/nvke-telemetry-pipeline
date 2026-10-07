@@ -46,7 +46,7 @@ task scale:test KUBECONFIG="$KUBECONFIG" TEST_TIMEOUT=115m -- \
 
 ## Results
 
-- Execution: small, large and observation stages run concurrently
+- Execution: small and large generators run concurrently with one shared measurement
 - Runtime: 90 minutes per StatefulSet after all replicas become Ready, 100-minute observations from stage start, 105-minute plan ceiling
 - Throughput: generated records/s and body bytes/s per node/bucket
 - Performance: average and peak CPU, memory, throttling, queue occupancy and gateway replicas

@@ -3,11 +3,11 @@
 # Measurements report point rates, not stored distinct-series cardinality.
 # Telemetrygen continuously creates new identities throughout this ten-minute run.
 name: metrics-2m
-execution: parallel
 timeout: 11m
 stages:
-  - name: telemetrygen
-    generator:
+  - name: load
+    generators:
+    - name: telemetrygen
       type: job
       spec:
         # The scale profile adds a client-address label at the metrics gateway.
@@ -37,6 +37,54 @@ stages:
                   - --allow-export-failures
                   - '--telemetry-attributes=test_run_id="{{ .Args.runId }}"'
                   - '--telemetry-attributes=load_generator="telemetrygen"'
+    - name: avalanche
+      type: job
+      spec:
+        parallelism: 10
+        podTemplate:
+          metadata:
+            namespace: nktp
+            labels:
+              scale.nktp.io/workload: avalanche
+          spec:
+            containers:
+              - name: generator
+                image: quay.io/prometheuscommunity/avalanche:v0.7.0@sha256:ea02e9599fcbb59a6fc7396656434faf200db7f1c259802e3dbb38cec81bd12a
+                command: [/bin/sh, -c]
+                args:
+                  - |
+                    "$@" --const-label="generator_instance=$(hostname)" &
+                    generator=$!
+                    # cleanup stops and reaps Avalanche on every exit path.
+                    cleanup() {
+                      kill "$generator" 2>/dev/null || true
+                      wait "$generator" 2>/dev/null || true
+                    }
+                    trap cleanup EXIT
+                    trap 'exit 143' TERM
+                    trap 'exit 130' INT
+                    for second in $(seq 600)
+                    do
+                      sleep 1
+                      if ! kill -0 "$generator" 2>/dev/null
+                      then
+                        wait "$generator" || exit "$?"
+                        echo "Avalanche exited before the duration elapsed" >&2
+                        exit 1
+                      fi
+                    done
+                    # A live workload reaching the duration is the only successful exit.
+                    exit 0
+                  - avalanche
+                  - /bin/avalanche
+                  - --port=9001
+                  - --gauge-metric-count=100
+                  - --series-count=1000
+                  - --series-interval=0
+                  - --metric-interval=0
+                  - --series-operation-mode=disabled
+                  - --const-label=test_run_id={{ .Args.runId }}
+                  - --const-label=load_generator=avalanche
     measurement:
       type: prometheus
       spec:
@@ -119,54 +167,3 @@ stages:
           - name: avalanche_scrape_samples
             units: samples
             query: scrape_samples_scraped{scale_generator="avalanche",nktp_metrics_pool="large-target"}
-  - name: avalanche
-    generator:
-      type: job
-      spec:
-        parallelism: 10
-        podTemplate:
-          metadata:
-            namespace: nktp
-            labels:
-              scale.nktp.io/workload: avalanche
-          spec:
-            containers:
-              - name: generator
-                image: quay.io/prometheuscommunity/avalanche:v0.7.0@sha256:ea02e9599fcbb59a6fc7396656434faf200db7f1c259802e3dbb38cec81bd12a
-                command: [/bin/sh, -c]
-                args:
-                  - |
-                    "$@" --const-label="generator_instance=$(hostname)" &
-                    generator=$!
-                    # cleanup stops and reaps Avalanche on every exit path.
-                    cleanup() {
-                      kill "$generator" 2>/dev/null || true
-                      wait "$generator" 2>/dev/null || true
-                    }
-                    trap cleanup EXIT
-                    trap 'exit 143' TERM
-                    trap 'exit 130' INT
-                    for second in $(seq 600)
-                    do
-                      sleep 1
-                      if ! kill -0 "$generator" 2>/dev/null
-                      then
-                        wait "$generator" || exit "$?"
-                        echo "Avalanche exited before the duration elapsed" >&2
-                        exit 1
-                      fi
-                    done
-                    # A live workload reaching the duration is the only successful exit.
-                    exit 0
-                  - avalanche
-                  - /bin/avalanche
-                  - --port=9001
-                  - --gauge-metric-count=100
-                  - --series-count=1000
-                  - --series-interval=0
-                  - --metric-interval=0
-                  - --series-operation-mode=disabled
-                  - --const-label=test_run_id={{ .Args.runId }}
-                  - --const-label=load_generator=avalanche
-    measurement:
-      type: noop

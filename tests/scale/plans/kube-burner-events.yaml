@@ -4,7 +4,8 @@ name: kube-burner-events
 timeout: 20m
 stages:
 - name: events
-  generator:
+  generators:
+  - name: events
     type: pod
     spec:
       count: 100

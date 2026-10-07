@@ -3,7 +3,8 @@ name: avalanche
 timeout: 4m
 stages:
   - name: metrics
-    generator:
+    generators:
+    - name: metrics
       type: statefulset
       spec:
         replicas: 3
@@ -34,5 +35,3 @@ stages:
                   httpGet:
                     path: /metrics
                     port: 9001
-    measurement:
-      type: noop

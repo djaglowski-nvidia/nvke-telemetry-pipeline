@@ -4,8 +4,9 @@
 name: stdout-logs-design
 timeout: 105m
 stages:
-  - name: small
-    generator:
+  - name: load
+    generators:
+    - name: small
       type: statefulset
       spec:
         count: 10
@@ -56,10 +57,7 @@ stages:
               - name: config
                 configMap:
                   name: nktp-stdout-logs-small
-    measurement:
-      type: noop
-  - name: large
-    generator:
+    - name: large
       type: statefulset
       spec:
         count: 4
@@ -110,11 +108,6 @@ stages:
               - name: config
                 configMap:
                   name: nktp-stdout-logs-large
-    measurement:
-      type: noop
-  - name: observations
-    generator:
-      type: noop
     measurement:
       type: prometheus
       spec:

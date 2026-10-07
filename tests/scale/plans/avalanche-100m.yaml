@@ -1,11 +1,11 @@
-# 15,658 targets in six parallel generator stages offer 100,000,000 active series.
+# 15,658 targets in six parallel generators offer 100,000,000 active series.
 # Install ../avalanche-100m-values.yaml first. Observations do not enforce acceptance.
 name: avalanche-100m-defaults
-execution: parallel
 timeout: 110m
 stages:
-- name: avalanche-1k
-  generator:
+- name: load
+  generators:
+  - name: avalanche-1k
     type: pod
     spec:
       count: 7960
@@ -91,10 +91,7 @@ stages:
             - -c
           restartPolicy: Never
           activeDeadlineSeconds: 5700
-  measurement:
-    type: noop
-- name: avalanche-10k
-  generator:
+  - name: avalanche-10k
     type: pod
     spec:
       count: 7604
@@ -180,10 +177,7 @@ stages:
             - -c
           restartPolicy: Never
           activeDeadlineSeconds: 5700
-  measurement:
-    type: noop
-- name: avalanche-40k
-  generator:
+  - name: avalanche-40k
     type: pod
     spec:
       count: 40
@@ -269,10 +263,7 @@ stages:
             - -c
           restartPolicy: Never
           activeDeadlineSeconds: 5700
-  measurement:
-    type: noop
-- name: avalanche-150k
-  generator:
+  - name: avalanche-150k
     type: pod
     spec:
       count: 24
@@ -358,10 +349,7 @@ stages:
             - -c
           restartPolicy: Never
           activeDeadlineSeconds: 5700
-  measurement:
-    type: noop
-- name: avalanche-300k
-  generator:
+  - name: avalanche-300k
     type: pod
     spec:
       count: 24
@@ -447,10 +435,7 @@ stages:
             - -c
           restartPolicy: Never
           activeDeadlineSeconds: 5700
-  measurement:
-    type: noop
-- name: avalanche-600k
-  generator:
+  - name: avalanche-600k
     type: pod
     spec:
       count: 6
@@ -536,11 +521,6 @@ stages:
             - -c
           restartPolicy: Never
           activeDeadlineSeconds: 5700
-  measurement:
-    type: noop
-- name: observations
-  generator:
-    type: noop
   measurement:
     type: prometheus
     spec:

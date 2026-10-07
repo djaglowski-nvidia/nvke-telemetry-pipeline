@@ -2,7 +2,8 @@ name: kwok-pods
 timeout: 20m
 stages:
 - name: pods
-  generator:
+  generators:
+  - name: pods
     type: pod
     spec:
       count: 1000
@@ -28,5 +29,3 @@ stages:
               requests:
                 cpu: 100m
                 memory: 128Mi
-  measurement:
-    type: noop

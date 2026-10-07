@@ -2,7 +2,8 @@ name: kwok-nodes
 timeout: 20m
 stages:
   - name: nodes
-    generator:
+    generators:
+    - name: nodes
       type: kubernetes
       spec:
         duration: 10m
@@ -18,5 +19,3 @@ stages:
                   cpu: "96"
                   memory: 384Gi
                   pods: "110"
-    measurement:
-      type: noop

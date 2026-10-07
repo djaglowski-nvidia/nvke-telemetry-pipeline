@@ -53,8 +53,14 @@ func TestRun(t *testing.T) {
 	report, err := (runner.Executor{Kubeconfig: kubeconfig}).Execute(t.Context(), plan, args["runId"])
 	t.Logf("\nplan=%s run=%s stages=%d", report.Plan, report.RunID, len(report.Stages))
 	for _, stage := range report.Stages {
-		t.Logf("\nstage=%s measurement=%s\ngenerator_error=%v measurement_error=%v\n\n%s",
-			stage.Name, stage.Measurement, stage.GeneratorError, stage.MeasurementError, format.Format(stage.Report))
+		t.Logf("\nstage=%s", stage.Name)
+		for _, generator := range stage.Generators {
+			t.Logf("generator=%s error=%v", generator.Name, generator.Error)
+		}
+		if stage.Measurement != "" {
+			t.Logf("\nmeasurement=%s error=%v\n\n%s",
+				stage.Measurement, stage.MeasurementError, format.Format(stage.Report))
+		}
 	}
 	if err != nil {
 		t.Errorf("execute plan %q: %v", plan.Name, err)
