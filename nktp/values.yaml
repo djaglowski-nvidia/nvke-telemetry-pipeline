@@ -2487,6 +2487,13 @@ cluster_events:
           k8s_leader_elector: k8s_leader_elector
           namespaces: [] # Empty watches all namespaces. Restrict this list for a smaller scope.
       processors:
+        transform/event_service:
+          log_statements:
+            - context: log
+              statements:
+                - set(resource.attributes["nvidia.telemetry.class"], "k8s.event")
+                - set(resource.attributes["service.name"], attributes["k8s.event.reporting_controller"]) where (resource.attributes["service.name"] == nil or resource.attributes["service.name"] == "") and attributes["k8s.event.reporting_controller"] != nil and attributes["k8s.event.reporting_controller"] != ""
+                - set(resource.attributes["service.name"], "kube-apiserver") where resource.attributes["service.name"] == nil or resource.attributes["service.name"] == ""
         redaction/basic_v1:
           allow_all_keys: true
           redact_all_types: true
@@ -2552,7 +2559,7 @@ cluster_events:
         pipelines:
           logs:
             receivers: [k8s_events]
-            processors: [memory_limiter, redaction/basic_v1]
+            processors: [memory_limiter, transform/event_service, redaction/basic_v1]
             exporters: [otlp]
   # Native sidecar for this workload's own telemetry. It buffers through outages,
   # keeps only error and slow traces, and exports over gRPC to nktp-watchdog-collector:4317.
