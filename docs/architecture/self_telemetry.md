@@ -79,6 +79,14 @@ of the limit.
 The queues are in memory and do not survive a Pod restart. Autoscaler
 utilization includes the sidecar's request.
 
+## Dashboards
+
+Each Collector's default dashboard has a "Self-telemetry sidecar" row with the
+sidecar's queue use, export failures and refused items for all three signals,
+sampling decisions, CPU and memory. The NKTP Health dashboard has a separate
+"Self-telemetry sidecars" row. Sidecars report as their own `job`, for example
+`nktp-gateway-logs-sidecar`, and no query mixes a sidecar with its Collector.
+
 ## Configuration
 
 Each workload has a `sidecar` section:

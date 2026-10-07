@@ -43,7 +43,7 @@ tests:
           path: data["nktp-health.json"]
           pattern: 'controller_runtime_reconcile_errors_total'
       - matchRegex:
-          path: data["nktp-health.json"]
+          path: data["nktp-large-target-metrics.json"]
           pattern: 'kube_state_metrics_watch_total'
       - matchRegex:
           path: data["nktp-health.json"]
@@ -109,10 +109,13 @@ tests:
           path: data["nktp-health.json"]
           pattern: 'exporter/enqueue'
       - matchRegex:
-          path: data["nktp-health.json"]
+          path: data["nktp-large-target-metrics.json"]
           pattern: 'delta\(\(scrape_samples_scraped.*endpoint=\\"http-metrics\\".*up.*== 1'
       - notMatchRegex:
           path: data["nktp-health.json"]
+          pattern: 'rate\(scrape_samples|scrape_body_size_bytes|scrape_timeout_seconds|scrape_sample_limit|"step": "\$__interval"'
+      - notMatchRegex:
+          path: data["nktp-large-target-metrics.json"]
           pattern: 'rate\(scrape_samples|scrape_body_size_bytes|scrape_timeout_seconds|scrape_sample_limit|"step": "\$__interval"'
 
   - it: shows collected container budgets without unavailable usage columns
@@ -156,11 +159,14 @@ tests:
       - notMatchRegex:
           path: data["nktp-health.json"]
           pattern: 'kube_state_metrics_list_total'
+      - notMatchRegex:
+          path: data["nktp-large-target-metrics.json"]
+          pattern: 'kube_state_metrics_list_total'
       - matchRegex:
-          path: data["nktp-health.json"]
+          path: data["nktp-large-target-metrics.json"]
           pattern: 'count by \(job, shard_ordinal\).*kube_state_metrics_shard_ordinal.*job!=\\"\$namespace/nktp-ksm-pods\\"'
       - matchRegex:
-          path: data["nktp-health.json"]
+          path: data["nktp-large-target-metrics.json"]
           pattern: 'kube_state_metrics_total_shards'
       - matchRegex:
           path: data["nktp-health.json"]
@@ -239,7 +245,7 @@ tests:
           pattern: otelcol_receiver_accepted_log_records_total
       - notMatchRegex:
           path: data["nktp-gateway-logs.json"]
-          pattern: 'opentelemetry_allocator|metric_points|accepted_spans|sent_spans'
+          pattern: 'opentelemetry_allocator|(metric_points|accepted_spans|sent_spans)[a-z_]*\{job=\\"nktp-gateway-logs\\"'
 
   - it: provisions the metrics gateway dashboard
     documentSelector:
@@ -257,7 +263,7 @@ tests:
           pattern: otelcol_receiver_accepted_metric_points_total
       - notMatchRegex:
           path: data["nktp-gateway-metrics.json"]
-          pattern: 'opentelemetry_allocator|log_records|accepted_spans|sent_spans'
+          pattern: 'opentelemetry_allocator|(log_records|accepted_spans|sent_spans)[a-z_]*\{job=\\"nktp-gateway-metrics\\"'
 
   - it: provisions the traces gateway dashboard
     documentSelector:
@@ -275,7 +281,7 @@ tests:
           pattern: otelcol_receiver_accepted_spans_total
       - notMatchRegex:
           path: data["nktp-gateway-traces.json"]
-          pattern: 'opentelemetry_allocator|metric_points|log_records'
+          pattern: 'opentelemetry_allocator|(metric_points|log_records)[a-z_]*\{job=\\"nktp-gateway-traces\\"'
 
   - it: provisions cluster event activity and leadership logs without requiring scraped metrics
     documentSelector:
@@ -290,16 +296,19 @@ tests:
           pattern: '"title": "NKTP Cluster Events"'
       - matchRegex:
           path: data["nktp-cluster-events.json"]
-          pattern: 'sum by \(instance\) \(increase\(otelcol_receiver_accepted_log_records_total'
+          pattern: 'sum\(rate\(otelcol_receiver_accepted_log_records_total\{job=\\"nktp-cluster-events\\"\}\[5m\]\)\)'
       - matchRegex:
           path: data["nktp-cluster-events.json"]
-          pattern: 'sum by \(instance\) \(increase\(otelcol_exporter_sent_log_records_total'
+          pattern: 'topk\(20, sum by \(instance\) \(rate\(otelcol_receiver_accepted_log_records_total\{job=\\"nktp-cluster-events\\"\}\[5m\] @ end\(\)\)\)\)'
       - matchRegex:
           path: data["nktp-cluster-events.json"]
-          pattern: 'sum by \(instance, exporter\) \(otelcol_exporter_queue_size'
+          pattern: 'sum\(rate\(otelcol_exporter_sent_log_records_total\{job=\\"nktp-cluster-events\\"\}\[5m\]\)\)'
       - matchRegex:
           path: data["nktp-cluster-events.json"]
-          pattern: 'max by \(instance\) \(otelcol_process_memory_rss_bytes'
+          pattern: 'max by \(instance, exporter, data_type\) \(otelcol_exporter_queue_size\{job=\\"nktp-cluster-events\\"\}'
+      - matchRegex:
+          path: data["nktp-cluster-events.json"]
+          pattern: 'sum by \(instance\) \(otelcol_process_memory_rss_bytes\{job=\\"nktp-cluster-events\\"\}'
       - matchRegex:
           path: data["nktp-cluster-events.json"]
           pattern: 'Events Receiver started as leader\|no longer leader, stopping'
@@ -610,3 +619,573 @@ tests:
     asserts:
       - hasDocuments:
           count: 0
+
+  - it: separates sidecar queries from Collector queries on every dashboard
+    documentSelector:
+      path: metadata.name
+      value: lgtm-dashboards
+    asserts:
+      - notMatchRegex:
+          path: data["nktp-health.json"]
+          pattern: '\(-sidecar\)\?'
+      - notMatchRegex:
+          path: data["nktp-watchdog.json"]
+          pattern: '\(-sidecar\)\?'
+      - notMatchRegex:
+          path: data["nktp-gateway-logs.json"]
+          pattern: '\(-sidecar\)\?'
+      - notMatchRegex:
+          path: data["nktp-gateway-metrics.json"]
+          pattern: '\(-sidecar\)\?'
+      - notMatchRegex:
+          path: data["nktp-gateway-traces.json"]
+          pattern: '\(-sidecar\)\?'
+      - notMatchRegex:
+          path: data["nktp-daemonset.json"]
+          pattern: '\(-sidecar\)\?'
+      - notMatchRegex:
+          path: data["nktp-large-target-metrics.json"]
+          pattern: '\(-sidecar\)\?'
+      - notMatchRegex:
+          path: data["nktp-cluster-events.json"]
+          pattern: '\(-sidecar\)\?'
+
+  - it: shows all three signals for each sidecar
+    documentSelector:
+      path: metadata.name
+      value: lgtm-dashboards
+    asserts:
+      - matchRegex:
+          path: data["nktp-health.json"]
+          pattern: 'otelcol_exporter_send_failed_metric_points_total\{job=~\\"nktp-\(daemonset\|cluster-events\|gateway-\(logs\|metrics\|traces\)\|large-target-metrics\|watchdog\)-sidecar\\"'
+      - matchRegex:
+          path: data["nktp-health.json"]
+          pattern: 'otelcol_receiver_refused_metric_points_total\{job=~\\"nktp-\(daemonset\|cluster-events\|gateway-\(logs\|metrics\|traces\)\|large-target-metrics\|watchdog\)-sidecar\\"'
+      - matchRegex:
+          path: data["nktp-health.json"]
+          pattern: 'otelcol_exporter_send_failed_log_records_total\{job=~\\"nktp-\(daemonset\|cluster-events\|gateway-\(logs\|metrics\|traces\)\|large-target-metrics\|watchdog\)-sidecar\\"'
+      - matchRegex:
+          path: data["nktp-health.json"]
+          pattern: 'otelcol_receiver_refused_log_records_total\{job=~\\"nktp-\(daemonset\|cluster-events\|gateway-\(logs\|metrics\|traces\)\|large-target-metrics\|watchdog\)-sidecar\\"'
+      - matchRegex:
+          path: data["nktp-health.json"]
+          pattern: 'otelcol_exporter_send_failed_spans_total\{job=~\\"nktp-\(daemonset\|cluster-events\|gateway-\(logs\|metrics\|traces\)\|large-target-metrics\|watchdog\)-sidecar\\"'
+      - matchRegex:
+          path: data["nktp-health.json"]
+          pattern: 'otelcol_receiver_refused_spans_total\{job=~\\"nktp-\(daemonset\|cluster-events\|gateway-\(logs\|metrics\|traces\)\|large-target-metrics\|watchdog\)-sidecar\\"'
+      - matchRegex:
+          path: data["nktp-watchdog.json"]
+          pattern: 'otelcol_exporter_send_failed_metric_points_total\{job=\\"nktp-watchdog-sidecar\\"\}'
+      - matchRegex:
+          path: data["nktp-watchdog.json"]
+          pattern: 'otelcol_receiver_refused_metric_points_total\{job=\\"nktp-watchdog-sidecar\\"\}'
+      - matchRegex:
+          path: data["nktp-watchdog.json"]
+          pattern: 'otelcol_exporter_send_failed_log_records_total\{job=\\"nktp-watchdog-sidecar\\"\}'
+      - matchRegex:
+          path: data["nktp-watchdog.json"]
+          pattern: 'otelcol_receiver_refused_log_records_total\{job=\\"nktp-watchdog-sidecar\\"\}'
+      - matchRegex:
+          path: data["nktp-watchdog.json"]
+          pattern: 'otelcol_exporter_send_failed_spans_total\{job=\\"nktp-watchdog-sidecar\\"\}'
+      - matchRegex:
+          path: data["nktp-watchdog.json"]
+          pattern: 'otelcol_receiver_refused_spans_total\{job=\\"nktp-watchdog-sidecar\\"\}'
+      - matchRegex:
+          path: data["nktp-watchdog.json"]
+          pattern: 'max by \(data_type\) \(otelcol_exporter_queue_size\{job=\\"nktp-watchdog-sidecar\\"\} / otelcol_exporter_queue_capacity'
+      - matchRegex:
+          path: data["nktp-gateway-logs.json"]
+          pattern: 'otelcol_exporter_send_failed_metric_points_total\{job=\\"nktp-gateway-logs-sidecar\\"\}'
+      - matchRegex:
+          path: data["nktp-gateway-logs.json"]
+          pattern: 'otelcol_receiver_refused_metric_points_total\{job=\\"nktp-gateway-logs-sidecar\\"\}'
+      - matchRegex:
+          path: data["nktp-gateway-logs.json"]
+          pattern: 'otelcol_exporter_send_failed_log_records_total\{job=\\"nktp-gateway-logs-sidecar\\"\}'
+      - matchRegex:
+          path: data["nktp-gateway-logs.json"]
+          pattern: 'otelcol_receiver_refused_log_records_total\{job=\\"nktp-gateway-logs-sidecar\\"\}'
+      - matchRegex:
+          path: data["nktp-gateway-logs.json"]
+          pattern: 'otelcol_exporter_send_failed_spans_total\{job=\\"nktp-gateway-logs-sidecar\\"\}'
+      - matchRegex:
+          path: data["nktp-gateway-logs.json"]
+          pattern: 'otelcol_receiver_refused_spans_total\{job=\\"nktp-gateway-logs-sidecar\\"\}'
+      - matchRegex:
+          path: data["nktp-gateway-logs.json"]
+          pattern: 'max by \(data_type\) \(otelcol_exporter_queue_size\{job=\\"nktp-gateway-logs-sidecar\\"\} / otelcol_exporter_queue_capacity'
+      - matchRegex:
+          path: data["nktp-gateway-metrics.json"]
+          pattern: 'otelcol_exporter_send_failed_metric_points_total\{job=\\"nktp-gateway-metrics-sidecar\\"\}'
+      - matchRegex:
+          path: data["nktp-gateway-metrics.json"]
+          pattern: 'otelcol_receiver_refused_metric_points_total\{job=\\"nktp-gateway-metrics-sidecar\\"\}'
+      - matchRegex:
+          path: data["nktp-gateway-metrics.json"]
+          pattern: 'otelcol_exporter_send_failed_log_records_total\{job=\\"nktp-gateway-metrics-sidecar\\"\}'
+      - matchRegex:
+          path: data["nktp-gateway-metrics.json"]
+          pattern: 'otelcol_receiver_refused_log_records_total\{job=\\"nktp-gateway-metrics-sidecar\\"\}'
+      - matchRegex:
+          path: data["nktp-gateway-metrics.json"]
+          pattern: 'otelcol_exporter_send_failed_spans_total\{job=\\"nktp-gateway-metrics-sidecar\\"\}'
+      - matchRegex:
+          path: data["nktp-gateway-metrics.json"]
+          pattern: 'otelcol_receiver_refused_spans_total\{job=\\"nktp-gateway-metrics-sidecar\\"\}'
+      - matchRegex:
+          path: data["nktp-gateway-metrics.json"]
+          pattern: 'max by \(data_type\) \(otelcol_exporter_queue_size\{job=\\"nktp-gateway-metrics-sidecar\\"\} / otelcol_exporter_queue_capacity'
+      - matchRegex:
+          path: data["nktp-gateway-traces.json"]
+          pattern: 'otelcol_exporter_send_failed_metric_points_total\{job=\\"nktp-gateway-traces-sidecar\\"\}'
+      - matchRegex:
+          path: data["nktp-gateway-traces.json"]
+          pattern: 'otelcol_receiver_refused_metric_points_total\{job=\\"nktp-gateway-traces-sidecar\\"\}'
+      - matchRegex:
+          path: data["nktp-gateway-traces.json"]
+          pattern: 'otelcol_exporter_send_failed_log_records_total\{job=\\"nktp-gateway-traces-sidecar\\"\}'
+      - matchRegex:
+          path: data["nktp-gateway-traces.json"]
+          pattern: 'otelcol_receiver_refused_log_records_total\{job=\\"nktp-gateway-traces-sidecar\\"\}'
+      - matchRegex:
+          path: data["nktp-gateway-traces.json"]
+          pattern: 'otelcol_exporter_send_failed_spans_total\{job=\\"nktp-gateway-traces-sidecar\\"\}'
+      - matchRegex:
+          path: data["nktp-gateway-traces.json"]
+          pattern: 'otelcol_receiver_refused_spans_total\{job=\\"nktp-gateway-traces-sidecar\\"\}'
+      - matchRegex:
+          path: data["nktp-gateway-traces.json"]
+          pattern: 'max by \(data_type\) \(otelcol_exporter_queue_size\{job=\\"nktp-gateway-traces-sidecar\\"\} / otelcol_exporter_queue_capacity'
+      - matchRegex:
+          path: data["nktp-daemonset.json"]
+          pattern: 'otelcol_exporter_send_failed_metric_points_total\{job=\\"nktp-daemonset-sidecar\\"\}'
+      - matchRegex:
+          path: data["nktp-daemonset.json"]
+          pattern: 'otelcol_receiver_refused_metric_points_total\{job=\\"nktp-daemonset-sidecar\\"\}'
+      - matchRegex:
+          path: data["nktp-daemonset.json"]
+          pattern: 'otelcol_exporter_send_failed_log_records_total\{job=\\"nktp-daemonset-sidecar\\"\}'
+      - matchRegex:
+          path: data["nktp-daemonset.json"]
+          pattern: 'otelcol_receiver_refused_log_records_total\{job=\\"nktp-daemonset-sidecar\\"\}'
+      - matchRegex:
+          path: data["nktp-daemonset.json"]
+          pattern: 'otelcol_exporter_send_failed_spans_total\{job=\\"nktp-daemonset-sidecar\\"\}'
+      - matchRegex:
+          path: data["nktp-daemonset.json"]
+          pattern: 'otelcol_receiver_refused_spans_total\{job=\\"nktp-daemonset-sidecar\\"\}'
+      - matchRegex:
+          path: data["nktp-daemonset.json"]
+          pattern: 'max by \(data_type\) \(otelcol_exporter_queue_size\{job=\\"nktp-daemonset-sidecar\\"\} / otelcol_exporter_queue_capacity'
+      - matchRegex:
+          path: data["nktp-large-target-metrics.json"]
+          pattern: 'otelcol_exporter_send_failed_metric_points_total\{job=\\"nktp-large-target-metrics-sidecar\\"\}'
+      - matchRegex:
+          path: data["nktp-large-target-metrics.json"]
+          pattern: 'otelcol_receiver_refused_metric_points_total\{job=\\"nktp-large-target-metrics-sidecar\\"\}'
+      - matchRegex:
+          path: data["nktp-large-target-metrics.json"]
+          pattern: 'otelcol_exporter_send_failed_log_records_total\{job=\\"nktp-large-target-metrics-sidecar\\"\}'
+      - matchRegex:
+          path: data["nktp-large-target-metrics.json"]
+          pattern: 'otelcol_receiver_refused_log_records_total\{job=\\"nktp-large-target-metrics-sidecar\\"\}'
+      - matchRegex:
+          path: data["nktp-large-target-metrics.json"]
+          pattern: 'otelcol_exporter_send_failed_spans_total\{job=\\"nktp-large-target-metrics-sidecar\\"\}'
+      - matchRegex:
+          path: data["nktp-large-target-metrics.json"]
+          pattern: 'otelcol_receiver_refused_spans_total\{job=\\"nktp-large-target-metrics-sidecar\\"\}'
+      - matchRegex:
+          path: data["nktp-large-target-metrics.json"]
+          pattern: 'max by \(data_type\) \(otelcol_exporter_queue_size\{job=\\"nktp-large-target-metrics-sidecar\\"\} / otelcol_exporter_queue_capacity'
+      - matchRegex:
+          path: data["nktp-cluster-events.json"]
+          pattern: 'otelcol_exporter_send_failed_metric_points_total\{job=\\"nktp-cluster-events-sidecar\\"\}'
+      - matchRegex:
+          path: data["nktp-cluster-events.json"]
+          pattern: 'otelcol_receiver_refused_metric_points_total\{job=\\"nktp-cluster-events-sidecar\\"\}'
+      - matchRegex:
+          path: data["nktp-cluster-events.json"]
+          pattern: 'otelcol_exporter_send_failed_log_records_total\{job=\\"nktp-cluster-events-sidecar\\"\}'
+      - matchRegex:
+          path: data["nktp-cluster-events.json"]
+          pattern: 'otelcol_receiver_refused_log_records_total\{job=\\"nktp-cluster-events-sidecar\\"\}'
+      - matchRegex:
+          path: data["nktp-cluster-events.json"]
+          pattern: 'otelcol_exporter_send_failed_spans_total\{job=\\"nktp-cluster-events-sidecar\\"\}'
+      - matchRegex:
+          path: data["nktp-cluster-events.json"]
+          pattern: 'otelcol_receiver_refused_spans_total\{job=\\"nktp-cluster-events-sidecar\\"\}'
+      - matchRegex:
+          path: data["nktp-cluster-events.json"]
+          pattern: 'max by \(data_type\) \(otelcol_exporter_queue_size\{job=\\"nktp-cluster-events-sidecar\\"\} / otelcol_exporter_queue_capacity'
+
+  - it: gives every Collector dashboard the same pipeline, resources and switcher
+    documentSelector:
+      path: metadata.name
+      value: lgtm-dashboards
+    asserts:
+      - matchRegex:
+          path: data["nktp-watchdog.json"]
+          pattern: '"tags": \[\s*"nktp",\s*"nktp-collector"'
+      - matchRegex:
+          path: data["nktp-watchdog.json"]
+          pattern: '"type": "dashboards",\s*"tags": \[\s*"nktp-collector"\s*\],\s*"asDropdown": true'
+      - matchRegex:
+          path: data["nktp-watchdog.json"]
+          pattern: '"type": "row",\s*"title": "Pipeline"'
+      - matchRegex:
+          path: data["nktp-watchdog.json"]
+          pattern: '"type": "row",\s*"title": "Queues and resources"'
+      - matchRegex:
+          path: data["nktp-watchdog.json"]
+          pattern: '"type": "row",\s*"title": "Self-telemetry sidecar"'
+      - matchRegex:
+          path: data["nktp-watchdog.json"]
+          pattern: 'sum\(rate\(otelcol_receiver_accepted_metric_points_total\{job=\\"nktp-watchdog\\"\}\[5m\]\)\)'
+      - matchRegex:
+          path: data["nktp-watchdog.json"]
+          pattern: 'topk\(20, sum by \(instance\) \(rate\(otelcol_receiver_accepted_metric_points_total\{job=\\"nktp-watchdog\\"\}\[5m\] @ end\(\)\)\)\)'
+      - matchRegex:
+          path: data["nktp-watchdog.json"]
+          pattern: 'sum\(rate\(otelcol_exporter_sent_metric_points_total\{job=\\"nktp-watchdog\\"\}\[5m\]\)\)'
+      - matchRegex:
+          path: data["nktp-watchdog.json"]
+          pattern: 'sum\(rate\(otelcol_exporter_send_failed_metric_points_total\{job=\\"nktp-watchdog\\"\}\[5m\]\)\)'
+      - matchRegex:
+          path: data["nktp-watchdog.json"]
+          pattern: 'sum\(rate\(otelcol_receiver_refused_metric_points_total\{job=\\"nktp-watchdog\\"\}\[5m\]\)\)'
+      - matchRegex:
+          path: data["nktp-watchdog.json"]
+          pattern: 'sum\(rate\(otelcol_receiver_accepted_log_records_total\{job=\\"nktp-watchdog\\"\}\[5m\]\)\)'
+      - matchRegex:
+          path: data["nktp-watchdog.json"]
+          pattern: 'topk\(20, sum by \(instance\) \(rate\(otelcol_receiver_accepted_log_records_total\{job=\\"nktp-watchdog\\"\}\[5m\] @ end\(\)\)\)\)'
+      - matchRegex:
+          path: data["nktp-watchdog.json"]
+          pattern: 'sum\(rate\(otelcol_exporter_sent_log_records_total\{job=\\"nktp-watchdog\\"\}\[5m\]\)\)'
+      - matchRegex:
+          path: data["nktp-watchdog.json"]
+          pattern: 'sum\(rate\(otelcol_exporter_send_failed_log_records_total\{job=\\"nktp-watchdog\\"\}\[5m\]\)\)'
+      - matchRegex:
+          path: data["nktp-watchdog.json"]
+          pattern: 'sum\(rate\(otelcol_receiver_refused_log_records_total\{job=\\"nktp-watchdog\\"\}\[5m\]\)\)'
+      - matchRegex:
+          path: data["nktp-watchdog.json"]
+          pattern: 'sum\(rate\(otelcol_receiver_accepted_spans_total\{job=\\"nktp-watchdog\\"\}\[5m\]\)\)'
+      - matchRegex:
+          path: data["nktp-watchdog.json"]
+          pattern: 'topk\(20, sum by \(instance\) \(rate\(otelcol_receiver_accepted_spans_total\{job=\\"nktp-watchdog\\"\}\[5m\] @ end\(\)\)\)\)'
+      - matchRegex:
+          path: data["nktp-watchdog.json"]
+          pattern: 'sum\(rate\(otelcol_exporter_sent_spans_total\{job=\\"nktp-watchdog\\"\}\[5m\]\)\)'
+      - matchRegex:
+          path: data["nktp-watchdog.json"]
+          pattern: 'sum\(rate\(otelcol_exporter_send_failed_spans_total\{job=\\"nktp-watchdog\\"\}\[5m\]\)\)'
+      - matchRegex:
+          path: data["nktp-watchdog.json"]
+          pattern: 'sum\(rate\(otelcol_receiver_refused_spans_total\{job=\\"nktp-watchdog\\"\}\[5m\]\)\)'
+      - matchRegex:
+          path: data["nktp-watchdog.json"]
+          pattern: 'max by \(instance, exporter, data_type\) \(otelcol_exporter_queue_size\{job=\\"nktp-watchdog\\"\}'
+      - matchRegex:
+          path: data["nktp-watchdog.json"]
+          pattern: 'sum by \(instance\) \(rate\(otelcol_process_cpu_seconds_total\{job=\\"nktp-watchdog\\"\}'
+      - matchRegex:
+          path: data["nktp-watchdog.json"]
+          pattern: 'sum by \(instance\) \(otelcol_process_memory_rss_bytes\{job=\\"nktp-watchdog\\"\}'
+      - matchRegex:
+          path: data["nktp-gateway-logs.json"]
+          pattern: '"tags": \[\s*"nktp",\s*"nktp-collector"'
+      - matchRegex:
+          path: data["nktp-gateway-logs.json"]
+          pattern: '"type": "dashboards",\s*"tags": \[\s*"nktp-collector"\s*\],\s*"asDropdown": true'
+      - matchRegex:
+          path: data["nktp-gateway-logs.json"]
+          pattern: '"type": "row",\s*"title": "Pipeline"'
+      - matchRegex:
+          path: data["nktp-gateway-logs.json"]
+          pattern: '"type": "row",\s*"title": "Queues and resources"'
+      - matchRegex:
+          path: data["nktp-gateway-logs.json"]
+          pattern: '"type": "row",\s*"title": "Self-telemetry sidecar"'
+      - matchRegex:
+          path: data["nktp-gateway-logs.json"]
+          pattern: 'sum\(rate\(otelcol_receiver_accepted_log_records_total\{job=\\"nktp-gateway-logs\\"\}\[5m\]\)\)'
+      - matchRegex:
+          path: data["nktp-gateway-logs.json"]
+          pattern: 'topk\(20, sum by \(instance\) \(rate\(otelcol_receiver_accepted_log_records_total\{job=\\"nktp-gateway-logs\\"\}\[5m\] @ end\(\)\)\)\)'
+      - matchRegex:
+          path: data["nktp-gateway-logs.json"]
+          pattern: 'sum\(rate\(otelcol_exporter_sent_log_records_total\{job=\\"nktp-gateway-logs\\"\}\[5m\]\)\)'
+      - matchRegex:
+          path: data["nktp-gateway-logs.json"]
+          pattern: 'sum\(rate\(otelcol_exporter_send_failed_log_records_total\{job=\\"nktp-gateway-logs\\"\}\[5m\]\)\)'
+      - matchRegex:
+          path: data["nktp-gateway-logs.json"]
+          pattern: 'sum\(rate\(otelcol_receiver_refused_log_records_total\{job=\\"nktp-gateway-logs\\"\}\[5m\]\)\)'
+      - matchRegex:
+          path: data["nktp-gateway-logs.json"]
+          pattern: 'max by \(instance, exporter, data_type\) \(otelcol_exporter_queue_size\{job=\\"nktp-gateway-logs\\"\}'
+      - matchRegex:
+          path: data["nktp-gateway-logs.json"]
+          pattern: 'sum by \(instance\) \(rate\(otelcol_process_cpu_seconds_total\{job=\\"nktp-gateway-logs\\"\}'
+      - matchRegex:
+          path: data["nktp-gateway-logs.json"]
+          pattern: 'sum by \(instance\) \(otelcol_process_memory_rss_bytes\{job=\\"nktp-gateway-logs\\"\}'
+      - matchRegex:
+          path: data["nktp-gateway-metrics.json"]
+          pattern: '"tags": \[\s*"nktp",\s*"nktp-collector"'
+      - matchRegex:
+          path: data["nktp-gateway-metrics.json"]
+          pattern: '"type": "dashboards",\s*"tags": \[\s*"nktp-collector"\s*\],\s*"asDropdown": true'
+      - matchRegex:
+          path: data["nktp-gateway-metrics.json"]
+          pattern: '"type": "row",\s*"title": "Pipeline"'
+      - matchRegex:
+          path: data["nktp-gateway-metrics.json"]
+          pattern: '"type": "row",\s*"title": "Queues and resources"'
+      - matchRegex:
+          path: data["nktp-gateway-metrics.json"]
+          pattern: '"type": "row",\s*"title": "Self-telemetry sidecar"'
+      - matchRegex:
+          path: data["nktp-gateway-metrics.json"]
+          pattern: 'sum\(rate\(otelcol_receiver_accepted_metric_points_total\{job=\\"nktp-gateway-metrics\\"\}\[5m\]\)\)'
+      - matchRegex:
+          path: data["nktp-gateway-metrics.json"]
+          pattern: 'topk\(20, sum by \(instance\) \(rate\(otelcol_receiver_accepted_metric_points_total\{job=\\"nktp-gateway-metrics\\"\}\[5m\] @ end\(\)\)\)\)'
+      - matchRegex:
+          path: data["nktp-gateway-metrics.json"]
+          pattern: 'sum\(rate\(otelcol_exporter_sent_metric_points_total\{job=\\"nktp-gateway-metrics\\"\}\[5m\]\)\)'
+      - matchRegex:
+          path: data["nktp-gateway-metrics.json"]
+          pattern: 'sum\(rate\(otelcol_exporter_send_failed_metric_points_total\{job=\\"nktp-gateway-metrics\\"\}\[5m\]\)\)'
+      - matchRegex:
+          path: data["nktp-gateway-metrics.json"]
+          pattern: 'sum\(rate\(otelcol_receiver_refused_metric_points_total\{job=\\"nktp-gateway-metrics\\"\}\[5m\]\)\)'
+      - matchRegex:
+          path: data["nktp-gateway-metrics.json"]
+          pattern: 'max by \(instance, exporter, data_type\) \(otelcol_exporter_queue_size\{job=\\"nktp-gateway-metrics\\"\}'
+      - matchRegex:
+          path: data["nktp-gateway-metrics.json"]
+          pattern: 'sum by \(instance\) \(rate\(otelcol_process_cpu_seconds_total\{job=\\"nktp-gateway-metrics\\"\}'
+      - matchRegex:
+          path: data["nktp-gateway-metrics.json"]
+          pattern: 'sum by \(instance\) \(otelcol_process_memory_rss_bytes\{job=\\"nktp-gateway-metrics\\"\}'
+      - matchRegex:
+          path: data["nktp-gateway-traces.json"]
+          pattern: '"tags": \[\s*"nktp",\s*"nktp-collector"'
+      - matchRegex:
+          path: data["nktp-gateway-traces.json"]
+          pattern: '"type": "dashboards",\s*"tags": \[\s*"nktp-collector"\s*\],\s*"asDropdown": true'
+      - matchRegex:
+          path: data["nktp-gateway-traces.json"]
+          pattern: '"type": "row",\s*"title": "Pipeline"'
+      - matchRegex:
+          path: data["nktp-gateway-traces.json"]
+          pattern: '"type": "row",\s*"title": "Queues and resources"'
+      - matchRegex:
+          path: data["nktp-gateway-traces.json"]
+          pattern: '"type": "row",\s*"title": "Self-telemetry sidecar"'
+      - matchRegex:
+          path: data["nktp-gateway-traces.json"]
+          pattern: 'sum\(rate\(otelcol_receiver_accepted_spans_total\{job=\\"nktp-gateway-traces\\"\}\[5m\]\)\)'
+      - matchRegex:
+          path: data["nktp-gateway-traces.json"]
+          pattern: 'topk\(20, sum by \(instance\) \(rate\(otelcol_receiver_accepted_spans_total\{job=\\"nktp-gateway-traces\\"\}\[5m\] @ end\(\)\)\)\)'
+      - matchRegex:
+          path: data["nktp-gateway-traces.json"]
+          pattern: 'sum\(rate\(otelcol_exporter_sent_spans_total\{job=\\"nktp-gateway-traces\\"\}\[5m\]\)\)'
+      - matchRegex:
+          path: data["nktp-gateway-traces.json"]
+          pattern: 'sum\(rate\(otelcol_exporter_send_failed_spans_total\{job=\\"nktp-gateway-traces\\"\}\[5m\]\)\)'
+      - matchRegex:
+          path: data["nktp-gateway-traces.json"]
+          pattern: 'sum\(rate\(otelcol_receiver_refused_spans_total\{job=\\"nktp-gateway-traces\\"\}\[5m\]\)\)'
+      - matchRegex:
+          path: data["nktp-gateway-traces.json"]
+          pattern: 'max by \(instance, exporter, data_type\) \(otelcol_exporter_queue_size\{job=\\"nktp-gateway-traces\\"\}'
+      - matchRegex:
+          path: data["nktp-gateway-traces.json"]
+          pattern: 'sum by \(instance\) \(rate\(otelcol_process_cpu_seconds_total\{job=\\"nktp-gateway-traces\\"\}'
+      - matchRegex:
+          path: data["nktp-gateway-traces.json"]
+          pattern: 'sum by \(instance\) \(otelcol_process_memory_rss_bytes\{job=\\"nktp-gateway-traces\\"\}'
+      - matchRegex:
+          path: data["nktp-daemonset.json"]
+          pattern: '"tags": \[\s*"nktp",\s*"nktp-collector"'
+      - matchRegex:
+          path: data["nktp-daemonset.json"]
+          pattern: '"type": "dashboards",\s*"tags": \[\s*"nktp-collector"\s*\],\s*"asDropdown": true'
+      - matchRegex:
+          path: data["nktp-daemonset.json"]
+          pattern: '"type": "row",\s*"title": "Pipeline"'
+      - matchRegex:
+          path: data["nktp-daemonset.json"]
+          pattern: '"type": "row",\s*"title": "Queues and resources"'
+      - matchRegex:
+          path: data["nktp-daemonset.json"]
+          pattern: '"type": "row",\s*"title": "Self-telemetry sidecar"'
+      - matchRegex:
+          path: data["nktp-daemonset.json"]
+          pattern: 'sum\(rate\(otelcol_receiver_accepted_metric_points_total\{job=\\"nktp-daemonset\\"\}\[5m\]\)\)'
+      - matchRegex:
+          path: data["nktp-daemonset.json"]
+          pattern: 'topk\(20, sum by \(k8s_node_name\) \(rate\(otelcol_receiver_accepted_metric_points_total\{job=\\"nktp-daemonset\\"\}\[5m\] @ end\(\)\)\)\)'
+      - matchRegex:
+          path: data["nktp-daemonset.json"]
+          pattern: 'sum\(rate\(otelcol_exporter_sent_metric_points_total\{job=\\"nktp-daemonset\\"\}\[5m\]\)\)'
+      - matchRegex:
+          path: data["nktp-daemonset.json"]
+          pattern: 'sum\(rate\(otelcol_exporter_send_failed_metric_points_total\{job=\\"nktp-daemonset\\"\}\[5m\]\)\)'
+      - matchRegex:
+          path: data["nktp-daemonset.json"]
+          pattern: 'sum\(rate\(otelcol_receiver_refused_metric_points_total\{job=\\"nktp-daemonset\\"\}\[5m\]\)\)'
+      - matchRegex:
+          path: data["nktp-daemonset.json"]
+          pattern: 'sum\(rate\(otelcol_receiver_accepted_log_records_total\{job=\\"nktp-daemonset\\"\}\[5m\]\)\)'
+      - matchRegex:
+          path: data["nktp-daemonset.json"]
+          pattern: 'topk\(20, sum by \(k8s_node_name\) \(rate\(otelcol_receiver_accepted_log_records_total\{job=\\"nktp-daemonset\\"\}\[5m\] @ end\(\)\)\)\)'
+      - matchRegex:
+          path: data["nktp-daemonset.json"]
+          pattern: 'sum\(rate\(otelcol_exporter_sent_log_records_total\{job=\\"nktp-daemonset\\"\}\[5m\]\)\)'
+      - matchRegex:
+          path: data["nktp-daemonset.json"]
+          pattern: 'sum\(rate\(otelcol_exporter_send_failed_log_records_total\{job=\\"nktp-daemonset\\"\}\[5m\]\)\)'
+      - matchRegex:
+          path: data["nktp-daemonset.json"]
+          pattern: 'sum\(rate\(otelcol_receiver_refused_log_records_total\{job=\\"nktp-daemonset\\"\}\[5m\]\)\)'
+      - matchRegex:
+          path: data["nktp-daemonset.json"]
+          pattern: 'sum\(rate\(otelcol_receiver_accepted_spans_total\{job=\\"nktp-daemonset\\"\}\[5m\]\)\)'
+      - matchRegex:
+          path: data["nktp-daemonset.json"]
+          pattern: 'topk\(20, sum by \(k8s_node_name\) \(rate\(otelcol_receiver_accepted_spans_total\{job=\\"nktp-daemonset\\"\}\[5m\] @ end\(\)\)\)\)'
+      - matchRegex:
+          path: data["nktp-daemonset.json"]
+          pattern: 'sum\(rate\(otelcol_exporter_sent_spans_total\{job=\\"nktp-daemonset\\"\}\[5m\]\)\)'
+      - matchRegex:
+          path: data["nktp-daemonset.json"]
+          pattern: 'sum\(rate\(otelcol_exporter_send_failed_spans_total\{job=\\"nktp-daemonset\\"\}\[5m\]\)\)'
+      - matchRegex:
+          path: data["nktp-daemonset.json"]
+          pattern: 'sum\(rate\(otelcol_receiver_refused_spans_total\{job=\\"nktp-daemonset\\"\}\[5m\]\)\)'
+      - matchRegex:
+          path: data["nktp-daemonset.json"]
+          pattern: 'max by \(k8s_node_name, exporter, data_type\) \(otelcol_exporter_queue_size\{job=\\"nktp-daemonset\\"\}'
+      - matchRegex:
+          path: data["nktp-daemonset.json"]
+          pattern: 'sum by \(k8s_node_name\) \(rate\(otelcol_process_cpu_seconds_total\{job=\\"nktp-daemonset\\"\}'
+      - matchRegex:
+          path: data["nktp-daemonset.json"]
+          pattern: 'sum by \(k8s_node_name\) \(otelcol_process_memory_rss_bytes\{job=\\"nktp-daemonset\\"\}'
+      - matchRegex:
+          path: data["nktp-large-target-metrics.json"]
+          pattern: '"tags": \[\s*"nktp",\s*"nktp-collector"'
+      - matchRegex:
+          path: data["nktp-large-target-metrics.json"]
+          pattern: '"type": "dashboards",\s*"tags": \[\s*"nktp-collector"\s*\],\s*"asDropdown": true'
+      - matchRegex:
+          path: data["nktp-large-target-metrics.json"]
+          pattern: '"type": "row",\s*"title": "Pipeline"'
+      - matchRegex:
+          path: data["nktp-large-target-metrics.json"]
+          pattern: '"type": "row",\s*"title": "Queues and resources"'
+      - matchRegex:
+          path: data["nktp-large-target-metrics.json"]
+          pattern: '"type": "row",\s*"title": "Self-telemetry sidecar"'
+      - matchRegex:
+          path: data["nktp-large-target-metrics.json"]
+          pattern: 'sum\(rate\(otelcol_receiver_accepted_metric_points_total\{job=\\"nktp-large-target-metrics\\"\}\[5m\]\)\)'
+      - matchRegex:
+          path: data["nktp-large-target-metrics.json"]
+          pattern: 'topk\(20, sum by \(instance\) \(rate\(otelcol_receiver_accepted_metric_points_total\{job=\\"nktp-large-target-metrics\\"\}\[5m\] @ end\(\)\)\)\)'
+      - matchRegex:
+          path: data["nktp-large-target-metrics.json"]
+          pattern: 'sum\(rate\(otelcol_exporter_sent_metric_points_total\{job=\\"nktp-large-target-metrics\\"\}\[5m\]\)\)'
+      - matchRegex:
+          path: data["nktp-large-target-metrics.json"]
+          pattern: 'sum\(rate\(otelcol_exporter_send_failed_metric_points_total\{job=\\"nktp-large-target-metrics\\"\}\[5m\]\)\)'
+      - matchRegex:
+          path: data["nktp-large-target-metrics.json"]
+          pattern: 'sum\(rate\(otelcol_receiver_refused_metric_points_total\{job=\\"nktp-large-target-metrics\\"\}\[5m\]\)\)'
+      - matchRegex:
+          path: data["nktp-large-target-metrics.json"]
+          pattern: 'max by \(instance, exporter, data_type\) \(otelcol_exporter_queue_size\{job=\\"nktp-large-target-metrics\\"\}'
+      - matchRegex:
+          path: data["nktp-large-target-metrics.json"]
+          pattern: 'sum by \(instance\) \(rate\(otelcol_process_cpu_seconds_total\{job=\\"nktp-large-target-metrics\\"\}'
+      - matchRegex:
+          path: data["nktp-large-target-metrics.json"]
+          pattern: 'sum by \(instance\) \(otelcol_process_memory_rss_bytes\{job=\\"nktp-large-target-metrics\\"\}'
+      - matchRegex:
+          path: data["nktp-cluster-events.json"]
+          pattern: '"tags": \[\s*"nktp",\s*"nktp-collector"'
+      - matchRegex:
+          path: data["nktp-cluster-events.json"]
+          pattern: '"type": "dashboards",\s*"tags": \[\s*"nktp-collector"\s*\],\s*"asDropdown": true'
+      - matchRegex:
+          path: data["nktp-cluster-events.json"]
+          pattern: '"type": "row",\s*"title": "Pipeline"'
+      - matchRegex:
+          path: data["nktp-cluster-events.json"]
+          pattern: '"type": "row",\s*"title": "Queues and resources"'
+      - matchRegex:
+          path: data["nktp-cluster-events.json"]
+          pattern: '"type": "row",\s*"title": "Self-telemetry sidecar"'
+      - matchRegex:
+          path: data["nktp-cluster-events.json"]
+          pattern: 'sum\(rate\(otelcol_receiver_accepted_log_records_total\{job=\\"nktp-cluster-events\\"\}\[5m\]\)\)'
+      - matchRegex:
+          path: data["nktp-cluster-events.json"]
+          pattern: 'topk\(20, sum by \(instance\) \(rate\(otelcol_receiver_accepted_log_records_total\{job=\\"nktp-cluster-events\\"\}\[5m\] @ end\(\)\)\)\)'
+      - matchRegex:
+          path: data["nktp-cluster-events.json"]
+          pattern: 'sum\(rate\(otelcol_exporter_sent_log_records_total\{job=\\"nktp-cluster-events\\"\}\[5m\]\)\)'
+      - matchRegex:
+          path: data["nktp-cluster-events.json"]
+          pattern: 'sum\(rate\(otelcol_exporter_send_failed_log_records_total\{job=\\"nktp-cluster-events\\"\}\[5m\]\)\)'
+      - matchRegex:
+          path: data["nktp-cluster-events.json"]
+          pattern: 'sum\(rate\(otelcol_receiver_refused_log_records_total\{job=\\"nktp-cluster-events\\"\}\[5m\]\)\)'
+      - matchRegex:
+          path: data["nktp-cluster-events.json"]
+          pattern: 'max by \(instance, exporter, data_type\) \(otelcol_exporter_queue_size\{job=\\"nktp-cluster-events\\"\}'
+      - matchRegex:
+          path: data["nktp-cluster-events.json"]
+          pattern: 'sum by \(instance\) \(rate\(otelcol_process_cpu_seconds_total\{job=\\"nktp-cluster-events\\"\}'
+      - matchRegex:
+          path: data["nktp-cluster-events.json"]
+          pattern: 'sum by \(instance\) \(otelcol_process_memory_rss_bytes\{job=\\"nktp-cluster-events\\"\}'
+
+  - it: shows Collector-specific sections prominently
+    documentSelector:
+      path: metadata.name
+      value: lgtm-dashboards
+    asserts:
+      - matchRegex:
+          path: data["nktp-large-target-metrics.json"]
+          pattern: '"title": "Pipeline"[\s\S]*"title": "Target Allocator"[\s\S]*"title": "Large targets"[\s\S]*"title": "kube-state-metrics scrapes"[\s\S]*"title": "Queues and resources"'
+      - matchRegex:
+          path: data["nktp-large-target-metrics.json"]
+          pattern: 'kube_state_metrics_total_shards'
+      - matchRegex:
+          path: data["nktp-daemonset.json"]
+          pattern: '"title": "Pipeline"[\s\S]*"title": "Target Allocator"[\s\S]*"title": "Queues and resources"'
+      - matchRegex:
+          path: data["nktp-watchdog.json"]
+          pattern: '"title": "Pipeline"[\s\S]*"title": "Target Allocator and Operator scrape"[\s\S]*"title": "Queues and resources"'
+      - matchRegex:
+          path: data["nktp-cluster-events.json"]
+          pattern: '"title": "Pipeline"[\s\S]*"title": "Leader election"[\s\S]*"title": "Queues and resources"'
+      - notMatchRegex:
+          path: data["nktp-gateway-logs.json"]
+          pattern: 'opentelemetry_allocator|kube_state_metrics'
+      - notMatchRegex:
+          path: data["nktp-gateway-metrics.json"]
+          pattern: 'opentelemetry_allocator|kube_state_metrics'
+      - notMatchRegex:
+          path: data["nktp-gateway-traces.json"]
+          pattern: 'opentelemetry_allocator|kube_state_metrics'

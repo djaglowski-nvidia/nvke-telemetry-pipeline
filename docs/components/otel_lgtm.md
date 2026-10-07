@@ -24,13 +24,19 @@ self metrics use watchdog and do not require the metrics gateway. Target
 Allocator counts stay separate for each replica. Disabling LGTM removes its dashboards. Target Allocator metrics
 continue to flow to the backend configured in watchdog, which must support delta metrics.
 
-KSM scrape panels show samples, sample-count growth and duration. Export and
-queue admission delays use internal spans through Tempo's TraceQL metrics support.
-Container resource tables show requests and limits for up to three
-containers per component. The dashboard also
-shows allocator allocation duration, KSM shard coverage and node-exporter diagnostics.
+Export and queue admission delays use internal spans through Tempo's TraceQL
+metrics support. Container resource tables show requests and limits for up to
+three containers per component. The dashboard also shows allocator allocation
+duration and node-exporter diagnostics.
 
-See the [dashboards README](../../nktp/dashboards/README.md) for every bundled
+Each Collector also has its own dashboard with the same layout: its pipeline as
+totals per signal, rows specific to it, its queues and resources, and its
+self-telemetry sidecar. Panels that show replicas show the 20 largest. A
+**Collectors** dropdown switches between them. The large-target dashboard
+includes the kube-state-metrics scrape panels: samples, sample-count growth,
+duration, watch errors and shard coverage.
+
+See the [dashboards README](../../nktp/dashboards/README.md) for every
 dashboard and how to import them into your own Grafana.
 
 ## Configuration
