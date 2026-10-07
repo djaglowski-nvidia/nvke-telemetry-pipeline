@@ -40,6 +40,29 @@ matches the snapshot with default values:
     apiVersion: cert-manager.io/v1
     kind: Certificate
     metadata:
+      name: nktp-watchdog-server
+      namespace: NAMESPACE
+    spec:
+      dnsNames:
+        - nktp-watchdog-collector
+        - nktp-watchdog-collector.NAMESPACE
+        - nktp-watchdog-collector.NAMESPACE.svc
+        - nktp-watchdog-collector.NAMESPACE.svc.cluster.local
+      duration: 2160h
+      issuerRef:
+        group: cert-manager.io
+        kind: Issuer
+        name: nktp-internal-ca-issuer
+      privateKey:
+        rotationPolicy: Always
+      renewBefore: 360h
+      secretName: nktp-watchdog-server-tls
+      usages:
+        - server auth
+  5: |
+    apiVersion: cert-manager.io/v1
+    kind: Certificate
+    metadata:
       name: nktp-gateway-logs-server
       namespace: NAMESPACE
     spec:
@@ -59,7 +82,7 @@ matches the snapshot with default values:
       secretName: nktp-gateway-logs-server-tls
       usages:
         - server auth
-  5: |
+  6: |
     apiVersion: cert-manager.io/v1
     kind: Certificate
     metadata:
@@ -82,7 +105,7 @@ matches the snapshot with default values:
       secretName: nktp-gateway-metrics-server-tls
       usages:
         - server auth
-  6: |
+  7: |
     apiVersion: cert-manager.io/v1
     kind: Certificate
     metadata:
@@ -105,7 +128,7 @@ matches the snapshot with default values:
       secretName: nktp-gateway-traces-server-tls
       usages:
         - server auth
-  7: |
+  8: |
     apiVersion: cert-manager.io/v1
     kind: Certificate
     metadata:
@@ -124,7 +147,7 @@ matches the snapshot with default values:
       secretName: nktp-daemonset-client-tls
       usages:
         - client auth
-  8: |
+  9: |
     apiVersion: cert-manager.io/v1
     kind: Certificate
     metadata:
@@ -143,7 +166,7 @@ matches the snapshot with default values:
       secretName: nktp-large-target-metrics-client-tls
       usages:
         - client auth
-  9: |
+  10: |
     apiVersion: cert-manager.io/v1
     kind: Certificate
     metadata:
@@ -162,7 +185,64 @@ matches the snapshot with default values:
       secretName: nktp-cluster-events-client-tls
       usages:
         - client auth
-  10: |
+  11: |
+    apiVersion: cert-manager.io/v1
+    kind: Certificate
+    metadata:
+      name: nktp-gateway-traces-client
+      namespace: NAMESPACE
+    spec:
+      commonName: nktp-gateway-traces
+      duration: 2160h
+      issuerRef:
+        group: cert-manager.io
+        kind: Issuer
+        name: nktp-internal-ca-issuer
+      privateKey:
+        rotationPolicy: Always
+      renewBefore: 360h
+      secretName: nktp-gateway-traces-client-tls
+      usages:
+        - client auth
+  12: |
+    apiVersion: cert-manager.io/v1
+    kind: Certificate
+    metadata:
+      name: nktp-gateway-logs-client
+      namespace: NAMESPACE
+    spec:
+      commonName: nktp-gateway-logs
+      duration: 2160h
+      issuerRef:
+        group: cert-manager.io
+        kind: Issuer
+        name: nktp-internal-ca-issuer
+      privateKey:
+        rotationPolicy: Always
+      renewBefore: 360h
+      secretName: nktp-gateway-logs-client-tls
+      usages:
+        - client auth
+  13: |
+    apiVersion: cert-manager.io/v1
+    kind: Certificate
+    metadata:
+      name: nktp-gateway-metrics-client
+      namespace: NAMESPACE
+    spec:
+      commonName: nktp-gateway-metrics
+      duration: 2160h
+      issuerRef:
+        group: cert-manager.io
+        kind: Issuer
+        name: nktp-internal-ca-issuer
+      privateKey:
+        rotationPolicy: Always
+      renewBefore: 360h
+      secretName: nktp-gateway-metrics-client-tls
+      usages:
+        - client auth
+  14: |
     apiVersion: rbac.authorization.k8s.io/v1
     kind: ClusterRole
     metadata:
@@ -176,7 +256,7 @@ matches the snapshot with default values:
           - get
           - list
           - watch
-  11: |
+  15: |
     apiVersion: rbac.authorization.k8s.io/v1
     kind: ClusterRoleBinding
     metadata:
@@ -189,7 +269,7 @@ matches the snapshot with default values:
       - kind: ServiceAccount
         name: nktp-cluster-events-collector
         namespace: NAMESPACE
-  12: |
+  16: |
     apiVersion: rbac.authorization.k8s.io/v1
     kind: Role
     metadata:
@@ -205,7 +285,7 @@ matches the snapshot with default values:
         verbs:
           - get
           - update
-  13: |
+  17: |
     apiVersion: rbac.authorization.k8s.io/v1
     kind: RoleBinding
     metadata:
@@ -219,13 +299,13 @@ matches the snapshot with default values:
       - kind: ServiceAccount
         name: nktp-cluster-events-collector
         namespace: NAMESPACE
-  14: |
+  18: |
     apiVersion: coordination.k8s.io/v1
     kind: Lease
     metadata:
       name: nktp-cluster-events
       namespace: NAMESPACE
-  15: |
+  19: |
     apiVersion: opentelemetry.io/v1beta1
     kind: OpenTelemetryCollector
     metadata:
@@ -333,7 +413,7 @@ matches the snapshot with default values:
       image: otel/opentelemetry-collector-k8s:0.162.0
       initContainers:
         - args:
-            - --config=yaml:{"exporters":{"otlp":{"endpoint":"nktp-watchdog-collector:4317","retry_on_failure":{"max_elapsed_time":"30m"},"sending_queue":{"batch":{"flush_timeout":"1s","max_size":262144,"min_size":65536,"sizer":"bytes"},"block_on_overflow":false,"num_consumers":2,"queue_size":4194304,"sizer":"bytes"},"tls":{"insecure":true}}},"extensions":{"health_check":{"endpoint":"0.0.0.0:13134"}},"processors":{"memory_limiter":{"check_interval":"500ms","limit_percentage":80,"spike_limit_percentage":25},"tail_sampling":{"decision_cache":{"sampled_cache_size":10000},"decision_wait":"5s","num_traces":1000,"policies":[{"name":"errors","status_code":{"status_codes":["ERROR"]},"type":"status_code"},{"name":"slow","ottl_condition":{"error_mode":"ignore","span":["end_time_unix_nano - start_time_unix_nano \u003e 1000000000"]},"type":"ottl_condition"}]}},"receivers":{"otlp":{"protocols":{"http":{"endpoint":"127.0.0.1:4319","keepalive":{"idle_timeout":"5m"}}}}},"service":{"extensions":["health_check"],"pipelines":{"logs":{"exporters":["otlp"],"processors":["memory_limiter"],"receivers":["otlp"]},"metrics":{"exporters":["otlp"],"processors":["memory_limiter"],"receivers":["otlp"]},"traces":{"exporters":["otlp"],"processors":["memory_limiter","tail_sampling"],"receivers":["otlp"]}},"telemetry":{"logs":{"processors":[{"batch":{"exporter":{"otlp":{"endpoint":"http://127.0.0.1:4319","protocol":"http/protobuf"}}}}]},"metrics":{"readers":[{"periodic":{"exporter":{"otlp":{"endpoint":"http://127.0.0.1:4319","protocol":"http/protobuf"}}}}]},"resource":{"service.instance.id":"${env:POD_NAME}","service.name":"nktp-cluster-events-sidecar"},"traces":{"level":"none"}}}}
+            - --config=yaml:{"exporters":{"otlp":{"endpoint":"nktp-watchdog-collector:4317","retry_on_failure":{"max_elapsed_time":"30m"},"sending_queue":{"batch":{"flush_timeout":"1s","max_size":262144,"min_size":65536,"sizer":"bytes"},"block_on_overflow":false,"num_consumers":2,"queue_size":4194304,"sizer":"bytes"},"tls":{"ca_file":"/etc/nktp/internal-tls/client/ca.crt","cert_file":"/etc/nktp/internal-tls/client/tls.crt","key_file":"/etc/nktp/internal-tls/client/tls.key","reload_interval":"1h"}}},"extensions":{"health_check":{"endpoint":"0.0.0.0:13134"}},"processors":{"memory_limiter":{"check_interval":"500ms","limit_percentage":80,"spike_limit_percentage":25},"tail_sampling":{"decision_cache":{"sampled_cache_size":10000},"decision_wait":"5s","num_traces":1000,"policies":[{"name":"errors","status_code":{"status_codes":["ERROR"]},"type":"status_code"},{"name":"slow","ottl_condition":{"error_mode":"ignore","span":["end_time_unix_nano - start_time_unix_nano \u003e 1000000000"]},"type":"ottl_condition"}]}},"receivers":{"otlp":{"protocols":{"http":{"endpoint":"127.0.0.1:4319","keepalive":{"idle_timeout":"5m"}}}}},"service":{"extensions":["health_check"],"pipelines":{"logs":{"exporters":["otlp"],"processors":["memory_limiter"],"receivers":["otlp"]},"metrics":{"exporters":["otlp"],"processors":["memory_limiter"],"receivers":["otlp"]},"traces":{"exporters":["otlp"],"processors":["memory_limiter","tail_sampling"],"receivers":["otlp"]}},"telemetry":{"logs":{"processors":[{"batch":{"exporter":{"otlp":{"endpoint":"http://127.0.0.1:4319","protocol":"http/protobuf"}}}}]},"metrics":{"readers":[{"periodic":{"exporter":{"otlp":{"endpoint":"http://127.0.0.1:4319","protocol":"http/protobuf"}}}}]},"resource":{"service.instance.id":"${env:POD_NAME}","service.name":"nktp-cluster-events-sidecar"},"traces":{"level":"none"}}}}
           env:
             - name: POD_NAME
               valueFrom:
@@ -368,6 +448,10 @@ matches the snapshot with default values:
               path: /
               port: 13134
             periodSeconds: 1
+          volumeMounts:
+            - mountPath: /etc/nktp/internal-tls/client
+              name: internal-tls-client
+              readOnly: true
       managementState: managed
       mode: statefulset
       podDisruptionBudget:
@@ -420,7 +504,7 @@ matches the snapshot with default values:
               - key: ca.crt
                 path: ca.crt
             secretName: nktp-cluster-events-client-tls
-  16: |
+  20: |
     apiVersion: rbac.authorization.k8s.io/v1
     kind: ClusterRole
     metadata:
@@ -457,7 +541,7 @@ matches the snapshot with default values:
           - get
           - list
           - watch
-  17: |
+  21: |
     apiVersion: rbac.authorization.k8s.io/v1
     kind: ClusterRoleBinding
     metadata:
@@ -470,7 +554,7 @@ matches the snapshot with default values:
       - kind: ServiceAccount
         name: nktp-daemonset-targetallocator
         namespace: NAMESPACE
-  18: |
+  22: |
     apiVersion: rbac.authorization.k8s.io/v1
     kind: ClusterRole
     metadata:
@@ -482,7 +566,7 @@ matches the snapshot with default values:
           - nodes/metrics
         verbs:
           - get
-  19: |
+  23: |
     apiVersion: rbac.authorization.k8s.io/v1
     kind: ClusterRoleBinding
     metadata:
@@ -495,7 +579,7 @@ matches the snapshot with default values:
       - kind: ServiceAccount
         name: nktp-daemonset-collector
         namespace: NAMESPACE
-  20: |
+  24: |
     apiVersion: opentelemetry.io/v1beta1
     kind: OpenTelemetryCollector
     metadata:
@@ -578,7 +662,10 @@ matches the snapshot with default values:
               queue_size: 1048576
               sizer: bytes
             tls:
-              insecure: true
+              ca_file: /etc/nktp/internal-tls/client/ca.crt
+              cert_file: /etc/nktp/internal-tls/client/tls.crt
+              key_file: /etc/nktp/internal-tls/client/tls.key
+              reload_interval: 1h
         extensions:
           health_check:
             endpoint: 0.0.0.0:13133
@@ -926,7 +1013,7 @@ matches the snapshot with default values:
       image: otel/opentelemetry-collector-k8s:0.162.0
       initContainers:
         - args:
-            - --config=yaml:{"exporters":{"otlp":{"endpoint":"nktp-watchdog-collector:4317","retry_on_failure":{"max_elapsed_time":"30m"},"sending_queue":{"batch":{"flush_timeout":"1s","max_size":262144,"min_size":65536,"sizer":"bytes"},"block_on_overflow":false,"num_consumers":2,"queue_size":4194304,"sizer":"bytes"},"tls":{"insecure":true}}},"extensions":{"health_check":{"endpoint":"0.0.0.0:13134"}},"processors":{"memory_limiter":{"check_interval":"500ms","limit_percentage":80,"spike_limit_percentage":25},"tail_sampling":{"decision_cache":{"sampled_cache_size":10000},"decision_wait":"5s","num_traces":1000,"policies":[{"name":"errors","status_code":{"status_codes":["ERROR"]},"type":"status_code"},{"name":"slow","ottl_condition":{"error_mode":"ignore","span":["end_time_unix_nano - start_time_unix_nano \u003e 1000000000"]},"type":"ottl_condition"}]}},"receivers":{"otlp":{"protocols":{"http":{"endpoint":"127.0.0.1:4319","keepalive":{"idle_timeout":"5m"}}}}},"service":{"extensions":["health_check"],"pipelines":{"logs":{"exporters":["otlp"],"processors":["memory_limiter"],"receivers":["otlp"]},"metrics":{"exporters":["otlp"],"processors":["memory_limiter"],"receivers":["otlp"]},"traces":{"exporters":["otlp"],"processors":["memory_limiter","tail_sampling"],"receivers":["otlp"]}},"telemetry":{"logs":{"processors":[{"batch":{"exporter":{"otlp":{"endpoint":"http://127.0.0.1:4319","protocol":"http/protobuf"}}}}]},"metrics":{"readers":[{"periodic":{"exporter":{"otlp":{"endpoint":"http://127.0.0.1:4319","protocol":"http/protobuf"}}}}]},"resource":{"k8s.node.name":"${env:NODE_NAME}","service.instance.id":"${env:POD_NAME}","service.name":"nktp-daemonset-sidecar"},"traces":{"level":"none"}}}}
+            - --config=yaml:{"exporters":{"otlp":{"endpoint":"nktp-watchdog-collector:4317","retry_on_failure":{"max_elapsed_time":"30m"},"sending_queue":{"batch":{"flush_timeout":"1s","max_size":262144,"min_size":65536,"sizer":"bytes"},"block_on_overflow":false,"num_consumers":2,"queue_size":4194304,"sizer":"bytes"},"tls":{"ca_file":"/etc/nktp/internal-tls/client/ca.crt","cert_file":"/etc/nktp/internal-tls/client/tls.crt","key_file":"/etc/nktp/internal-tls/client/tls.key","reload_interval":"1h"}}},"extensions":{"health_check":{"endpoint":"0.0.0.0:13134"}},"processors":{"memory_limiter":{"check_interval":"500ms","limit_percentage":80,"spike_limit_percentage":25},"tail_sampling":{"decision_cache":{"sampled_cache_size":10000},"decision_wait":"5s","num_traces":1000,"policies":[{"name":"errors","status_code":{"status_codes":["ERROR"]},"type":"status_code"},{"name":"slow","ottl_condition":{"error_mode":"ignore","span":["end_time_unix_nano - start_time_unix_nano \u003e 1000000000"]},"type":"ottl_condition"}]}},"receivers":{"otlp":{"protocols":{"http":{"endpoint":"127.0.0.1:4319","keepalive":{"idle_timeout":"5m"}}}}},"service":{"extensions":["health_check"],"pipelines":{"logs":{"exporters":["otlp"],"processors":["memory_limiter"],"receivers":["otlp"]},"metrics":{"exporters":["otlp"],"processors":["memory_limiter"],"receivers":["otlp"]},"traces":{"exporters":["otlp"],"processors":["memory_limiter","tail_sampling"],"receivers":["otlp"]}},"telemetry":{"logs":{"processors":[{"batch":{"exporter":{"otlp":{"endpoint":"http://127.0.0.1:4319","protocol":"http/protobuf"}}}}]},"metrics":{"readers":[{"periodic":{"exporter":{"otlp":{"endpoint":"http://127.0.0.1:4319","protocol":"http/protobuf"}}}}]},"resource":{"k8s.node.name":"${env:NODE_NAME}","service.instance.id":"${env:POD_NAME}","service.name":"nktp-daemonset-sidecar"},"traces":{"level":"none"}}}}
           env:
             - name: POD_NAME
               valueFrom:
@@ -965,6 +1052,10 @@ matches the snapshot with default values:
               path: /
               port: 13134
             periodSeconds: 1
+          volumeMounts:
+            - mountPath: /etc/nktp/internal-tls/client
+              name: internal-tls-client
+              readOnly: true
       managementState: managed
       mode: daemonset
       podSecurityContext:
@@ -1051,7 +1142,7 @@ matches the snapshot with default values:
               - periodic:
                   exporter:
                     otlpGrpc:
-                      endpoint: nktp-watchdog-collector:4317
+                      endpoint: nktp-watchdog-collector:4320
                       temporalityPreference: cumulative
                       tls:
                         insecure: true
@@ -1134,7 +1225,7 @@ matches the snapshot with default values:
               - key: ca.crt
                 path: ca.crt
             secretName: nktp-daemonset-client-tls
-  21: |
+  25: |
     apiVersion: opentelemetry.io/v1beta1
     kind: OpenTelemetryCollector
     metadata:
@@ -1203,13 +1294,6 @@ matches the snapshot with default values:
                   client_ca_file: /etc/nktp/internal-tls/server/ca.crt
                   key_file: /etc/nktp/internal-tls/server/tls.key
                   reload_interval: 1h
-              http:
-                endpoint: 0.0.0.0:4318
-                tls:
-                  cert_file: /etc/nktp/internal-tls/server/tls.crt
-                  client_ca_file: /etc/nktp/internal-tls/server/ca.crt
-                  key_file: /etc/nktp/internal-tls/server/tls.key
-                  reload_interval: 1h
         service:
           extensions:
             - health_check
@@ -1258,7 +1342,7 @@ matches the snapshot with default values:
       image: otel/opentelemetry-collector-k8s:0.162.0
       initContainers:
         - args:
-            - --config=yaml:{"exporters":{"otlp":{"endpoint":"nktp-watchdog-collector:4317","retry_on_failure":{"max_elapsed_time":"30m"},"sending_queue":{"batch":{"flush_timeout":"1s","max_size":262144,"min_size":65536,"sizer":"bytes"},"block_on_overflow":false,"num_consumers":2,"queue_size":16777216,"sizer":"bytes"},"tls":{"insecure":true}}},"extensions":{"health_check":{"endpoint":"0.0.0.0:13134"}},"processors":{"memory_limiter":{"check_interval":"500ms","limit_percentage":80,"spike_limit_percentage":25},"tail_sampling":{"decision_cache":{"sampled_cache_size":50000},"decision_wait":"5s","num_traces":5000,"policies":[{"name":"errors","status_code":{"status_codes":["ERROR"]},"type":"status_code"},{"name":"slow","ottl_condition":{"error_mode":"ignore","span":["end_time_unix_nano - start_time_unix_nano \u003e 1000000000"]},"type":"ottl_condition"}]}},"receivers":{"otlp":{"protocols":{"http":{"endpoint":"127.0.0.1:4319","keepalive":{"idle_timeout":"5m"}}}}},"service":{"extensions":["health_check"],"pipelines":{"logs":{"exporters":["otlp"],"processors":["memory_limiter"],"receivers":["otlp"]},"metrics":{"exporters":["otlp"],"processors":["memory_limiter"],"receivers":["otlp"]},"traces":{"exporters":["otlp"],"processors":["memory_limiter","tail_sampling"],"receivers":["otlp"]}},"telemetry":{"logs":{"processors":[{"batch":{"exporter":{"otlp":{"endpoint":"http://127.0.0.1:4319","protocol":"http/protobuf"}}}}]},"metrics":{"readers":[{"periodic":{"exporter":{"otlp":{"endpoint":"http://127.0.0.1:4319","protocol":"http/protobuf"}}}}]},"resource":{"service.instance.id":"${env:POD_NAME}","service.name":"nktp-gateway-logs-sidecar"},"traces":{"level":"none"}}}}
+            - --config=yaml:{"exporters":{"otlp":{"endpoint":"nktp-watchdog-collector:4317","retry_on_failure":{"max_elapsed_time":"30m"},"sending_queue":{"batch":{"flush_timeout":"1s","max_size":262144,"min_size":65536,"sizer":"bytes"},"block_on_overflow":false,"num_consumers":2,"queue_size":16777216,"sizer":"bytes"},"tls":{"ca_file":"/etc/nktp/internal-tls/client/ca.crt","cert_file":"/etc/nktp/internal-tls/client/tls.crt","key_file":"/etc/nktp/internal-tls/client/tls.key","reload_interval":"1h"}}},"extensions":{"health_check":{"endpoint":"0.0.0.0:13134"}},"processors":{"memory_limiter":{"check_interval":"500ms","limit_percentage":80,"spike_limit_percentage":25},"tail_sampling":{"decision_cache":{"sampled_cache_size":50000},"decision_wait":"5s","num_traces":5000,"policies":[{"name":"errors","status_code":{"status_codes":["ERROR"]},"type":"status_code"},{"name":"slow","ottl_condition":{"error_mode":"ignore","span":["end_time_unix_nano - start_time_unix_nano \u003e 1000000000"]},"type":"ottl_condition"}]}},"receivers":{"otlp":{"protocols":{"http":{"endpoint":"127.0.0.1:4319","keepalive":{"idle_timeout":"5m"}}}}},"service":{"extensions":["health_check"],"pipelines":{"logs":{"exporters":["otlp"],"processors":["memory_limiter"],"receivers":["otlp"]},"metrics":{"exporters":["otlp"],"processors":["memory_limiter"],"receivers":["otlp"]},"traces":{"exporters":["otlp"],"processors":["memory_limiter","tail_sampling"],"receivers":["otlp"]}},"telemetry":{"logs":{"processors":[{"batch":{"exporter":{"otlp":{"endpoint":"http://127.0.0.1:4319","protocol":"http/protobuf"}}}}]},"metrics":{"readers":[{"periodic":{"exporter":{"otlp":{"endpoint":"http://127.0.0.1:4319","protocol":"http/protobuf"}}}}]},"resource":{"service.instance.id":"${env:POD_NAME}","service.name":"nktp-gateway-logs-sidecar"},"traces":{"level":"none"}}}}
           env:
             - name: POD_NAME
               valueFrom:
@@ -1293,6 +1377,10 @@ matches the snapshot with default values:
               path: /
               port: 13134
             periodSeconds: 1
+          volumeMounts:
+            - mountPath: /etc/nktp/internal-tls/client
+              name: internal-tls-client
+              readOnly: true
       managementState: managed
       mode: statefulset
       podDisruptionBudget:
@@ -1345,7 +1433,17 @@ matches the snapshot with default values:
               - key: ca.crt
                 path: ca.crt
             secretName: nktp-gateway-logs-server-tls
-  22: |
+        - name: internal-tls-client
+          secret:
+            items:
+              - key: tls.crt
+                path: tls.crt
+              - key: tls.key
+                path: tls.key
+              - key: ca.crt
+                path: ca.crt
+            secretName: nktp-gateway-logs-client-tls
+  26: |
     apiVersion: opentelemetry.io/v1beta1
     kind: OpenTelemetryCollector
     metadata:
@@ -1414,13 +1512,6 @@ matches the snapshot with default values:
                   client_ca_file: /etc/nktp/internal-tls/server/ca.crt
                   key_file: /etc/nktp/internal-tls/server/tls.key
                   reload_interval: 1h
-              http:
-                endpoint: 0.0.0.0:4318
-                tls:
-                  cert_file: /etc/nktp/internal-tls/server/tls.crt
-                  client_ca_file: /etc/nktp/internal-tls/server/ca.crt
-                  key_file: /etc/nktp/internal-tls/server/tls.key
-                  reload_interval: 1h
         service:
           extensions:
             - health_check
@@ -1469,7 +1560,7 @@ matches the snapshot with default values:
       image: otel/opentelemetry-collector-k8s:0.162.0
       initContainers:
         - args:
-            - --config=yaml:{"exporters":{"otlp":{"endpoint":"nktp-watchdog-collector:4317","retry_on_failure":{"max_elapsed_time":"30m"},"sending_queue":{"batch":{"flush_timeout":"1s","max_size":262144,"min_size":65536,"sizer":"bytes"},"block_on_overflow":false,"num_consumers":2,"queue_size":16777216,"sizer":"bytes"},"tls":{"insecure":true}}},"extensions":{"health_check":{"endpoint":"0.0.0.0:13134"}},"processors":{"memory_limiter":{"check_interval":"500ms","limit_percentage":80,"spike_limit_percentage":25},"tail_sampling":{"decision_cache":{"sampled_cache_size":50000},"decision_wait":"5s","num_traces":5000,"policies":[{"name":"errors","status_code":{"status_codes":["ERROR"]},"type":"status_code"},{"name":"slow","ottl_condition":{"error_mode":"ignore","span":["end_time_unix_nano - start_time_unix_nano \u003e 1000000000"]},"type":"ottl_condition"}]}},"receivers":{"otlp":{"protocols":{"http":{"endpoint":"127.0.0.1:4319","keepalive":{"idle_timeout":"5m"}}}}},"service":{"extensions":["health_check"],"pipelines":{"logs":{"exporters":["otlp"],"processors":["memory_limiter"],"receivers":["otlp"]},"metrics":{"exporters":["otlp"],"processors":["memory_limiter"],"receivers":["otlp"]},"traces":{"exporters":["otlp"],"processors":["memory_limiter","tail_sampling"],"receivers":["otlp"]}},"telemetry":{"logs":{"processors":[{"batch":{"exporter":{"otlp":{"endpoint":"http://127.0.0.1:4319","protocol":"http/protobuf"}}}}]},"metrics":{"readers":[{"periodic":{"exporter":{"otlp":{"endpoint":"http://127.0.0.1:4319","protocol":"http/protobuf"}}}}]},"resource":{"service.instance.id":"${env:POD_NAME}","service.name":"nktp-gateway-metrics-sidecar"},"traces":{"level":"none"}}}}
+            - --config=yaml:{"exporters":{"otlp":{"endpoint":"nktp-watchdog-collector:4317","retry_on_failure":{"max_elapsed_time":"30m"},"sending_queue":{"batch":{"flush_timeout":"1s","max_size":262144,"min_size":65536,"sizer":"bytes"},"block_on_overflow":false,"num_consumers":2,"queue_size":16777216,"sizer":"bytes"},"tls":{"ca_file":"/etc/nktp/internal-tls/client/ca.crt","cert_file":"/etc/nktp/internal-tls/client/tls.crt","key_file":"/etc/nktp/internal-tls/client/tls.key","reload_interval":"1h"}}},"extensions":{"health_check":{"endpoint":"0.0.0.0:13134"}},"processors":{"memory_limiter":{"check_interval":"500ms","limit_percentage":80,"spike_limit_percentage":25},"tail_sampling":{"decision_cache":{"sampled_cache_size":50000},"decision_wait":"5s","num_traces":5000,"policies":[{"name":"errors","status_code":{"status_codes":["ERROR"]},"type":"status_code"},{"name":"slow","ottl_condition":{"error_mode":"ignore","span":["end_time_unix_nano - start_time_unix_nano \u003e 1000000000"]},"type":"ottl_condition"}]}},"receivers":{"otlp":{"protocols":{"http":{"endpoint":"127.0.0.1:4319","keepalive":{"idle_timeout":"5m"}}}}},"service":{"extensions":["health_check"],"pipelines":{"logs":{"exporters":["otlp"],"processors":["memory_limiter"],"receivers":["otlp"]},"metrics":{"exporters":["otlp"],"processors":["memory_limiter"],"receivers":["otlp"]},"traces":{"exporters":["otlp"],"processors":["memory_limiter","tail_sampling"],"receivers":["otlp"]}},"telemetry":{"logs":{"processors":[{"batch":{"exporter":{"otlp":{"endpoint":"http://127.0.0.1:4319","protocol":"http/protobuf"}}}}]},"metrics":{"readers":[{"periodic":{"exporter":{"otlp":{"endpoint":"http://127.0.0.1:4319","protocol":"http/protobuf"}}}}]},"resource":{"service.instance.id":"${env:POD_NAME}","service.name":"nktp-gateway-metrics-sidecar"},"traces":{"level":"none"}}}}
           env:
             - name: POD_NAME
               valueFrom:
@@ -1504,6 +1595,10 @@ matches the snapshot with default values:
               path: /
               port: 13134
             periodSeconds: 1
+          volumeMounts:
+            - mountPath: /etc/nktp/internal-tls/client
+              name: internal-tls-client
+              readOnly: true
       managementState: managed
       mode: statefulset
       podDisruptionBudget:
@@ -1556,7 +1651,17 @@ matches the snapshot with default values:
               - key: ca.crt
                 path: ca.crt
             secretName: nktp-gateway-metrics-server-tls
-  23: |
+        - name: internal-tls-client
+          secret:
+            items:
+              - key: tls.crt
+                path: tls.crt
+              - key: tls.key
+                path: tls.key
+              - key: ca.crt
+                path: ca.crt
+            secretName: nktp-gateway-metrics-client-tls
+  27: |
     apiVersion: opentelemetry.io/v1beta1
     kind: OpenTelemetryCollector
     metadata:
@@ -1625,13 +1730,6 @@ matches the snapshot with default values:
                   client_ca_file: /etc/nktp/internal-tls/server/ca.crt
                   key_file: /etc/nktp/internal-tls/server/tls.key
                   reload_interval: 1h
-              http:
-                endpoint: 0.0.0.0:4318
-                tls:
-                  cert_file: /etc/nktp/internal-tls/server/tls.crt
-                  client_ca_file: /etc/nktp/internal-tls/server/ca.crt
-                  key_file: /etc/nktp/internal-tls/server/tls.key
-                  reload_interval: 1h
         service:
           extensions:
             - health_check
@@ -1680,7 +1778,7 @@ matches the snapshot with default values:
       image: otel/opentelemetry-collector-k8s:0.162.0
       initContainers:
         - args:
-            - --config=yaml:{"exporters":{"otlp":{"endpoint":"nktp-watchdog-collector:4317","retry_on_failure":{"max_elapsed_time":"30m"},"sending_queue":{"batch":{"flush_timeout":"1s","max_size":262144,"min_size":65536,"sizer":"bytes"},"block_on_overflow":false,"num_consumers":2,"queue_size":16777216,"sizer":"bytes"},"tls":{"insecure":true}}},"extensions":{"health_check":{"endpoint":"0.0.0.0:13134"}},"processors":{"memory_limiter":{"check_interval":"500ms","limit_percentage":80,"spike_limit_percentage":25},"tail_sampling":{"decision_cache":{"sampled_cache_size":50000},"decision_wait":"5s","num_traces":5000,"policies":[{"name":"errors","status_code":{"status_codes":["ERROR"]},"type":"status_code"},{"name":"slow","ottl_condition":{"error_mode":"ignore","span":["end_time_unix_nano - start_time_unix_nano \u003e 1000000000"]},"type":"ottl_condition"}]}},"receivers":{"otlp":{"protocols":{"http":{"endpoint":"127.0.0.1:4319","keepalive":{"idle_timeout":"5m"}}}}},"service":{"extensions":["health_check"],"pipelines":{"logs":{"exporters":["otlp"],"processors":["memory_limiter"],"receivers":["otlp"]},"metrics":{"exporters":["otlp"],"processors":["memory_limiter"],"receivers":["otlp"]},"traces":{"exporters":["otlp"],"processors":["memory_limiter","tail_sampling"],"receivers":["otlp"]}},"telemetry":{"logs":{"processors":[{"batch":{"exporter":{"otlp":{"endpoint":"http://127.0.0.1:4319","protocol":"http/protobuf"}}}}]},"metrics":{"readers":[{"periodic":{"exporter":{"otlp":{"endpoint":"http://127.0.0.1:4319","protocol":"http/protobuf"}}}}]},"resource":{"service.instance.id":"${env:POD_NAME}","service.name":"nktp-gateway-traces-sidecar"},"traces":{"level":"none"}}}}
+            - --config=yaml:{"exporters":{"otlp":{"endpoint":"nktp-watchdog-collector:4317","retry_on_failure":{"max_elapsed_time":"30m"},"sending_queue":{"batch":{"flush_timeout":"1s","max_size":262144,"min_size":65536,"sizer":"bytes"},"block_on_overflow":false,"num_consumers":2,"queue_size":16777216,"sizer":"bytes"},"tls":{"ca_file":"/etc/nktp/internal-tls/client/ca.crt","cert_file":"/etc/nktp/internal-tls/client/tls.crt","key_file":"/etc/nktp/internal-tls/client/tls.key","reload_interval":"1h"}}},"extensions":{"health_check":{"endpoint":"0.0.0.0:13134"}},"processors":{"memory_limiter":{"check_interval":"500ms","limit_percentage":80,"spike_limit_percentage":25},"tail_sampling":{"decision_cache":{"sampled_cache_size":50000},"decision_wait":"5s","num_traces":5000,"policies":[{"name":"errors","status_code":{"status_codes":["ERROR"]},"type":"status_code"},{"name":"slow","ottl_condition":{"error_mode":"ignore","span":["end_time_unix_nano - start_time_unix_nano \u003e 1000000000"]},"type":"ottl_condition"}]}},"receivers":{"otlp":{"protocols":{"http":{"endpoint":"127.0.0.1:4319","keepalive":{"idle_timeout":"5m"}}}}},"service":{"extensions":["health_check"],"pipelines":{"logs":{"exporters":["otlp"],"processors":["memory_limiter"],"receivers":["otlp"]},"metrics":{"exporters":["otlp"],"processors":["memory_limiter"],"receivers":["otlp"]},"traces":{"exporters":["otlp"],"processors":["memory_limiter","tail_sampling"],"receivers":["otlp"]}},"telemetry":{"logs":{"processors":[{"batch":{"exporter":{"otlp":{"endpoint":"http://127.0.0.1:4319","protocol":"http/protobuf"}}}}]},"metrics":{"readers":[{"periodic":{"exporter":{"otlp":{"endpoint":"http://127.0.0.1:4319","protocol":"http/protobuf"}}}}]},"resource":{"service.instance.id":"${env:POD_NAME}","service.name":"nktp-gateway-traces-sidecar"},"traces":{"level":"none"}}}}
           env:
             - name: POD_NAME
               valueFrom:
@@ -1715,6 +1813,10 @@ matches the snapshot with default values:
               path: /
               port: 13134
             periodSeconds: 1
+          volumeMounts:
+            - mountPath: /etc/nktp/internal-tls/client
+              name: internal-tls-client
+              readOnly: true
       managementState: managed
       mode: statefulset
       podDisruptionBudget:
@@ -1767,7 +1869,17 @@ matches the snapshot with default values:
               - key: ca.crt
                 path: ca.crt
             secretName: nktp-gateway-traces-server-tls
-  24: |
+        - name: internal-tls-client
+          secret:
+            items:
+              - key: tls.crt
+                path: tls.crt
+              - key: tls.key
+                path: tls.key
+              - key: ca.crt
+                path: ca.crt
+            secretName: nktp-gateway-traces-client-tls
+  28: |
     apiVersion: monitoring.coreos.com/v1
     kind: PodMonitor
     metadata:
@@ -1788,7 +1900,7 @@ matches the snapshot with default values:
           app.kubernetes.io/component: kube-state-metrics
           app.kubernetes.io/instance: RELEASE-NAME
           app.kubernetes.io/name: nktp-ksm-cluster
-  25: |
+  29: |
     apiVersion: monitoring.coreos.com/v1
     kind: PodMonitor
     metadata:
@@ -1809,7 +1921,7 @@ matches the snapshot with default values:
           app.kubernetes.io/component: kube-state-metrics
           app.kubernetes.io/instance: RELEASE-NAME
           app.kubernetes.io/name: nktp-ksm-configuration
-  26: |
+  30: |
     apiVersion: monitoring.coreos.com/v1
     kind: PodMonitor
     metadata:
@@ -1830,7 +1942,7 @@ matches the snapshot with default values:
           app.kubernetes.io/component: kube-state-metrics
           app.kubernetes.io/instance: RELEASE-NAME
           app.kubernetes.io/name: nktp-ksm-networking
-  27: |
+  31: |
     apiVersion: monitoring.coreos.com/v1
     kind: PodMonitor
     metadata:
@@ -1850,7 +1962,7 @@ matches the snapshot with default values:
           app.kubernetes.io/component: kube-state-metrics
           app.kubernetes.io/instance: RELEASE-NAME
           app.kubernetes.io/name: nktp-ksm-pods
-  28: |
+  32: |
     apiVersion: monitoring.coreos.com/v1
     kind: PodMonitor
     metadata:
@@ -1871,7 +1983,7 @@ matches the snapshot with default values:
           app.kubernetes.io/component: kube-state-metrics
           app.kubernetes.io/instance: RELEASE-NAME
           app.kubernetes.io/name: nktp-ksm-storage
-  29: |
+  33: |
     apiVersion: monitoring.coreos.com/v1
     kind: PodMonitor
     metadata:
@@ -1892,7 +2004,7 @@ matches the snapshot with default values:
           app.kubernetes.io/component: kube-state-metrics
           app.kubernetes.io/instance: RELEASE-NAME
           app.kubernetes.io/name: nktp-ksm-unscheduled-pods
-  30: |
+  34: |
     apiVersion: monitoring.coreos.com/v1
     kind: PodMonitor
     metadata:
@@ -1913,7 +2025,7 @@ matches the snapshot with default values:
           app.kubernetes.io/component: kube-state-metrics
           app.kubernetes.io/instance: RELEASE-NAME
           app.kubernetes.io/name: nktp-ksm-workloads
-  31: |
+  35: |
     apiVersion: v1
     kind: ServiceAccount
     metadata:
@@ -1923,7 +2035,7 @@ matches the snapshot with default values:
         app.kubernetes.io/name: nktp-ksm-cluster
       name: nktp-ksm-cluster
       namespace: NAMESPACE
-  32: |
+  36: |
     apiVersion: rbac.authorization.k8s.io/v1
     kind: ClusterRole
     metadata:
@@ -1965,7 +2077,7 @@ matches the snapshot with default values:
         verbs:
           - list
           - watch
-  33: |
+  37: |
     apiVersion: rbac.authorization.k8s.io/v1
     kind: ClusterRoleBinding
     metadata:
@@ -1982,7 +2094,7 @@ matches the snapshot with default values:
       - kind: ServiceAccount
         name: nktp-ksm-cluster
         namespace: NAMESPACE
-  34: |
+  38: |
     apiVersion: rbac.authorization.k8s.io/v1
     kind: ClusterRole
     metadata:
@@ -2007,7 +2119,7 @@ matches the snapshot with default values:
         verbs:
           - list
           - watch
-  35: |
+  39: |
     apiVersion: rbac.authorization.k8s.io/v1
     kind: ClusterRoleBinding
     metadata:
@@ -2024,7 +2136,7 @@ matches the snapshot with default values:
       - kind: ServiceAccount
         name: nktp-ksm-cluster
         namespace: NAMESPACE
-  36: |
+  40: |
     apiVersion: v1
     kind: ServiceAccount
     metadata:
@@ -2034,7 +2146,7 @@ matches the snapshot with default values:
         app.kubernetes.io/name: nktp-ksm-configuration
       name: nktp-ksm-configuration
       namespace: NAMESPACE
-  37: |
+  41: |
     apiVersion: rbac.authorization.k8s.io/v1
     kind: ClusterRole
     metadata:
@@ -2051,7 +2163,7 @@ matches the snapshot with default values:
         verbs:
           - list
           - watch
-  38: |
+  42: |
     apiVersion: rbac.authorization.k8s.io/v1
     kind: ClusterRoleBinding
     metadata:
@@ -2068,7 +2180,7 @@ matches the snapshot with default values:
       - kind: ServiceAccount
         name: nktp-ksm-configuration
         namespace: NAMESPACE
-  39: |
+  43: |
     apiVersion: v1
     kind: ServiceAccount
     metadata:
@@ -2078,7 +2190,7 @@ matches the snapshot with default values:
         app.kubernetes.io/name: nktp-ksm-networking
       name: nktp-ksm-networking
       namespace: NAMESPACE
-  40: |
+  44: |
     apiVersion: rbac.authorization.k8s.io/v1
     kind: ClusterRole
     metadata:
@@ -2110,7 +2222,7 @@ matches the snapshot with default values:
         verbs:
           - list
           - watch
-  41: |
+  45: |
     apiVersion: rbac.authorization.k8s.io/v1
     kind: ClusterRoleBinding
     metadata:
@@ -2127,7 +2239,7 @@ matches the snapshot with default values:
       - kind: ServiceAccount
         name: nktp-ksm-networking
         namespace: NAMESPACE
-  42: |
+  46: |
     apiVersion: v1
     kind: ServiceAccount
     metadata:
@@ -2137,7 +2249,7 @@ matches the snapshot with default values:
         app.kubernetes.io/name: nktp-ksm-pods
       name: nktp-ksm-pods
       namespace: NAMESPACE
-  43: |
+  47: |
     apiVersion: rbac.authorization.k8s.io/v1
     kind: ClusterRole
     metadata:
@@ -2154,7 +2266,7 @@ matches the snapshot with default values:
         verbs:
           - list
           - watch
-  44: |
+  48: |
     apiVersion: rbac.authorization.k8s.io/v1
     kind: ClusterRoleBinding
     metadata:
@@ -2171,7 +2283,7 @@ matches the snapshot with default values:
       - kind: ServiceAccount
         name: nktp-ksm-pods
         namespace: NAMESPACE
-  45: |
+  49: |
     apiVersion: v1
     kind: ServiceAccount
     metadata:
@@ -2181,7 +2293,7 @@ matches the snapshot with default values:
         app.kubernetes.io/name: nktp-ksm-storage
       name: nktp-ksm-storage
       namespace: NAMESPACE
-  46: |
+  50: |
     apiVersion: rbac.authorization.k8s.io/v1
     kind: ClusterRole
     metadata:
@@ -2205,7 +2317,7 @@ matches the snapshot with default values:
         verbs:
           - list
           - watch
-  47: |
+  51: |
     apiVersion: rbac.authorization.k8s.io/v1
     kind: ClusterRoleBinding
     metadata:
@@ -2222,7 +2334,7 @@ matches the snapshot with default values:
       - kind: ServiceAccount
         name: nktp-ksm-storage
         namespace: NAMESPACE
-  48: |
+  52: |
     apiVersion: rbac.authorization.k8s.io/v1
     kind: ClusterRole
     metadata:
@@ -2239,7 +2351,7 @@ matches the snapshot with default values:
         verbs:
           - list
           - watch
-  49: |
+  53: |
     apiVersion: rbac.authorization.k8s.io/v1
     kind: ClusterRoleBinding
     metadata:
@@ -2256,7 +2368,7 @@ matches the snapshot with default values:
       - kind: ServiceAccount
         name: nktp-ksm-storage
         namespace: NAMESPACE
-  50: |
+  54: |
     apiVersion: v1
     kind: ServiceAccount
     metadata:
@@ -2266,7 +2378,7 @@ matches the snapshot with default values:
         app.kubernetes.io/name: nktp-ksm-unscheduled-pods
       name: nktp-ksm-unscheduled-pods
       namespace: NAMESPACE
-  51: |
+  55: |
     apiVersion: rbac.authorization.k8s.io/v1
     kind: ClusterRole
     metadata:
@@ -2283,7 +2395,7 @@ matches the snapshot with default values:
         verbs:
           - list
           - watch
-  52: |
+  56: |
     apiVersion: rbac.authorization.k8s.io/v1
     kind: ClusterRoleBinding
     metadata:
@@ -2300,7 +2412,7 @@ matches the snapshot with default values:
       - kind: ServiceAccount
         name: nktp-ksm-unscheduled-pods
         namespace: NAMESPACE
-  53: |
+  57: |
     apiVersion: v1
     kind: ServiceAccount
     metadata:
@@ -2310,7 +2422,7 @@ matches the snapshot with default values:
         app.kubernetes.io/name: nktp-ksm-workloads
       name: nktp-ksm-workloads
       namespace: NAMESPACE
-  54: |
+  58: |
     apiVersion: rbac.authorization.k8s.io/v1
     kind: ClusterRole
     metadata:
@@ -2359,7 +2471,7 @@ matches the snapshot with default values:
         verbs:
           - list
           - watch
-  55: |
+  59: |
     apiVersion: rbac.authorization.k8s.io/v1
     kind: ClusterRoleBinding
     metadata:
@@ -2376,7 +2488,7 @@ matches the snapshot with default values:
       - kind: ServiceAccount
         name: nktp-ksm-workloads
         namespace: NAMESPACE
-  56: |
+  60: |
     apiVersion: apps/v1
     kind: Deployment
     metadata:
@@ -2451,7 +2563,7 @@ matches the snapshot with default values:
             seccompProfile:
               type: RuntimeDefault
           serviceAccountName: nktp-ksm-cluster
-  57: |
+  61: |
     apiVersion: apps/v1
     kind: Deployment
     metadata:
@@ -2526,7 +2638,7 @@ matches the snapshot with default values:
             seccompProfile:
               type: RuntimeDefault
           serviceAccountName: nktp-ksm-configuration
-  58: |
+  62: |
     apiVersion: apps/v1
     kind: Deployment
     metadata:
@@ -2601,7 +2713,7 @@ matches the snapshot with default values:
             seccompProfile:
               type: RuntimeDefault
           serviceAccountName: nktp-ksm-networking
-  59: |
+  63: |
     apiVersion: apps/v1
     kind: DaemonSet
     metadata:
@@ -2679,7 +2791,7 @@ matches the snapshot with default values:
           serviceAccountName: nktp-ksm-pods
           tolerations:
             - operator: Exists
-  60: |
+  64: |
     apiVersion: apps/v1
     kind: Deployment
     metadata:
@@ -2754,7 +2866,7 @@ matches the snapshot with default values:
             seccompProfile:
               type: RuntimeDefault
           serviceAccountName: nktp-ksm-storage
-  61: |
+  65: |
     apiVersion: apps/v1
     kind: Deployment
     metadata:
@@ -2830,7 +2942,7 @@ matches the snapshot with default values:
             seccompProfile:
               type: RuntimeDefault
           serviceAccountName: nktp-ksm-unscheduled-pods
-  62: |
+  66: |
     apiVersion: apps/v1
     kind: Deployment
     metadata:
@@ -2905,7 +3017,7 @@ matches the snapshot with default values:
             seccompProfile:
               type: RuntimeDefault
           serviceAccountName: nktp-ksm-workloads
-  63: |
+  67: |
     apiVersion: rbac.authorization.k8s.io/v1
     kind: ClusterRole
     metadata:
@@ -2942,7 +3054,7 @@ matches the snapshot with default values:
           - get
           - list
           - watch
-  64: |
+  68: |
     apiVersion: rbac.authorization.k8s.io/v1
     kind: ClusterRoleBinding
     metadata:
@@ -2955,7 +3067,7 @@ matches the snapshot with default values:
       - kind: ServiceAccount
         name: nktp-large-target-metrics-targetallocator
         namespace: NAMESPACE
-  65: |
+  69: |
     apiVersion: rbac.authorization.k8s.io/v1
     kind: ClusterRole
     metadata:
@@ -2965,7 +3077,7 @@ matches the snapshot with default values:
           - /metrics
         verbs:
           - get
-  66: |
+  70: |
     apiVersion: rbac.authorization.k8s.io/v1
     kind: ClusterRoleBinding
     metadata:
@@ -2978,7 +3090,7 @@ matches the snapshot with default values:
       - kind: ServiceAccount
         name: nktp-large-target-metrics-collector
         namespace: NAMESPACE
-  67: |
+  71: |
     apiVersion: opentelemetry.io/v1beta1
     kind: OpenTelemetryCollector
     metadata:
@@ -3089,7 +3201,7 @@ matches the snapshot with default values:
       image: otel/opentelemetry-collector-k8s:0.162.0
       initContainers:
         - args:
-            - --config=yaml:{"exporters":{"otlp":{"endpoint":"nktp-watchdog-collector:4317","retry_on_failure":{"max_elapsed_time":"30m"},"sending_queue":{"batch":{"flush_timeout":"1s","max_size":262144,"min_size":65536,"sizer":"bytes"},"block_on_overflow":false,"num_consumers":2,"queue_size":4194304,"sizer":"bytes"},"tls":{"insecure":true}}},"extensions":{"health_check":{"endpoint":"0.0.0.0:13134"}},"processors":{"memory_limiter":{"check_interval":"500ms","limit_percentage":80,"spike_limit_percentage":25},"tail_sampling":{"decision_cache":{"sampled_cache_size":10000},"decision_wait":"5s","num_traces":1000,"policies":[{"name":"errors","status_code":{"status_codes":["ERROR"]},"type":"status_code"},{"name":"slow","ottl_condition":{"error_mode":"ignore","span":["end_time_unix_nano - start_time_unix_nano \u003e 1000000000"]},"type":"ottl_condition"}]}},"receivers":{"otlp":{"protocols":{"http":{"endpoint":"127.0.0.1:4319","keepalive":{"idle_timeout":"5m"}}}}},"service":{"extensions":["health_check"],"pipelines":{"logs":{"exporters":["otlp"],"processors":["memory_limiter"],"receivers":["otlp"]},"metrics":{"exporters":["otlp"],"processors":["memory_limiter"],"receivers":["otlp"]},"traces":{"exporters":["otlp"],"processors":["memory_limiter","tail_sampling"],"receivers":["otlp"]}},"telemetry":{"logs":{"processors":[{"batch":{"exporter":{"otlp":{"endpoint":"http://127.0.0.1:4319","protocol":"http/protobuf"}}}}]},"metrics":{"readers":[{"periodic":{"exporter":{"otlp":{"endpoint":"http://127.0.0.1:4319","protocol":"http/protobuf"}}}}]},"resource":{"service.instance.id":"${env:POD_NAME}","service.name":"nktp-large-target-metrics-sidecar"},"traces":{"level":"none"}}}}
+            - --config=yaml:{"exporters":{"otlp":{"endpoint":"nktp-watchdog-collector:4317","retry_on_failure":{"max_elapsed_time":"30m"},"sending_queue":{"batch":{"flush_timeout":"1s","max_size":262144,"min_size":65536,"sizer":"bytes"},"block_on_overflow":false,"num_consumers":2,"queue_size":4194304,"sizer":"bytes"},"tls":{"ca_file":"/etc/nktp/internal-tls/client/ca.crt","cert_file":"/etc/nktp/internal-tls/client/tls.crt","key_file":"/etc/nktp/internal-tls/client/tls.key","reload_interval":"1h"}}},"extensions":{"health_check":{"endpoint":"0.0.0.0:13134"}},"processors":{"memory_limiter":{"check_interval":"500ms","limit_percentage":80,"spike_limit_percentage":25},"tail_sampling":{"decision_cache":{"sampled_cache_size":10000},"decision_wait":"5s","num_traces":1000,"policies":[{"name":"errors","status_code":{"status_codes":["ERROR"]},"type":"status_code"},{"name":"slow","ottl_condition":{"error_mode":"ignore","span":["end_time_unix_nano - start_time_unix_nano \u003e 1000000000"]},"type":"ottl_condition"}]}},"receivers":{"otlp":{"protocols":{"http":{"endpoint":"127.0.0.1:4319","keepalive":{"idle_timeout":"5m"}}}}},"service":{"extensions":["health_check"],"pipelines":{"logs":{"exporters":["otlp"],"processors":["memory_limiter"],"receivers":["otlp"]},"metrics":{"exporters":["otlp"],"processors":["memory_limiter"],"receivers":["otlp"]},"traces":{"exporters":["otlp"],"processors":["memory_limiter","tail_sampling"],"receivers":["otlp"]}},"telemetry":{"logs":{"processors":[{"batch":{"exporter":{"otlp":{"endpoint":"http://127.0.0.1:4319","protocol":"http/protobuf"}}}}]},"metrics":{"readers":[{"periodic":{"exporter":{"otlp":{"endpoint":"http://127.0.0.1:4319","protocol":"http/protobuf"}}}}]},"resource":{"service.instance.id":"${env:POD_NAME}","service.name":"nktp-large-target-metrics-sidecar"},"traces":{"level":"none"}}}}
           env:
             - name: POD_NAME
               valueFrom:
@@ -3124,6 +3236,10 @@ matches the snapshot with default values:
               path: /
               port: 13134
             periodSeconds: 1
+          volumeMounts:
+            - mountPath: /etc/nktp/internal-tls/client
+              name: internal-tls-client
+              readOnly: true
       managementState: managed
       mode: statefulset
       podDisruptionBudget:
@@ -3216,7 +3332,7 @@ matches the snapshot with default values:
               - periodic:
                   exporter:
                     otlpGrpc:
-                      endpoint: nktp-watchdog-collector:4317
+                      endpoint: nktp-watchdog-collector:4320
                       temporalityPreference: cumulative
                       tls:
                         insecure: true
@@ -3251,7 +3367,7 @@ matches the snapshot with default values:
               - key: ca.crt
                 path: ca.crt
             secretName: nktp-large-target-metrics-client-tls
-  68: |
+  72: |
     apiVersion: v1
     data:
       nktp.yaml: |
@@ -3268,7 +3384,7 @@ matches the snapshot with default values:
     kind: ConfigMap
     metadata:
       name: lgtm-dashboard-provider
-  69: |
+  73: |
     apiVersion: v1
     data:
       nktp-cluster-events.json: |
@@ -9620,7 +9736,7 @@ matches the snapshot with default values:
     kind: ConfigMap
     metadata:
       name: lgtm-dashboards
-  70: |
+  74: |
     apiVersion: v1
     kind: Service
     metadata:
@@ -9645,7 +9761,7 @@ matches the snapshot with default values:
           targetPort: 4318
       selector:
         app: lgtm
-  71: |
+  75: |
     apiVersion: apps/v1
     kind: Deployment
     metadata:
@@ -9721,7 +9837,7 @@ matches the snapshot with default values:
               name: p8s-storage
             - emptyDir: {}
               name: pyroscope-storage
-  72: |
+  76: |
     apiVersion: rbac.authorization.k8s.io/v1
     kind: ClusterRoleBinding
     metadata:
@@ -9734,7 +9850,7 @@ matches the snapshot with default values:
       - kind: ServiceAccount
         name: nktp-watchdog-collector
         namespace: NAMESPACE
-  73: |
+  77: |
     apiVersion: rbac.authorization.k8s.io/v1
     kind: Role
     metadata:
@@ -9758,7 +9874,7 @@ matches the snapshot with default values:
           - get
           - list
           - watch
-  74: |
+  78: |
     apiVersion: rbac.authorization.k8s.io/v1
     kind: RoleBinding
     metadata:
@@ -9772,7 +9888,7 @@ matches the snapshot with default values:
       - kind: ServiceAccount
         name: nktp-watchdog-targetallocator
         namespace: NAMESPACE
-  75: |
+  79: |
     apiVersion: opentelemetry.io/v1beta1
     kind: OpenTelemetryCollector
     metadata:
@@ -9836,7 +9952,11 @@ matches the snapshot with default values:
                 statements:
                   - set(attributes["k8s.cluster.name"], "${env:K8S_CLUSTER_NAME:-unknown}") where attributes["k8s.cluster.name"] == nil
         receivers:
-          otlp:
+          otlp/insecure:
+            protocols:
+              grpc:
+                endpoint: 0.0.0.0:4320
+          otlp/secure:
             protocols:
               grpc:
                 endpoint: 0.0.0.0:4317
@@ -9844,6 +9964,11 @@ matches the snapshot with default values:
                   server_parameters:
                     max_connection_age: 5m
                     max_connection_age_grace: 30s
+                tls:
+                  cert_file: /etc/nktp/internal-tls/server/tls.crt
+                  client_ca_file: /etc/nktp/internal-tls/server/ca.crt
+                  key_file: /etc/nktp/internal-tls/server/tls.key
+                  reload_interval: 1h
           prometheus:
             config:
               scrape_configs:
@@ -9883,7 +10008,7 @@ matches the snapshot with default values:
                 - redaction/basic_v1
                 - transform/cluster
               receivers:
-                - otlp
+                - otlp/secure
             metrics:
               exporters:
                 - otlp
@@ -9892,7 +10017,8 @@ matches the snapshot with default values:
                 - redaction/basic_v1
                 - transform/cluster
               receivers:
-                - otlp
+                - otlp/insecure
+                - otlp/secure
                 - prometheus
             traces:
               exporters:
@@ -9902,7 +10028,7 @@ matches the snapshot with default values:
                 - redaction/basic_v1
                 - transform/cluster
               receivers:
-                - otlp
+                - otlp/secure
           telemetry:
             logs:
               processors:
@@ -10030,7 +10156,7 @@ matches the snapshot with default values:
               - periodic:
                   exporter:
                     otlpGrpc:
-                      endpoint: nktp-watchdog-collector:4317
+                      endpoint: nktp-watchdog-collector:4320
                       temporalityPreference: cumulative
                       tls:
                         insecure: true
@@ -10050,3 +10176,18 @@ matches the snapshot with default values:
           topologyKey: kubernetes.io/hostname
           whenUnsatisfiable: ScheduleAnyway
       upgradeStrategy: automatic
+      volumeMounts:
+        - mountPath: /etc/nktp/internal-tls/server
+          name: internal-tls-server
+          readOnly: true
+      volumes:
+        - name: internal-tls-server
+          secret:
+            items:
+              - key: tls.crt
+                path: tls.crt
+              - key: tls.key
+                path: tls.key
+              - key: ca.crt
+                path: ca.crt
+            secretName: nktp-watchdog-server-tls

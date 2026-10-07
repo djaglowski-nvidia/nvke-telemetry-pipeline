@@ -28,7 +28,7 @@ global:
   clusterName: ""
 
 certManager:
-  # Creates Certificate CRs for each collector workload for encrypted collector-to-gateway communication
+  # Creates a Certificate for each collector and its sidecar for collector->gateway and collector->watchdog
   # and creates a self-signed Issuer to act as a in-cluster CA + Issuer to sign collector Certificates
   # https://cert-manager.io/docs/configuration/selfsigned/#bootstrapping-ca-issuers
   internalTLS:
@@ -98,7 +98,7 @@ watchdog:
                 interval: 30s
                 exporter:
                   otlpGrpc:
-                    endpoint: nktp-watchdog-collector:4317
+                    endpoint: nktp-watchdog-collector:4320
                     tls:
                       insecure: true
                     temporalityPreference: cumulative
@@ -149,6 +149,18 @@ watchdog:
       readOnlyRootFilesystem: true
       capabilities:
         drop: [ALL]
+    volumes:
+      - name: internal-tls-server
+        secret:
+          secretName: nktp-watchdog-server-tls
+          items:
+            - {key: tls.crt, path: tls.crt}
+            - {key: tls.key, path: tls.key}
+            - {key: ca.crt, path: ca.crt}
+    volumeMounts:
+      - name: internal-tls-server
+        mountPath: /etc/nktp/internal-tls/server
+        readOnly: true
   otelcol:
     # Set a custom image for this workload only.
     # image:
@@ -160,10 +172,19 @@ watchdog:
         health_check:
           endpoint: 0.0.0.0:13133
       receivers:
-        otlp:
+        otlp/insecure:
+          protocols:
+            grpc:
+              endpoint: 0.0.0.0:4320
+        otlp/secure:
           protocols:
             grpc:
               endpoint: 0.0.0.0:4317
+              tls:
+                cert_file: /etc/nktp/internal-tls/server/tls.crt
+                key_file: /etc/nktp/internal-tls/server/tls.key
+                client_ca_file: /etc/nktp/internal-tls/server/ca.crt
+                reload_interval: 1h
               keepalive:
                 server_parameters:
                   # GOAWAY at 5m (+/-10% jitter) lets clients reconnect through the Service.
@@ -278,15 +299,15 @@ watchdog:
                       endpoint: http://127.0.0.1:4319
         pipelines:
           metrics:
-            receivers: [otlp, prometheus]
+            receivers: [otlp/insecure, otlp/secure, prometheus]
             processors: [memory_limiter, redaction/basic_v1, transform/cluster]
             exporters: [otlp]
           logs:
-            receivers: [otlp]
+            receivers: [otlp/secure]
             processors: [memory_limiter, redaction/basic_v1, transform/cluster]
             exporters: [otlp]
           traces:
-            receivers: [otlp]
+            receivers: [otlp/secure]
             processors: [memory_limiter, redaction/basic_v1, transform/cluster]
             exporters: [otlp]
   # Native sidecar for this workload's own telemetry. It buffers through outages,
@@ -495,6 +516,13 @@ gateway_logs:
             - {key: tls.crt, path: tls.crt}
             - {key: tls.key, path: tls.key}
             - {key: ca.crt, path: ca.crt}
+      - name: internal-tls-client
+        secret:
+          secretName: nktp-gateway-logs-client-tls
+          items:
+            - {key: tls.crt, path: tls.crt}
+            - {key: tls.key, path: tls.key}
+            - {key: ca.crt, path: ca.crt}
     volumeMounts:
       - name: internal-tls-server
         mountPath: /etc/nktp/internal-tls/server
@@ -529,13 +557,6 @@ gateway_logs:
                   # gRPC connection management: https://github.com/grpc/proposal/blob/master/A9-server-side-conn-mgt.md
                   max_connection_age: 5m
                   max_connection_age_grace: 30s # Increase if in-flight exports need longer before forced closure.
-            http:
-              endpoint: 0.0.0.0:4318
-              tls:
-                cert_file: /etc/nktp/internal-tls/server/tls.crt
-                key_file: /etc/nktp/internal-tls/server/tls.key
-                client_ca_file: /etc/nktp/internal-tls/server/ca.crt
-                reload_interval: 1h
       processors:
         redaction/basic_v1:
           allow_all_keys: true
@@ -643,6 +664,10 @@ gateway_logs:
         readOnlyRootFilesystem: true
         capabilities:
           drop: [ALL]
+      volumeMounts:
+        - name: internal-tls-client
+          mountPath: /etc/nktp/internal-tls/client
+          readOnly: true
     otelcol:
       # Set a custom image for this sidecar only.
       # image:
@@ -685,7 +710,10 @@ gateway_logs:
           otlp:
             endpoint: nktp-watchdog-collector:4317
             tls:
-              insecure: true
+              cert_file: /etc/nktp/internal-tls/client/tls.crt
+              key_file: /etc/nktp/internal-tls/client/tls.key
+              ca_file: /etc/nktp/internal-tls/client/ca.crt
+              reload_interval: 1h
             retry_on_failure:
               max_elapsed_time: 30m
             sending_queue:
@@ -790,6 +818,13 @@ gateway_metrics:
             - {key: tls.crt, path: tls.crt}
             - {key: tls.key, path: tls.key}
             - {key: ca.crt, path: ca.crt}
+      - name: internal-tls-client
+        secret:
+          secretName: nktp-gateway-metrics-client-tls
+          items:
+            - {key: tls.crt, path: tls.crt}
+            - {key: tls.key, path: tls.key}
+            - {key: ca.crt, path: ca.crt}
     volumeMounts:
       - name: internal-tls-server
         mountPath: /etc/nktp/internal-tls/server
@@ -824,13 +859,6 @@ gateway_metrics:
                   # gRPC connection management: https://github.com/grpc/proposal/blob/master/A9-server-side-conn-mgt.md
                   max_connection_age: 5m
                   max_connection_age_grace: 30s # Increase if in-flight exports need longer before forced closure.
-            http:
-              endpoint: 0.0.0.0:4318
-              tls:
-                cert_file: /etc/nktp/internal-tls/server/tls.crt
-                key_file: /etc/nktp/internal-tls/server/tls.key
-                client_ca_file: /etc/nktp/internal-tls/server/ca.crt
-                reload_interval: 1h
       processors:
         redaction/basic_v1:
           allow_all_keys: true
@@ -938,6 +966,10 @@ gateway_metrics:
         readOnlyRootFilesystem: true
         capabilities:
           drop: [ALL]
+      volumeMounts:
+        - name: internal-tls-client
+          mountPath: /etc/nktp/internal-tls/client
+          readOnly: true
     otelcol:
       # Set a custom image for this sidecar only.
       # image:
@@ -980,7 +1012,10 @@ gateway_metrics:
           otlp:
             endpoint: nktp-watchdog-collector:4317
             tls:
-              insecure: true
+              cert_file: /etc/nktp/internal-tls/client/tls.crt
+              key_file: /etc/nktp/internal-tls/client/tls.key
+              ca_file: /etc/nktp/internal-tls/client/ca.crt
+              reload_interval: 1h
             retry_on_failure:
               max_elapsed_time: 30m
             sending_queue:
@@ -1085,6 +1120,13 @@ gateway_traces:
             - {key: tls.crt, path: tls.crt}
             - {key: tls.key, path: tls.key}
             - {key: ca.crt, path: ca.crt}
+      - name: internal-tls-client
+        secret:
+          secretName: nktp-gateway-traces-client-tls
+          items:
+            - {key: tls.crt, path: tls.crt}
+            - {key: tls.key, path: tls.key}
+            - {key: ca.crt, path: ca.crt}
     volumeMounts:
       - name: internal-tls-server
         mountPath: /etc/nktp/internal-tls/server
@@ -1119,13 +1161,6 @@ gateway_traces:
                   # gRPC connection management: https://github.com/grpc/proposal/blob/master/A9-server-side-conn-mgt.md
                   max_connection_age: 5m
                   max_connection_age_grace: 30s # Increase if in-flight exports need longer before forced closure.
-            http:
-              endpoint: 0.0.0.0:4318
-              tls:
-                cert_file: /etc/nktp/internal-tls/server/tls.crt
-                key_file: /etc/nktp/internal-tls/server/tls.key
-                client_ca_file: /etc/nktp/internal-tls/server/ca.crt
-                reload_interval: 1h
       processors:
         redaction/basic_v1:
           allow_all_keys: true
@@ -1233,6 +1268,10 @@ gateway_traces:
         readOnlyRootFilesystem: true
         capabilities:
           drop: [ALL]
+      volumeMounts:
+        - name: internal-tls-client
+          mountPath: /etc/nktp/internal-tls/client
+          readOnly: true
     otelcol:
       # Set a custom image for this sidecar only.
       # image:
@@ -1275,7 +1314,10 @@ gateway_traces:
           otlp:
             endpoint: nktp-watchdog-collector:4317
             tls:
-              insecure: true
+              cert_file: /etc/nktp/internal-tls/client/tls.crt
+              key_file: /etc/nktp/internal-tls/client/tls.key
+              ca_file: /etc/nktp/internal-tls/client/ca.crt
+              reload_interval: 1h
             retry_on_failure:
               max_elapsed_time: 30m
             sending_queue:
@@ -1368,7 +1410,7 @@ daemonset:
                 interval: 30s
                 exporter:
                   otlpGrpc:
-                    endpoint: nktp-watchdog-collector:4317
+                    endpoint: nktp-watchdog-collector:4320
                     tls:
                       insecure: true
                     temporalityPreference: cumulative
@@ -1806,7 +1848,10 @@ daemonset:
         otlp/watchdog:
           endpoint: nktp-watchdog-collector:4317
           tls:
-            insecure: true
+            ca_file: /etc/nktp/internal-tls/client/ca.crt
+            cert_file: /etc/nktp/internal-tls/client/tls.crt
+            key_file: /etc/nktp/internal-tls/client/tls.key
+            reload_interval: 1h
           retry_on_failure:
             max_elapsed_time: 30m
           sending_queue:
@@ -1908,6 +1953,10 @@ daemonset:
         readOnlyRootFilesystem: true
         capabilities:
           drop: [ALL]
+      volumeMounts:
+        - name: internal-tls-client
+          mountPath: /etc/nktp/internal-tls/client
+          readOnly: true
     otelcol:
       # Set a custom image for this sidecar only.
       # image:
@@ -1950,7 +1999,10 @@ daemonset:
           otlp:
             endpoint: nktp-watchdog-collector:4317
             tls:
-              insecure: true
+              cert_file: /etc/nktp/internal-tls/client/tls.crt
+              key_file: /etc/nktp/internal-tls/client/tls.key
+              ca_file: /etc/nktp/internal-tls/client/ca.crt
+              reload_interval: 1h
             retry_on_failure:
               max_elapsed_time: 30m
             sending_queue:
@@ -2029,7 +2081,7 @@ large_target_metrics:
                 interval: 30s
                 exporter:
                   otlpGrpc:
-                    endpoint: nktp-watchdog-collector:4317
+                    endpoint: nktp-watchdog-collector:4320
                     tls:
                       insecure: true
                     temporalityPreference: cumulative
@@ -2258,6 +2310,10 @@ large_target_metrics:
         readOnlyRootFilesystem: true
         capabilities:
           drop: [ALL]
+      volumeMounts:
+        - name: internal-tls-client
+          mountPath: /etc/nktp/internal-tls/client
+          readOnly: true
     otelcol:
       # Set a custom image for this sidecar only.
       # image:
@@ -2300,7 +2356,10 @@ large_target_metrics:
           otlp:
             endpoint: nktp-watchdog-collector:4317
             tls:
-              insecure: true
+              cert_file: /etc/nktp/internal-tls/client/tls.crt
+              key_file: /etc/nktp/internal-tls/client/tls.key
+              ca_file: /etc/nktp/internal-tls/client/ca.crt
+              reload_interval: 1h
             retry_on_failure:
               max_elapsed_time: 30m
             sending_queue:
@@ -2529,6 +2588,10 @@ cluster_events:
         readOnlyRootFilesystem: true
         capabilities:
           drop: [ALL]
+      volumeMounts:
+        - name: internal-tls-client
+          mountPath: /etc/nktp/internal-tls/client
+          readOnly: true
     otelcol:
       # Set a custom image for this sidecar only.
       # image:
@@ -2571,7 +2634,10 @@ cluster_events:
           otlp:
             endpoint: nktp-watchdog-collector:4317
             tls:
-              insecure: true
+              cert_file: /etc/nktp/internal-tls/client/tls.crt
+              key_file: /etc/nktp/internal-tls/client/tls.key
+              ca_file: /etc/nktp/internal-tls/client/ca.crt
+              reload_interval: 1h
             retry_on_failure:
               max_elapsed_time: 30m
             sending_queue:

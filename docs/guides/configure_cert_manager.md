@@ -4,11 +4,15 @@ NKTP depends on cert-manager to reap the benefits of following features. These f
 
 ## Installing NKTP without cert-manager
 
-cert-manager has three uses in NKTP. Replace each to install without it:
+cert-manager has three uses in NKTP. The following values disable internal
+certificate creation and switch the admission webhook to Helm-generated
+certificates. Before installing, also configure user-provided Target Allocator
+certificates as described below and complete the internal plaintext migration
+at the end of this guide.
 
 ```yaml
-tls:
-  internal:
+certManager:
+  internalTLS:
     enabled: false
 opentelemetry-kube-stack:
   opentelemetry-operator:
@@ -88,10 +92,16 @@ opentelemetry-kube-stack:
 ### Internal mTLS
 
 By default, NKTP uses cert-manager to create a self-signed CA, issuer, and certificates for each collector 
-used for collector-to-gateway traffic encryption. Setting `certManager.internalTLS.issuerRef` allows you to specify
-an existing `Issuer` or `ClusterIssuer`.
+used for collector-to-gateway and collector-to-watchdog traffic encryption.
+`certManager.internalTLS.issuerRef` must reference a CA `Issuer` or `ClusterIssuer`
+that populates `ca.crt` in the generated TLS Secrets, alongside `tls.crt` and
+`tls.key`. NKTP mounts `ca.crt` to verify server and client certificates.
+ACME issuers are unsupported for internal mTLS: they do not populate `ca.crt`,
+so the required Secret volume mounts fail. See cert-manager's
+[certificate Secret documentation](https://cert-manager.io/docs/usage/certificate/#target-secret).
+Leave `issuerRef: {}` to use NKTP's generated internal CA and issuer.
 
-```bash
+```yaml
 certManager:
   internalTLS:
     enabled: true
@@ -99,30 +109,43 @@ certManager:
 ```
 
 The cluster event reader, DaemonSet, and large-target metrics collectors each use a client certificate to send
-telemetry to the gateways over mTLS. Each gateway uses a server certificate.
+telemetry to the gateways and watchdog over mTLS. Each gateway uses a server and client certificate.
 
-Traffic to watchdog is not covered by this setting. Collector and Target Allocator self-telemetry, and the
-DaemonSet's Target Allocator and Operator logs, are sent to watchdog over plaintext OTLP/gRPC.
+Collector sidecars and the DaemonSet's Target Allocator and Operator log exporter
+send to watchdog over OTLP/gRPC with mTLS on port 4317. Target Allocator exporters
+are configured to send their own metrics over plaintext OTLP/gRPC on port 4320.
+
+For a release in the `nktp` namespace:
 
 ```bash
 kubectl get issuers,certs -n nktp
-NAME                                                     READY   AGE
-issuer.cert-manager.io/nktp-internal-ca-issuer           True    48s
-issuer.cert-manager.io/nktp-internal-selfsigned-issuer   True    48s
-
-NAME                                                           READY   SECRET                                          AGE
-certificate.cert-manager.io/nktp-cluster-events-client         True    nktp-cluster-events-client-tls                  48s
-certificate.cert-manager.io/nktp-daemonset-client              True    nktp-daemonset-client-tls                       48s
-certificate.cert-manager.io/nktp-gateway-logs-server           True    nktp-gateway-logs-server-tls                    48s
-certificate.cert-manager.io/nktp-gateway-metrics-server        True    nktp-gateway-metrics-server-tls                 48s
-certificate.cert-manager.io/nktp-gateway-traces-server         True    nktp-gateway-traces-server-tls                  48s
-certificate.cert-manager.io/nktp-internal-ca                   True    nktp-internal-ca                                48s
-certificate.cert-manager.io/nktp-large-target-metrics-client   True    nktp-large-target-metrics-client-tls            48s
 ```
 
-**NOTE:** Gateway->Backend encryption requires a manually configured client certificate for the gateways and is not part of this setting.
+Example output:
 
-Disabling `certManager.internalTLS.enabled` requires you to supply certificates yourself or
-explicitly configure plaintext receivers and exporters. Plaintext gRPC exporters require
-`tls.insecure: true`.
+```text
+NAME                                                                  READY   AGE
+issuer.cert-manager.io/nktp-internal-ca-issuer                        True    14s
+issuer.cert-manager.io/nktp-internal-selfsigned-issuer                True    14s
 
+NAME                                                                   READY   SECRET                                          AGE
+certificate.cert-manager.io/nktp-cluster-events-client                 True    nktp-cluster-events-client-tls                  14s
+certificate.cert-manager.io/nktp-daemonset-client                      True    nktp-daemonset-client-tls                       14s
+certificate.cert-manager.io/nktp-gateway-logs-client                   True    nktp-gateway-logs-client-tls                    14s
+certificate.cert-manager.io/nktp-gateway-logs-server                   True    nktp-gateway-logs-server-tls                    14s
+certificate.cert-manager.io/nktp-gateway-metrics-client                True    nktp-gateway-metrics-client-tls                 14s
+certificate.cert-manager.io/nktp-gateway-metrics-server                True    nktp-gateway-metrics-server-tls                 14s
+certificate.cert-manager.io/nktp-gateway-traces-client                 True    nktp-gateway-traces-client-tls                  14s
+certificate.cert-manager.io/nktp-gateway-traces-server                 True    nktp-gateway-traces-server-tls                  14s
+certificate.cert-manager.io/nktp-internal-ca                           True    nktp-internal-ca                                14s
+certificate.cert-manager.io/nktp-large-target-metrics-client           True    nktp-large-target-metrics-client-tls            14s
+certificate.cert-manager.io/nktp-watchdog-server                       True    nktp-watchdog-server-tls                        14s
+```
+
+**NOTE:** Gateway-to-backend is **not** included as part of this feature. Users must configure this communication separately.
+
+#### Switching internal traffic to plaintext
+
+Set `certManager.internalTLS.enabled: false` only with the matching configuration
+and mount changes below. This flag stops certificate creation; it does not change
+Collector configurations. For a detailed example of the overrides required, look at the [example](../examples/disable_internal_mtls.yaml).

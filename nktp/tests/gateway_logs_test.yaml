@@ -19,8 +19,19 @@ tests:
       - equal:
           path: spec.volumes[0].secret.secretName
           value: nktp-gateway-logs-server-tls
-      - notExists:
+      - equal:
           path: spec.volumes[1]
+          value:
+            name: internal-tls-client
+            secret:
+              secretName: nktp-gateway-logs-client-tls
+              items:
+                - {key: tls.crt, path: tls.crt}
+                - {key: tls.key, path: tls.key}
+                - {key: ca.crt, path: ca.crt}
+      - lengthEqual:
+          path: spec.volumes
+          count: 2
       - equal:
           path: spec.volumeMounts[0].mountPath
           value: /etc/nktp/internal-tls/server
@@ -42,13 +53,6 @@ tests:
                     server_parameters:
                       max_connection_age: 5m
                       max_connection_age_grace: 30s
-                http:
-                  endpoint: 0.0.0.0:4318
-                  tls:
-                    cert_file: /etc/nktp/internal-tls/server/tls.crt
-                    key_file: /etc/nktp/internal-tls/server/tls.key
-                    client_ca_file: /etc/nktp/internal-tls/server/ca.crt
-                    reload_interval: 1h
       - equal:
           path: spec.config.service.pipelines
           value:
@@ -275,9 +279,8 @@ tests:
           path: spec.config.exporters.otlp.endpoint
           value: lgtm:4317
 
-  - it: removes HTTP and changes the gRPC listener through native overrides
+  - it: changes the gRPC listener while preserving mTLS and connection rotation
     set:
-      gateway_logs.otelcol.config.receivers.otlp.protocols.http: null
       gateway_logs.otelcol.config.receivers.otlp.protocols.grpc.endpoint: ${env:GRPC_LISTEN_ADDR}
     asserts:
       - equal:

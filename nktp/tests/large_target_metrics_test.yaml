@@ -217,7 +217,7 @@ tests:
                 interval: 30s
                 exporter:
                   otlpGrpc:
-                    endpoint: nktp-watchdog-collector:4317
+                    endpoint: nktp-watchdog-collector:4320
                     tls:
                       insecure: true
                     temporalityPreference: cumulative

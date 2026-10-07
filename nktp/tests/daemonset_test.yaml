@@ -70,6 +70,9 @@ tests:
           path: spec.config.exporters["otlp/traces"].tls
           value: *clientTLS
       - equal:
+          path: spec.config.exporters["otlp/watchdog"].tls
+          value: *clientTLS
+      - equal:
           path: spec.config.receivers.prometheus.config
           value: {scrape_configs: []}
       - notExists:
@@ -285,7 +288,7 @@ tests:
           value: nktp-watchdog-collector:4317
       - equal:
           path: spec.config.exporters["otlp/watchdog"].tls
-          value: {insecure: true}
+          value: *clientTLS
       - equal:
           path: spec.config.exporters["otlp/logs"].endpoint
           value: application-logs:4317
@@ -398,7 +401,7 @@ tests:
                       interval: 30s
                       exporter:
                         otlpGrpc:
-                          endpoint: nktp-watchdog-collector:4317
+                          endpoint: nktp-watchdog-collector:4320
                           tls:
                             insecure: true
                           temporalityPreference: cumulative
@@ -601,7 +604,7 @@ tests:
                 interval: 30s
                 exporter:
                   otlpGrpc:
-                    endpoint: nktp-watchdog-collector:4317
+                    endpoint: nktp-watchdog-collector:4320
                     tls:
                       insecure: true
                     temporalityPreference: cumulative
@@ -657,7 +660,7 @@ tests:
             traces/custom: {receivers: [otlp], exporters: [debug]}
       - equal:
           path: spec.targetAllocator.telemetry.metrics.readers[0].periodic.exporter.otlpGrpc.endpoint
-          value: nktp-watchdog-collector:4317
+          value: nktp-watchdog-collector:4320
       - contains:
           path: spec.targetAllocator.env
           content: {name: OTEL_SERVICE_NAME, value: nktp-targetallocator}

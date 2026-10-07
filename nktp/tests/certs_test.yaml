@@ -5,10 +5,10 @@ release:
 templates:
   - templates/certs.yaml
 tests:
-  - it: creates the internal CA and collector-to-gateway leaf certificates by default
+  - it: creates the internal CA and collector-to-gateway and watchdog leaf certificates by default
     asserts:
       - hasDocuments:
-          count: 9
+          count: 13
       - equal:
           path: spec.selfSigned
           value: {}
@@ -46,13 +46,9 @@ tests:
       - containsDocument: {apiVersion: cert-manager.io/v1, kind: Certificate, name: nktp-large-target-metrics-client, any: true}
       - containsDocument: {apiVersion: cert-manager.io/v1, kind: Certificate, name: nktp-cluster-events-client, any: true}
       - containsDocument: {apiVersion: cert-manager.io/v1, kind: Certificate, name: nktp-watchdog-server, any: true}
-        not: true
       - containsDocument: {apiVersion: cert-manager.io/v1, kind: Certificate, name: nktp-gateway-logs-client, any: true}
-        not: true
       - containsDocument: {apiVersion: cert-manager.io/v1, kind: Certificate, name: nktp-gateway-metrics-client, any: true}
-        not: true
       - containsDocument: {apiVersion: cert-manager.io/v1, kind: Certificate, name: nktp-gateway-traces-client, any: true}
-        not: true
       - equal:
           path: spec
           value:
@@ -92,6 +88,89 @@ tests:
           path: metadata.name
           value: nktp-daemonset-client
 
+  - it: issues the watchdog server certificate for Service DNS names in the release namespace
+    release:
+      namespace: telemetry
+    documentSelector:
+      path: metadata.name
+      value: nktp-watchdog-server
+    asserts:
+      - equal:
+          path: metadata.namespace
+          value: telemetry
+      - equal:
+          path: spec
+          value:
+            secretName: nktp-watchdog-server-tls
+            duration: 2160h
+            renewBefore: 360h
+            dnsNames:
+              - nktp-watchdog-collector
+              - nktp-watchdog-collector.telemetry
+              - nktp-watchdog-collector.telemetry.svc
+              - nktp-watchdog-collector.telemetry.svc.cluster.local
+            usages: [server auth]
+            privateKey:
+              rotationPolicy: Always
+            issuerRef:
+              name: nktp-internal-ca-issuer
+              kind: Issuer
+              group: cert-manager.io
+
+  - it: issues dedicated client certificates for all three gateway sidecars
+    asserts:
+      - equal:
+          path: spec
+          value:
+            secretName: nktp-gateway-logs-client-tls
+            commonName: nktp-gateway-logs
+            duration: 2160h
+            renewBefore: 360h
+            usages: [client auth]
+            privateKey:
+              rotationPolicy: Always
+            issuerRef:
+              name: nktp-internal-ca-issuer
+              kind: Issuer
+              group: cert-manager.io
+        documentSelector:
+          path: metadata.name
+          value: nktp-gateway-logs-client
+      - equal:
+          path: spec
+          value:
+            secretName: nktp-gateway-metrics-client-tls
+            commonName: nktp-gateway-metrics
+            duration: 2160h
+            renewBefore: 360h
+            usages: [client auth]
+            privateKey:
+              rotationPolicy: Always
+            issuerRef:
+              name: nktp-internal-ca-issuer
+              kind: Issuer
+              group: cert-manager.io
+        documentSelector:
+          path: metadata.name
+          value: nktp-gateway-metrics-client
+      - equal:
+          path: spec
+          value:
+            secretName: nktp-gateway-traces-client-tls
+            commonName: nktp-gateway-traces
+            duration: 2160h
+            renewBefore: 360h
+            usages: [client auth]
+            privateKey:
+              rotationPolicy: Always
+            issuerRef:
+              name: nktp-internal-ca-issuer
+              kind: Issuer
+              group: cert-manager.io
+        documentSelector:
+          path: metadata.name
+          value: nktp-gateway-traces-client
+
   - it: uses the configured external issuer for all leaf certificates
     set:
       certManager.internalTLS.issuerRef:
@@ -100,7 +179,7 @@ tests:
         group: cert-manager.io
     asserts:
       - hasDocuments:
-          count: 6
+          count: 10
       - containsDocument:
           apiVersion: cert-manager.io/v1
           kind: Issuer
@@ -112,18 +191,6 @@ tests:
             name: corporate-workload-ca
             kind: ClusterIssuer
             group: cert-manager.io
-        documentSelector:
-          path: metadata.name
-          value: nktp-gateway-logs-server
-      - equal:
-          path: spec.issuerRef
-          value:
-            name: corporate-workload-ca
-            kind: ClusterIssuer
-            group: cert-manager.io
-        documentSelector:
-          path: metadata.name
-          value: nktp-daemonset-client
 
   - it: creates no certificate resources when internal TLS is disabled
     set:

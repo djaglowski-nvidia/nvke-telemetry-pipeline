@@ -91,12 +91,13 @@ are silently dropped. Apply the new CRDs before `helm upgrade`.
 The node collectors, the large-target pool, and the event reader send each
 signal to its gateway over OTLP/gRPC with mutual TLS, and the gateways export to
 the backend.
-Every NKTP component sends its own telemetry over plaintext OTLP/gRPC to the
-watchdog's gRPC-only receiver, which exports it to the backend without passing
-through the gateways.
-Each Collector Pod runs a sidecar
-Collector that buffers the Collector's own telemetry and samples its traces on
-the way to the watchdog.
+Each Collector Pod runs a sidecar Collector that buffers the Collector's own
+telemetry and samples its traces. All sidecars except watchdog's send to watchdog
+over OTLP/gRPC with mTLS on port 4317. The DaemonSet also sends collected Operator
+and Target Allocator logs directly to that endpoint. Target Allocators push their
+own metrics to watchdog over plaintext OTLP/gRPC on port 4320. Watchdog exports
+received telemetry to the backend without passing through the gateways; its own
+sidecar exports watchdog's telemetry to the backend.
 
 Gateways and watchdog rotate connections about every five minutes so clients
 can reach newly added replicas while limiting connection churn. Configure the

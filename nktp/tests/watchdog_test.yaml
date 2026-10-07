@@ -72,7 +72,7 @@ tests:
                       interval: 30s
                       exporter:
                         otlpGrpc:
-                          endpoint: nktp-watchdog-collector:4317
+                          endpoint: nktp-watchdog-collector:4320
                           tls:
                             insecure: true
                           temporalityPreference: cumulative
@@ -158,6 +158,72 @@ tests:
           path: kind
           value: Job
 
+  - it: mounts the server certificate and requires client authentication on OTLP gRPC
+    template: templates/watchdog.yaml
+    asserts:
+      - equal:
+          path: spec.volumes
+          value:
+            - name: internal-tls-server
+              secret:
+                secretName: nktp-watchdog-server-tls
+                items:
+                  - {key: tls.crt, path: tls.crt}
+                  - {key: tls.key, path: tls.key}
+                  - {key: ca.crt, path: ca.crt}
+      - equal:
+          path: spec.volumeMounts
+          value:
+            - name: internal-tls-server
+              mountPath: /etc/nktp/internal-tls/server
+              readOnly: true
+      - equal:
+          path: spec.config.receivers["otlp/secure"].protocols
+          value: &watchdogProtocols
+            grpc:
+              endpoint: 0.0.0.0:4317
+              tls:
+                cert_file: /etc/nktp/internal-tls/server/tls.crt
+                key_file: /etc/nktp/internal-tls/server/tls.key
+                client_ca_file: /etc/nktp/internal-tls/server/ca.crt
+                reload_interval: 1h
+              keepalive:
+                server_parameters:
+                  max_connection_age: 5m
+                  max_connection_age_grace: 30s
+      - notExists:
+          path: spec.initContainers[0].volumeMounts
+
+  - it: isolates plaintext allocator metrics from secure signals and the sidecar port
+    template: templates/watchdog.yaml
+    asserts:
+      - equal:
+          path: spec.config.receivers["otlp/insecure"]
+          value:
+            protocols:
+              grpc:
+                endpoint: 0.0.0.0:4320
+      - notExists:
+          path: spec.config.receivers.otlp
+      - equal:
+          path: spec.config.service.pipelines
+          value:
+            metrics: {receivers: [otlp/insecure, otlp/secure, prometheus], processors: [memory_limiter, redaction/basic_v1, transform/cluster], exporters: [otlp]}
+            logs: {receivers: [otlp/secure], processors: [memory_limiter, redaction/basic_v1, transform/cluster], exporters: [otlp]}
+            traces: {receivers: [otlp/secure], processors: [memory_limiter, redaction/basic_v1, transform/cluster], exporters: [otlp]}
+      - matchRegex:
+          path: spec.initContainers[0].args[0]
+          pattern: '"receivers":\{"otlp":\{"protocols":\{"http":\{"endpoint":"127\.0\.0\.1:4319","keepalive":\{"idle_timeout":"5m"\}\}\}\}\}'
+      - equal:
+          path: spec.config.service.telemetry.metrics.readers[0].periodic.exporter.otlp.endpoint
+          value: http://127.0.0.1:4319
+      - equal:
+          path: spec.config.service.telemetry.logs.processors[0].batch.exporter.otlp.endpoint
+          value: http://127.0.0.1:4319
+      - equal:
+          path: spec.config.service.telemetry.traces.processors[0].batch.exporter.otlp.endpoint
+          value: http://127.0.0.1:4319
+
   - it: uses the global Collector image override
     template: templates/watchdog.yaml
     set:
@@ -202,7 +268,7 @@ tests:
                   target_label: pod
       - equal:
           path: spec.config.service.pipelines.metrics.receivers
-          value: [otlp, prometheus]
+          value: [otlp/insecure, otlp/secure, prometheus]
       - equal:
           path: spec.targetAllocator.prometheusCR.enabled
           value: false
@@ -225,7 +291,7 @@ tests:
                 interval: 30s
                 exporter:
                   otlpGrpc:
-                    endpoint: nktp-watchdog-collector:4317
+                    endpoint: nktp-watchdog-collector:4320
                     tls:
                       insecure: true
                     temporalityPreference: cumulative
@@ -234,12 +300,13 @@ tests:
           value:
             - job_name: custom
               static_configs: [{targets: ["custom:9090"]}]
-      - notExists:
-          path: spec.config.receivers.otlp.protocols.http
+      - equal:
+          path: spec.config.receivers["otlp/secure"].protocols.grpc.endpoint
+          value: 0.0.0.0:4317
       - equal:
           path: spec.config.service.pipelines.metrics
           value:
-            receivers: [otlp, prometheus]
+            receivers: [otlp/insecure, otlp/secure, prometheus]
             processors: [memory_limiter, redaction/basic_v1, transform/cluster]
             exporters: [otlp]
 
@@ -379,14 +446,8 @@ tests:
                       protocol: http/protobuf
                       endpoint: http://127.0.0.1:4319
       - equal:
-          path: spec.config.receivers.otlp.protocols
-          value:
-            grpc:
-              endpoint: 0.0.0.0:4317
-              keepalive:
-                server_parameters:
-                  max_connection_age: 5m
-                  max_connection_age_grace: 30s
+          path: spec.config.receivers["otlp/secure"].protocols
+          value: *watchdogProtocols
       - equal:
           path: spec.config.exporters.otlp.endpoint
           value: lgtm:4317
@@ -402,9 +463,9 @@ tests:
       - equal:
           path: spec.config.service.pipelines
           value:
-            metrics: {receivers: [otlp, prometheus], processors: [memory_limiter, redaction/basic_v1, transform/cluster], exporters: [otlp]}
-            logs: {receivers: [otlp], processors: [memory_limiter, redaction/basic_v1, transform/cluster], exporters: [otlp]}
-            traces: {receivers: [otlp], processors: [memory_limiter, redaction/basic_v1, transform/cluster], exporters: [otlp]}
+            metrics: {receivers: [otlp/insecure, otlp/secure, prometheus], processors: [memory_limiter, redaction/basic_v1, transform/cluster], exporters: [otlp]}
+            logs: {receivers: [otlp/secure], processors: [memory_limiter, redaction/basic_v1, transform/cluster], exporters: [otlp]}
+            traces: {receivers: [otlp/secure], processors: [memory_limiter, redaction/basic_v1, transform/cluster], exporters: [otlp]}
       - equal:
           path: spec.config.service.telemetry.metrics.readers
           value:
@@ -473,9 +534,9 @@ tests:
       - equal:
           path: spec.config.service.pipelines
           value:
-            metrics: {receivers: [otlp, prometheus], processors: [memory_limiter, redaction/basic_v1, transform/cluster], exporters: [otlp]}
-            logs: {receivers: [otlp], processors: [memory_limiter, redaction/basic_v1, transform/cluster], exporters: [otlp]}
-            traces: {receivers: [otlp], processors: [memory_limiter, redaction/basic_v1, transform/cluster], exporters: [otlp]}
+            metrics: {receivers: [otlp/insecure, otlp/secure, prometheus], processors: [memory_limiter, redaction/basic_v1, transform/cluster], exporters: [otlp]}
+            logs: {receivers: [otlp/secure], processors: [memory_limiter, redaction/basic_v1, transform/cluster], exporters: [otlp]}
+            traces: {receivers: [otlp/secure], processors: [memory_limiter, redaction/basic_v1, transform/cluster], exporters: [otlp]}
 
   - it: redirects its own logs to gRPC without changing other telemetry
     template: templates/watchdog.yaml
@@ -522,9 +583,9 @@ tests:
       - equal:
           path: spec.config.service.pipelines
           value:
-            metrics: {receivers: [otlp, prometheus], processors: [memory_limiter, redaction/basic_v1, transform/cluster], exporters: [otlp]}
-            logs: {receivers: [otlp], processors: [memory_limiter, redaction/basic_v1, transform/cluster], exporters: [otlp]}
-            traces: {receivers: [otlp], processors: [memory_limiter, redaction/basic_v1, transform/cluster], exporters: [otlp]}
+            metrics: {receivers: [otlp/insecure, otlp/secure, prometheus], processors: [memory_limiter, redaction/basic_v1, transform/cluster], exporters: [otlp]}
+            logs: {receivers: [otlp/secure], processors: [memory_limiter, redaction/basic_v1, transform/cluster], exporters: [otlp]}
+            traces: {receivers: [otlp/secure], processors: [memory_limiter, redaction/basic_v1, transform/cluster], exporters: [otlp]}
 
   - it: redirects its own traces to gRPC without changing other telemetry
     template: templates/watchdog.yaml
@@ -570,9 +631,9 @@ tests:
       - equal:
           path: spec.config.service.pipelines
           value:
-            metrics: {receivers: [otlp, prometheus], processors: [memory_limiter, redaction/basic_v1, transform/cluster], exporters: [otlp]}
-            logs: {receivers: [otlp], processors: [memory_limiter, redaction/basic_v1, transform/cluster], exporters: [otlp]}
-            traces: {receivers: [otlp], processors: [memory_limiter, redaction/basic_v1, transform/cluster], exporters: [otlp]}
+            metrics: {receivers: [otlp/insecure, otlp/secure, prometheus], processors: [memory_limiter, redaction/basic_v1, transform/cluster], exporters: [otlp]}
+            logs: {receivers: [otlp/secure], processors: [memory_limiter, redaction/basic_v1, transform/cluster], exporters: [otlp]}
+            traces: {receivers: [otlp/secure], processors: [memory_limiter, redaction/basic_v1, transform/cluster], exporters: [otlp]}
 
   - it: changes forwarding settings independently of its own telemetry
     template: templates/watchdog.yaml
@@ -614,13 +675,13 @@ tests:
   - it: preserves native environment references and literal expressions
     template: templates/watchdog.yaml
     set:
-      watchdog.otelcol.config.receivers.otlp.protocols.http.endpoint: ${env:WATCHDOG_LISTEN_ADDR}
+      watchdog.otelcol.config.receivers.otlp/secure.protocols.grpc.endpoint: ${env:WATCHDOG_LISTEN_ADDR}
       watchdog.otelcol.config.exporters.otlp.endpoint: ${env:WATCHDOG_OTLP_ENDPOINT}
       watchdog.otelcol.config.exporters.otlp.headers:
         x-literal: "{{ preserved }} $$TOKEN"
     asserts:
       - equal:
-          path: spec.config.receivers.otlp.protocols.http.endpoint
+          path: spec.config.receivers["otlp/secure"].protocols.grpc.endpoint
           value: ${env:WATCHDOG_LISTEN_ADDR}
       - equal:
           path: spec.config.exporters.otlp.endpoint
@@ -639,7 +700,7 @@ tests:
       - equal:
           path: spec.config.service.pipelines.metrics
           value:
-            receivers: [otlp, prometheus]
+            receivers: [otlp/insecure, otlp/secure, prometheus]
             processors: [memory_limiter, redaction/basic_v1, transform/cluster]
             exporters: [debug]
       - equal:
@@ -655,18 +716,22 @@ tests:
           path: spec.config.service.pipelines.traces.exporters
           value: [otlp]
 
-  - it: defaults to gRPC only with connection rotation
+  - it: replaces plaintext gRPC with HTTP without altering the secure receiver
     template: templates/watchdog.yaml
+    set:
+      watchdog.otelcol.config.receivers.otlp/insecure.protocols.grpc: null
+      watchdog.otelcol.config.receivers.otlp/insecure.protocols.http.endpoint: 0.0.0.0:4320
     asserts:
       - equal:
-          path: spec.config.receivers.otlp.protocols
+          path: spec.config.receivers["otlp/insecure"].protocols
           value:
-            grpc:
-              endpoint: 0.0.0.0:4317
-              keepalive:
-                server_parameters:
-                  max_connection_age: 5m
-                  max_connection_age_grace: 30s
+            http:
+              endpoint: 0.0.0.0:4320
+      - equal:
+          path: spec.config.receivers["otlp/secure"].protocols
+          value: *watchdogProtocols
+      - notExists:
+          path: spec.config.receivers["otlp/self"]
 
   - it: renders for an existing operator and CRDs
     template: templates/watchdog.yaml

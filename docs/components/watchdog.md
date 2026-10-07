@@ -1,9 +1,12 @@
 # Watchdog
 
 The watchdog receives internal metrics, logs and traces from NKTP collectors over
-OTLP/gRPC at `nktp-watchdog-collector:4317` in the Helm release namespace.
-It forwards received telemetry to LGTM by default. Its own telemetry goes through
-its [sidecar](../architecture/self_telemetry.md), which exports to LGTM by default.
+OTLP/gRPC with mTLS at `nktp-watchdog-collector:4317` in the Helm release namespace.
+Target Allocators send their own metrics over plaintext OTLP/gRPC at
+`nktp-watchdog-collector:4320`; that receiver is used only by the metrics pipeline.
+Watchdog forwards received telemetry to LGTM by default. Its own telemetry goes
+through its [sidecar](../architecture/self_telemetry.md) at
+`http://127.0.0.1:4319`, and the sidecar exports to LGTM by default.
 It also scrapes the Operator's metrics endpoint with the `nktp-operator` job in
 its `prometheus` receiver. See [Topology](../architecture/topology.md#self-telemetry)
 for every source of self-telemetry.
@@ -15,10 +18,21 @@ rendering to fail.
 
 Configure the Collector through `watchdog.otelcol.config`.
 
-Like the signal gateways, watchdog sends GOAWAY after five minutes (+/-10%
-jitter), with 30 seconds for in-flight exports to finish. This lets clients
-reach newly added replicas while limiting connection churn. Tune
-`receivers.otlp.protocols.grpc.keepalive.server_parameters` for the required
+**Potentially breaking receiver-key migration:** the default `otlp` receiver has
+been replaced by `otlp/secure` and `otlp/insecure`. Existing overrides under
+`watchdog.otelcol.config.receivers.otlp` no longer affect the default pipelines.
+Move them to `watchdog.otelcol.config.receivers.otlp/secure` for mTLS gRPC on
+4317 (metrics, logs, and traces), or to
+`watchdog.otelcol.config.receivers.otlp/insecure` for plaintext gRPC on 4320
+(allocator metrics only). Remove the old override; `otlp` is not an alias for
+either replacement. Update receiver references in custom pipelines when migrating
+those overrides.
+
+Like the signal gateways, watchdog's secure gRPC receiver sends GOAWAY after
+five minutes (+/-10% jitter), with 30 seconds for in-flight exports to finish.
+This lets clients reach newly added replicas while limiting connection churn.
+Tune `keepalive.server_parameters` under
+`watchdog.otelcol.config.receivers.otlp/secure.protocols.grpc` for the required
 scale-up relief and connection churn. Reconnects can select the same replica.
 See [gRPC connection management](https://github.com/grpc/proposal/blob/master/A9-server-side-conn-mgt.md).
 

@@ -147,22 +147,75 @@ tests:
           path: spec.initContainers[0].env
           count: 1
 
-  - it: exports watchdog telemetry to the backend and all other telemetry to the watchdog
+  - it: exports watchdog telemetry to the backend without internal client credentials
+    template: templates/watchdog.yaml
     asserts:
       - matchRegex:
           path: spec.initContainers[0].args[0]
           pattern: '"otlp":\{"endpoint":"lgtm:4317"'
-        template: templates/watchdog.yaml
-      - matchRegex:
+      - notMatchRegex:
           path: spec.initContainers[0].args[0]
-          pattern: '"otlp":\{"endpoint":"nktp-watchdog-collector:4317"'
-        template: templates/gateway-logs.yaml
-      - matchRegex:
-          path: spec.initContainers[0].args[0]
-          pattern: '"otlp":\{"endpoint":"nktp-watchdog-collector:4317"'
-        template: templates/daemonset.yaml
+          pattern: '/etc/nktp/internal-tls/'
 
-  - it: sends all non-watchdog sidecars over plaintext gRPC
+  - it: mounts client credentials into all six sidecars and exports to watchdog over mTLS
+    templates:
+      - templates/gateway-logs.yaml
+      - templates/gateway-metrics.yaml
+      - templates/gateway-traces.yaml
+      - templates/daemonset.yaml
+      - templates/large-target-metrics.yaml
+      - templates/cluster-events.yaml
+    asserts:
+      - equal:
+          path: spec.initContainers[0].volumeMounts
+          value:
+            - name: internal-tls-client
+              mountPath: /etc/nktp/internal-tls/client
+              readOnly: true
+      - matchRegex:
+          path: spec.initContainers[0].args[0]
+          pattern: &watchdogMTLSExporter '"exporters":\{"otlp":\{"endpoint":"nktp-watchdog-collector:4317",[^\n]*"tls":\{"ca_file":"/etc/nktp/internal-tls/client/ca\.crt","cert_file":"/etc/nktp/internal-tls/client/tls\.crt","key_file":"/etc/nktp/internal-tls/client/tls\.key","reload_interval":"1h"\}\}\}'
+      - matchRegex:
+          path: spec.initContainers[0].args[0]
+          pattern: '"receivers":\{"otlp":\{"protocols":\{"http":\{"endpoint":"127\.0\.0\.1:4319","keepalive":\{"idle_timeout":"5m"\}\}\}\}\}'
+
+  - it: reuses each collecting workloads client Secret for its sidecar
+    asserts:
+      - contains:
+          path: spec.volumes
+          content:
+            name: internal-tls-client
+            secret:
+              secretName: nktp-daemonset-client-tls
+              items:
+                - {key: tls.crt, path: tls.crt}
+                - {key: tls.key, path: tls.key}
+                - {key: ca.crt, path: ca.crt}
+        template: templates/daemonset.yaml
+      - contains:
+          path: spec.volumes
+          content:
+            name: internal-tls-client
+            secret:
+              secretName: nktp-large-target-metrics-client-tls
+              items:
+                - {key: tls.crt, path: tls.crt}
+                - {key: tls.key, path: tls.key}
+                - {key: ca.crt, path: ca.crt}
+        template: templates/large-target-metrics.yaml
+      - contains:
+          path: spec.volumes
+          content:
+            name: internal-tls-client
+            secret:
+              secretName: nktp-cluster-events-client-tls
+              items:
+                - {key: tls.crt, path: tls.crt}
+                - {key: tls.key, path: tls.key}
+                - {key: ca.crt, path: ca.crt}
+        template: templates/cluster-events.yaml
+
+  - it: sends all signals from non-watchdog sidecars over mTLS gRPC
     templates:
       - templates/gateway-logs.yaml
       - templates/gateway-metrics.yaml
@@ -173,7 +226,7 @@ tests:
     asserts:
       - matchRegex:
           path: spec.initContainers[0].args[0]
-          pattern: '"otlp":\{"endpoint":"nktp-watchdog-collector:4317".*"tls":\{"insecure":true\}'
+          pattern: *watchdogMTLSExporter
       - matchRegex:
           path: spec.initContainers[0].args[0]
           pattern: '"logs":\{"exporters":\["otlp"\]'

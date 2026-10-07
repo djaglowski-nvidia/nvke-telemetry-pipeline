@@ -1,15 +1,22 @@
 # Gateways
 
-NKTP runs one gateway per signal. Each gateway accepts OTLP over gRPC and HTTP
+NKTP runs one gateway per signal. Each gateway accepts OTLP over gRPC with mTLS
 at its Service in the Helm release namespace, forwards what it receives to LGTM
 by default, and sends its own metrics, logs and traces through its
 [sidecar](../architecture/self_telemetry.md) to watchdog.
 
-| Gateway | Values key | gRPC | HTTP |
-| --- | --- | --- | --- |
-| Logs | `gateway_logs` | `nktp-gateway-logs-collector:4317` | `https://nktp-gateway-logs-collector:4318` |
-| Metrics | `gateway_metrics` | `nktp-gateway-metrics-collector:4317` | `https://nktp-gateway-metrics-collector:4318` |
-| Traces | `gateway_traces` | `nktp-gateway-traces-collector:4317` | `https://nktp-gateway-traces-collector:4318` |
+| Gateway | Values key | gRPC |
+| --- | --- | --- |
+| Logs | `gateway_logs` | `nktp-gateway-logs-collector:4317` |
+| Metrics | `gateway_metrics` | `nktp-gateway-metrics-collector:4317` |
+| Traces | `gateway_traces` | `nktp-gateway-traces-collector:4317` |
+
+**Breaking change for HTTP clients:** the default gateway HTTP receivers on port
+4318 have been removed. Existing clients must switch to OTLP/gRPC on port 4317,
+or explicitly configure an HTTP receiver with TLS under
+`<gateway>.otelcol.config.receivers.otlp.protocols.http`. Changing a client's
+port alone does not change its protocol. DaemonSet HTTP ingress and sidecar
+loopback HTTP receivers are unchanged.
 
 ## Collector connections
 
@@ -29,8 +36,7 @@ based on gateway headroom and acceptable delay after scale-up. Lower it for
 faster relief; raise it to reduce TCP setup and TLS handshakes.
 Reconnects can select the same gateway, so redistribution can take multiple
 rotations. Increase `max_connection_age_grace` if in-flight exports need longer
-to finish. HTTP receivers remain available, but their connections do not use
-these gRPC age settings.
+to finish. Explicitly configured HTTP receivers do not use these gRPC age settings.
 
 Exporter overrides use `daemonset.otelcol.config.exporters.otlp/logs`,
 `otlp/metrics` and `otlp/traces`, and `large_target_metrics.otelcol.config.exporters.otlp`

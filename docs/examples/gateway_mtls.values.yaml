@@ -1,15 +1,34 @@
 # Replace the endpoint and Secret name for your backend. The Secret must
 # contain ca.crt, tls.crt, and tls.key.
+# Helm replaces volume and mount lists. Preserve the internal server credentials
+# for gateway ingress and client credentials for sidecar-to-watchdog export.
 gateway_logs:
   kubernetes:
     podSecurityContext:
       fsGroup: 10001
     volumes:
+      - name: internal-tls-server
+        secret:
+          secretName: nktp-gateway-logs-server-tls
+          items:
+            - { key: tls.crt, path: tls.crt }
+            - { key: tls.key, path: tls.key }
+            - { key: ca.crt, path: ca.crt }
+      - name: internal-tls-client
+        secret:
+          secretName: nktp-gateway-logs-client-tls
+          items:
+            - { key: tls.crt, path: tls.crt }
+            - { key: tls.key, path: tls.key }
+            - { key: ca.crt, path: ca.crt }
       - name: backend-tls
         secret:
           secretName: backend-tls
           defaultMode: 0440
     volumeMounts:
+      - name: internal-tls-server
+        mountPath: /etc/nktp/internal-tls/server
+        readOnly: true
       - name: backend-tls
         mountPath: /etc/nktp/backend-tls
         readOnly: true
@@ -30,11 +49,28 @@ gateway_metrics:
     podSecurityContext:
       fsGroup: 10001
     volumes:
+      - name: internal-tls-server
+        secret:
+          secretName: nktp-gateway-metrics-server-tls
+          items:
+            - { key: tls.crt, path: tls.crt }
+            - { key: tls.key, path: tls.key }
+            - { key: ca.crt, path: ca.crt }
+      - name: internal-tls-client
+        secret:
+          secretName: nktp-gateway-metrics-client-tls
+          items:
+            - { key: tls.crt, path: tls.crt }
+            - { key: tls.key, path: tls.key }
+            - { key: ca.crt, path: ca.crt }
       - name: backend-tls
         secret:
           secretName: backend-tls
           defaultMode: 0440
     volumeMounts:
+      - name: internal-tls-server
+        mountPath: /etc/nktp/internal-tls/server
+        readOnly: true
       - name: backend-tls
         mountPath: /etc/nktp/backend-tls
         readOnly: true
@@ -55,11 +91,28 @@ gateway_traces:
     podSecurityContext:
       fsGroup: 10001
     volumes:
+      - name: internal-tls-server
+        secret:
+          secretName: nktp-gateway-traces-server-tls
+          items:
+            - { key: tls.crt, path: tls.crt }
+            - { key: tls.key, path: tls.key }
+            - { key: ca.crt, path: ca.crt }
+      - name: internal-tls-client
+        secret:
+          secretName: nktp-gateway-traces-client-tls
+          items:
+            - { key: tls.crt, path: tls.crt }
+            - { key: tls.key, path: tls.key }
+            - { key: ca.crt, path: ca.crt }
       - name: backend-tls
         secret:
           secretName: backend-tls
           defaultMode: 0440
     volumeMounts:
+      - name: internal-tls-server
+        mountPath: /etc/nktp/internal-tls/server
+        readOnly: true
       - name: backend-tls
         mountPath: /etc/nktp/backend-tls
         readOnly: true

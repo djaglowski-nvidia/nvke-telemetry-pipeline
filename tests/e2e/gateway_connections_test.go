@@ -54,7 +54,7 @@ import (
 // settings. The test does not model production traffic or backend backpressure.
 //
 // After adding a gateway, each signal (logs, metrics and traces) must reach it
-// while all clients keep delivering. The gRPC and HTTP controls without rotation
+// while all clients keep delivering. The gRPC controls without rotation
 // must continue delivering only to the original gateway for one minute. This
 // finite observation cannot prove clients never reconnect; reconnects to the
 // original gateway are undetected.
@@ -108,7 +108,6 @@ func TestGatewayConnections(t *testing.T) {
 	}{
 		{name: "grpc_with_max_connection_age", rotate: true, protocol: "grpc"},
 		{name: "grpc_without_max_connection_age", protocol: "grpc"},
-		{name: "http_without_rotation", protocol: "http"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			ctx, cancel := deadline(t.Context())
@@ -263,11 +262,6 @@ service:
 				exporter.Endpoint = net.JoinHostPort("gateway."+ns.Name+".svc", portText)
 				if exporter.Authority != "" {
 					exporter.Authority = exporter.Endpoint
-				}
-				if protocol == "http" {
-					// The HTTPS negative case checks reuse without gRPC connection rotation.
-					exporterName = "otlp_http/" + signal
-					exporter.Endpoint = "https://" + exporter.Endpoint
 				}
 				clientConfig.Exporters[exporterName] = exporter
 				clientConfig.Service.Pipelines[signal] = collectorPipeline{
@@ -542,7 +536,6 @@ func TestConnectionConfigDecoding(t *testing.T) {
 	}{
 		{name: "exporter", data: `{"endpoint":"gateway:4317","compression":"gzip","timeout":"3s","keepalive":{"time":"30s"},"sending_queue":{"batch":{"flush_timeout":"1s"}},"tls":{"min_version":"1.3","reload_interval":"2h"}}`, target: &collectorExporter{}},
 		{name: "grpc_receiver", data: `{"protocols":{"grpc":{"endpoint":"0.0.0.0:14317","max_concurrent_streams":10,"tls":{"client_ca_file_reload":true},"keepalive":{"enforcement_policy":{"min_time":"1s"},"server_parameters":{"max_connection_age":"7m","max_connection_idle":"1m"}}}}}`, target: &otlpReceiver{}},
-		{name: "http_receiver", data: `{"protocols":{"http":{"endpoint":"0.0.0.0:14318","read_timeout":"2s","keepalive":{"idle_timeout":"1m"}}}}`, target: &otlpReceiver{}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			require.NoError(t, json.Unmarshal([]byte(tc.data), tc.target))

@@ -36,7 +36,9 @@ kubectl create secret generic backend-tls \
   --from-file=tls.key=/path/to/client.key
 ```
 
-2. Mount the secret into each gateway.
+2. Mount the secret into each gateway, preserving its internal TLS volumes and
+mounts. Each gateway needs its internal server certificate for ingress, and its sidecar needs its internal
+client certificate to export to watchdog. The backend credentials belong on the main gateway Collector, not its sidecar.
 
 ```yaml
 gateway_logs:
@@ -44,6 +46,20 @@ gateway_logs:
     podSecurityContext:
       fsGroup: 10001
     volumes:
+      - name: internal-tls-server
+        secret:
+          secretName: nktp-gateway-logs-server-tls
+          items:
+            - {key: tls.crt, path: tls.crt}
+            - {key: tls.key, path: tls.key}
+            - {key: ca.crt, path: ca.crt}
+      - name: internal-tls-client
+        secret:
+          secretName: nktp-gateway-logs-client-tls
+          items:
+            - {key: tls.crt, path: tls.crt}
+            - {key: tls.key, path: tls.key}
+            - {key: ca.crt, path: ca.crt}
       - name: backend-tls
         projected:
           defaultMode: 0440
@@ -58,6 +74,9 @@ gateway_logs:
                   - key: tls.key
                     path: tls.key
     volumeMounts:
+      - name: internal-tls-server
+        mountPath: /etc/nktp/internal-tls/server
+        readOnly: true
       - name: backend-tls
         mountPath: /etc/nktp/backend-tls
         readOnly: true
@@ -89,8 +108,11 @@ gateway_logs:
 ```
 
 Apply the volume, mount, and exporter settings to `gateway_logs`,
-`gateway_metrics`, and `gateway_traces`. The complete
-[values example](../examples/gateway_mtls.values.yaml) configures all three.
+`gateway_metrics`, and `gateway_traces`. Use each gateway's own internal Secrets:
+`nktp-gateway-<signal>-server-tls` and `nktp-gateway-<signal>-client-tls`, where
+`<signal>` is `logs`, `metrics`, or `traces`. Keep the volume names and mount paths
+shown above. The complete [values example](../examples/gateway_mtls.values.yaml)
+configures all three.
 
 Set `insecure: false` explicitly: the development defaults disable TLS, and
 Helm retains nested defaults when merging overrides. Configure the watchdog
