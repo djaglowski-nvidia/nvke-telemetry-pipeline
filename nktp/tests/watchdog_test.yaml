@@ -240,7 +240,7 @@ tests:
           path: spec.config.service.pipelines.metrics
           value:
             receivers: [otlp, prometheus]
-            processors: [memory_limiter, redaction/basic_v1]
+            processors: [memory_limiter, redaction/basic_v1, transform/cluster]
             exporters: [otlp]
 
   - it: fills in the empty default registry with global.imageRegistry
@@ -402,9 +402,9 @@ tests:
       - equal:
           path: spec.config.service.pipelines
           value:
-            metrics: {receivers: [otlp, prometheus], processors: [memory_limiter, redaction/basic_v1], exporters: [otlp]}
-            logs: {receivers: [otlp], processors: [memory_limiter, redaction/basic_v1], exporters: [otlp]}
-            traces: {receivers: [otlp], processors: [memory_limiter, redaction/basic_v1], exporters: [otlp]}
+            metrics: {receivers: [otlp, prometheus], processors: [memory_limiter, redaction/basic_v1, transform/cluster], exporters: [otlp]}
+            logs: {receivers: [otlp], processors: [memory_limiter, redaction/basic_v1, transform/cluster], exporters: [otlp]}
+            traces: {receivers: [otlp], processors: [memory_limiter, redaction/basic_v1, transform/cluster], exporters: [otlp]}
       - equal:
           path: spec.config.service.telemetry.metrics.readers
           value:
@@ -473,9 +473,9 @@ tests:
       - equal:
           path: spec.config.service.pipelines
           value:
-            metrics: {receivers: [otlp, prometheus], processors: [memory_limiter, redaction/basic_v1], exporters: [otlp]}
-            logs: {receivers: [otlp], processors: [memory_limiter, redaction/basic_v1], exporters: [otlp]}
-            traces: {receivers: [otlp], processors: [memory_limiter, redaction/basic_v1], exporters: [otlp]}
+            metrics: {receivers: [otlp, prometheus], processors: [memory_limiter, redaction/basic_v1, transform/cluster], exporters: [otlp]}
+            logs: {receivers: [otlp], processors: [memory_limiter, redaction/basic_v1, transform/cluster], exporters: [otlp]}
+            traces: {receivers: [otlp], processors: [memory_limiter, redaction/basic_v1, transform/cluster], exporters: [otlp]}
 
   - it: redirects its own logs to gRPC without changing other telemetry
     template: templates/watchdog.yaml
@@ -522,9 +522,9 @@ tests:
       - equal:
           path: spec.config.service.pipelines
           value:
-            metrics: {receivers: [otlp, prometheus], processors: [memory_limiter, redaction/basic_v1], exporters: [otlp]}
-            logs: {receivers: [otlp], processors: [memory_limiter, redaction/basic_v1], exporters: [otlp]}
-            traces: {receivers: [otlp], processors: [memory_limiter, redaction/basic_v1], exporters: [otlp]}
+            metrics: {receivers: [otlp, prometheus], processors: [memory_limiter, redaction/basic_v1, transform/cluster], exporters: [otlp]}
+            logs: {receivers: [otlp], processors: [memory_limiter, redaction/basic_v1, transform/cluster], exporters: [otlp]}
+            traces: {receivers: [otlp], processors: [memory_limiter, redaction/basic_v1, transform/cluster], exporters: [otlp]}
 
   - it: redirects its own traces to gRPC without changing other telemetry
     template: templates/watchdog.yaml
@@ -570,9 +570,9 @@ tests:
       - equal:
           path: spec.config.service.pipelines
           value:
-            metrics: {receivers: [otlp, prometheus], processors: [memory_limiter, redaction/basic_v1], exporters: [otlp]}
-            logs: {receivers: [otlp], processors: [memory_limiter, redaction/basic_v1], exporters: [otlp]}
-            traces: {receivers: [otlp], processors: [memory_limiter, redaction/basic_v1], exporters: [otlp]}
+            metrics: {receivers: [otlp, prometheus], processors: [memory_limiter, redaction/basic_v1, transform/cluster], exporters: [otlp]}
+            logs: {receivers: [otlp], processors: [memory_limiter, redaction/basic_v1, transform/cluster], exporters: [otlp]}
+            traces: {receivers: [otlp], processors: [memory_limiter, redaction/basic_v1, transform/cluster], exporters: [otlp]}
 
   - it: changes forwarding settings independently of its own telemetry
     template: templates/watchdog.yaml
@@ -640,7 +640,7 @@ tests:
           path: spec.config.service.pipelines.metrics
           value:
             receivers: [otlp, prometheus]
-            processors: [memory_limiter, redaction/basic_v1]
+            processors: [memory_limiter, redaction/basic_v1, transform/cluster]
             exporters: [debug]
       - equal:
           path: spec.config.exporters.debug

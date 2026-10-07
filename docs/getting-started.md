@@ -106,6 +106,19 @@ gateway_traces:
   example in `headers`. `env` is a list, so restate the chart's `GOMEMLIMIT`
   and `GOGC` entries.
 
+## Set the cluster name
+
+Set `global.clusterName` so that telemetry from this cluster carries
+`k8s.cluster.name`. Without it, NKTP sets `unknown`.
+
+```yaml
+global:
+  clusterName: <cluster>
+```
+
+The gateways, the watchdog and the watchdog sidecar add the attribute to
+telemetry that does not already have one.
+
 ## Scraping your services
 
 NKTP collects every Pod's logs and state, and the nodes' metrics, without

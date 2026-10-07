@@ -92,7 +92,7 @@ tests:
           path: spec.config.service.pipelines.logs
           value:
             receivers: [otlp]
-            processors: [memory_limiter, redaction/basic_v1]
+            processors: [memory_limiter, redaction/basic_v1, transform/cluster]
             exporters: [otlp]
         template: templates/gateway-logs.yaml
       - equal:

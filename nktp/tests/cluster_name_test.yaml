@@ -1,0 +1,232 @@
+suite: cluster name
+release:
+  namespace: nktp
+templates:
+  - templates/watchdog.yaml
+  - templates/gateway-logs.yaml
+  - templates/gateway-metrics.yaml
+  - templates/gateway-traces.yaml
+  - templates/daemonset.yaml
+  - templates/large-target-metrics.yaml
+  - templates/cluster-events.yaml
+tests:
+  - it: sets the cluster name in every Collector that exports to the backend
+    asserts:
+      - equal:
+          path: spec.config.processors["transform/cluster"]
+          value:
+            error_mode: ignore
+            log_statements:
+              - context: resource
+                statements:
+                  - 'set(attributes["k8s.cluster.name"], "${env:K8S_CLUSTER_NAME:-unknown}") where attributes["k8s.cluster.name"] == nil'
+        template: templates/gateway-logs.yaml
+      - equal:
+          path: spec.config.processors["transform/cluster"]
+          value:
+            error_mode: ignore
+            metric_statements:
+              - context: resource
+                statements:
+                  - 'set(attributes["k8s.cluster.name"], "${env:K8S_CLUSTER_NAME:-unknown}") where attributes["k8s.cluster.name"] == nil'
+        template: templates/gateway-metrics.yaml
+      - equal:
+          path: spec.config.processors["transform/cluster"]
+          value:
+            error_mode: ignore
+            trace_statements:
+              - context: resource
+                statements:
+                  - 'set(attributes["k8s.cluster.name"], "${env:K8S_CLUSTER_NAME:-unknown}") where attributes["k8s.cluster.name"] == nil'
+        template: templates/gateway-traces.yaml
+      - equal:
+          path: spec.config.processors["transform/cluster"].log_statements[0].statements[0]
+          value: 'set(attributes["k8s.cluster.name"], "${env:K8S_CLUSTER_NAME:-unknown}") where attributes["k8s.cluster.name"] == nil'
+        template: templates/watchdog.yaml
+      - exists:
+          path: spec.config.processors["transform/cluster"].metric_statements
+        template: templates/watchdog.yaml
+      - exists:
+          path: spec.config.processors["transform/cluster"].trace_statements
+        template: templates/watchdog.yaml
+      - matchRegex:
+          path: spec.initContainers[0].args[0]
+          pattern: '"transform/cluster":\{"error_mode":"ignore","log_statements"'
+        template: templates/watchdog.yaml
+      - matchRegex:
+          path: spec.initContainers[0].args[0]
+          pattern: '"traces":\{"exporters":\["otlp"\],"processors":\["memory_limiter","tail_sampling","redaction/basic_v1","transform/cluster"\]'
+        template: templates/watchdog.yaml
+
+  - it: keeps the cluster name a string by reading it inside an OTTL string literal
+    asserts:
+      - matchRegex:
+          path: spec.config.processors["transform/cluster"].log_statements[0].statements[0]
+          pattern: ', "\$\{env:K8S_CLUSTER_NAME:-unknown\}"\)'
+        template: templates/gateway-logs.yaml
+      - matchRegex:
+          path: spec.initContainers[0].args[0]
+          pattern: ', \\"\$\{env:K8S_CLUSTER_NAME:-unknown\}\\"\)'
+        template: templates/watchdog.yaml
+
+  - it: leaves the cluster name to the exits
+    asserts:
+      - notExists:
+          path: spec.config.processors["transform/cluster"]
+        template: templates/daemonset.yaml
+      - notExists:
+          path: spec.config.processors["transform/cluster"]
+        template: templates/large-target-metrics.yaml
+      - notExists:
+          path: spec.config.processors["transform/cluster"]
+        template: templates/cluster-events.yaml
+      - notMatchRegex:
+          path: spec.initContainers[0].args[0]
+          pattern: transform/cluster
+        template: templates/gateway-logs.yaml
+
+  - it: adds no K8S_CLUSTER_NAME when global.clusterName is empty
+    asserts:
+      - notContains:
+          path: spec.env
+          content:
+            name: K8S_CLUSTER_NAME
+          any: true
+      - notContains:
+          path: spec.initContainers[0].env
+          content:
+            name: K8S_CLUSTER_NAME
+          any: true
+
+  - it: adds K8S_CLUSTER_NAME to the exits when global.clusterName is set
+    set:
+      global.clusterName: dev-a
+    asserts:
+      - contains:
+          path: spec.env
+          content:
+            name: K8S_CLUSTER_NAME
+            value: dev-a
+        template: templates/gateway-logs.yaml
+      - contains:
+          path: spec.env
+          content:
+            name: K8S_CLUSTER_NAME
+            value: dev-a
+        template: templates/gateway-metrics.yaml
+      - contains:
+          path: spec.env
+          content:
+            name: K8S_CLUSTER_NAME
+            value: dev-a
+        template: templates/gateway-traces.yaml
+      - contains:
+          path: spec.env
+          content:
+            name: K8S_CLUSTER_NAME
+            value: dev-a
+        template: templates/watchdog.yaml
+      - contains:
+          path: spec.initContainers[0].env
+          content:
+            name: K8S_CLUSTER_NAME
+            value: dev-a
+        template: templates/watchdog.yaml
+      - notContains:
+          path: spec.initContainers[0].env
+          content:
+            name: K8S_CLUSTER_NAME
+          any: true
+        template: templates/gateway-logs.yaml
+      - notContains:
+          path: spec.env
+          content:
+            name: K8S_CLUSTER_NAME
+          any: true
+        template: templates/daemonset.yaml
+      - notContains:
+          path: spec.env
+          content:
+            name: K8S_CLUSTER_NAME
+          any: true
+        template: templates/large-target-metrics.yaml
+      - notContains:
+          path: spec.env
+          content:
+            name: K8S_CLUSTER_NAME
+          any: true
+        template: templates/cluster-events.yaml
+
+  - it: keeps K8S_CLUSTER_NAME in a replaced env list and keeps a user-set value
+    set:
+      global.clusterName: dev-a
+      gateway_logs.kubernetes.env:
+        - name: GOMEMLIMIT
+          value: 7GiB
+      gateway_metrics.kubernetes.env:
+        - name: K8S_CLUSTER_NAME
+          value: from-user
+    asserts:
+      - equal:
+          path: spec.env
+          value:
+            - name: GOMEMLIMIT
+              value: 7GiB
+            - name: K8S_CLUSTER_NAME
+              value: dev-a
+        template: templates/gateway-logs.yaml
+      - equal:
+          path: spec.env
+          value:
+            - name: K8S_CLUSTER_NAME
+              value: from-user
+        template: templates/gateway-metrics.yaml
+
+  - it: renders a numeric cluster name as a string
+    set:
+      global.clusterName: 42
+    asserts:
+      - contains:
+          path: spec.env
+          content:
+            name: K8S_CLUSTER_NAME
+            value: "42"
+        template: templates/watchdog.yaml
+
+  - it: rejects a cluster name with a double quote
+    template: templates/watchdog.yaml
+    set:
+      global.clusterName: 'a"b'
+    asserts:
+      - failedTemplate:
+          errorMessage: global.clusterName must not contain double quotes or backslashes
+
+  - it: rejects a cluster name with a backslash
+    template: templates/watchdog.yaml
+    set:
+      global.clusterName: 'a\b'
+    asserts:
+      - failedTemplate:
+          errorMessage: global.clusterName must not contain double quotes or backslashes
+
+  - it: treats 0 as a cluster name, not as unset
+    template: templates/watchdog.yaml
+    set:
+      global.clusterName: 0
+    asserts:
+      - contains:
+          path: spec.env
+          content:
+            name: K8S_CLUSTER_NAME
+            value: "0"
+
+  - it: treats false as a cluster name, not as unset
+    template: templates/watchdog.yaml
+    set:
+      global.clusterName: false
+    asserts:
+      - contains:
+          path: spec.env
+          content:
+            name: K8S_CLUSTER_NAME
+            value: "false"

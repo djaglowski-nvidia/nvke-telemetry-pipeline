@@ -165,6 +165,12 @@ including the Collectors (`otelcol_image`) and the Target Allocators
 uninstall hook's kubectl image (`opentelemetry-kube-stack.cleanupJob.image`) do **not**
 read this setting. Configure their image repositories explicitly when required.
 
+### Cluster name
+
+Set `global.clusterName` to add `k8s.cluster.name` to telemetry as it leaves
+NKTP for the backend. Telemetry that already has `k8s.cluster.name` keeps it.
+When `global.clusterName` is empty, the value is `unknown`.
+
 ## Before production
 
 - **Disable the bundled LGTM backend.** It keeps data in memory, grants

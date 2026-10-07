@@ -41,6 +41,13 @@ Use `<gateway>.otelcol.config` for Collector configuration and
 requires the Kubernetes resource metrics API. Retain `GOMEMLIMIT` and `GOGC` when
 replacing `<gateway>.kubernetes.env`.
 
+Each gateway sets `k8s.cluster.name` from `global.clusterName` with its
+`transform/cluster` processor, unless the telemetry already has one. When
+`global.clusterName` is empty, the value is `unknown`. The chart passes the name
+in the `K8S_CLUSTER_NAME` environment variable, and the processor reads it
+inside an OTTL string, so names such as `42` or `true` stay strings. The name
+must not contain a double quote or a backslash.
+
 To export to a production backend, see
 [Set a backend](../getting-started.md#set-a-backend) and
 [Secure gateway export](../guides/secure_gateway_export.md).

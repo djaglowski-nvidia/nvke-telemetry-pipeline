@@ -22,6 +22,12 @@ reach newly added replicas while limiting connection churn. Tune
 scale-up relief and connection churn. Reconnects can select the same replica.
 See [gRPC connection management](https://github.com/grpc/proposal/blob/master/A9-server-side-conn-mgt.md).
 
+The watchdog and its sidecar set `k8s.cluster.name` from `global.clusterName`
+with their `transform/cluster` processors, unless the telemetry already has one.
+The sidecar needs its own processor because the watchdog's own telemetry goes
+from the sidecar straight to the backend. When `global.clusterName` is empty,
+the value is `unknown`.
+
 Use `watchdog.kubernetes` for Collector CR settings and `watchdog.otelcol.image`
 to override the global `otelcol_image`.
 Include `GOMEMLIMIT` and `GOGC` in any replacement `watchdog.kubernetes.env` list

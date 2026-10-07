@@ -20,6 +20,13 @@ global:
   #         repository: <mirror>/rancher/kubectl
   imageRegistry: ""
 
+  # Cluster name to set as k8s.cluster.name on telemetry that leaves NKTP for the
+  # backend. The gateways, the watchdog and the watchdog sidecar read it from the
+  # K8S_CLUSTER_NAME environment variable in their transform/cluster processor.
+  # It must not contain double quotes or backslashes.
+  # Telemetry that already has k8s.cluster.name keeps it. Empty sets "unknown".
+  clusterName: ""
+
 certManager:
   # Creates Certificate CRs for each collector workload for encrypted collector-to-gateway communication
   # and creates a self-signed Issuer to act as a in-cluster CA + Issuer to sign collector Certificates
@@ -206,6 +213,22 @@ watchdog:
           check_interval: 500ms # Poll Go heap Alloc. Bursts can allocate between checks.
           limit_percentage: 80 # Hard heap threshold, 819.2Mi. Leaves room below the container cap.
           spike_limit_percentage: 25 # Subtract from hard threshold for soft refusal at 55% (563.2Mi).
+        transform/cluster:
+          # Sets k8s.cluster.name from global.clusterName, or "unknown", unless the sender set one.
+          # The variable is inside an OTTL string so that names such as 42 or true stay strings.
+          error_mode: ignore
+          trace_statements:
+            - context: resource
+              statements:
+                - 'set(attributes["k8s.cluster.name"], "${env:K8S_CLUSTER_NAME:-unknown}") where attributes["k8s.cluster.name"] == nil'
+          metric_statements:
+            - context: resource
+              statements:
+                - 'set(attributes["k8s.cluster.name"], "${env:K8S_CLUSTER_NAME:-unknown}") where attributes["k8s.cluster.name"] == nil'
+          log_statements:
+            - context: resource
+              statements:
+                - 'set(attributes["k8s.cluster.name"], "${env:K8S_CLUSTER_NAME:-unknown}") where attributes["k8s.cluster.name"] == nil'
       exporters:
         otlp:
           endpoint: lgtm:4317
@@ -256,15 +279,15 @@ watchdog:
         pipelines:
           metrics:
             receivers: [otlp, prometheus]
-            processors: [memory_limiter, redaction/basic_v1]
+            processors: [memory_limiter, redaction/basic_v1, transform/cluster]
             exporters: [otlp]
           logs:
             receivers: [otlp]
-            processors: [memory_limiter, redaction/basic_v1]
+            processors: [memory_limiter, redaction/basic_v1, transform/cluster]
             exporters: [otlp]
           traces:
             receivers: [otlp]
-            processors: [memory_limiter, redaction/basic_v1]
+            processors: [memory_limiter, redaction/basic_v1, transform/cluster]
             exporters: [otlp]
   # Native sidecar for this workload's own telemetry. It buffers through outages,
   # keeps only error and slow traces, and exports over plaintext gRPC to lgtm:4317.
@@ -331,6 +354,22 @@ watchdog:
             check_interval: 500ms
             limit_percentage: 80 # Hard heap threshold, 204.8Mi.
             spike_limit_percentage: 25 # Soft refusal at 55% (140.8Mi).
+          transform/cluster:
+            # Sets k8s.cluster.name from global.clusterName, or "unknown", unless the sender set one.
+            # The variable is inside an OTTL string so that names such as 42 or true stay strings.
+            error_mode: ignore
+            trace_statements:
+              - context: resource
+                statements:
+                  - 'set(attributes["k8s.cluster.name"], "${env:K8S_CLUSTER_NAME:-unknown}") where attributes["k8s.cluster.name"] == nil'
+            metric_statements:
+              - context: resource
+                statements:
+                  - 'set(attributes["k8s.cluster.name"], "${env:K8S_CLUSTER_NAME:-unknown}") where attributes["k8s.cluster.name"] == nil'
+            log_statements:
+              - context: resource
+                statements:
+                  - 'set(attributes["k8s.cluster.name"], "${env:K8S_CLUSTER_NAME:-unknown}") where attributes["k8s.cluster.name"] == nil'
           tail_sampling:
             decision_wait: 5s # Covers the 1s SDK flush interval with margin.
             num_traces: 5000 # Bounds traces held in memory. The oldest are dropped first.
@@ -390,15 +429,15 @@ watchdog:
           pipelines:
             metrics:
               receivers: [otlp]
-              processors: [memory_limiter, redaction/basic_v1]
+              processors: [memory_limiter, redaction/basic_v1, transform/cluster]
               exporters: [otlp]
             logs:
               receivers: [otlp]
-              processors: [memory_limiter, redaction/basic_v1]
+              processors: [memory_limiter, redaction/basic_v1, transform/cluster]
               exporters: [otlp]
             traces:
               receivers: [otlp]
-              processors: [memory_limiter, tail_sampling, redaction/basic_v1]
+              processors: [memory_limiter, tail_sampling, redaction/basic_v1, transform/cluster]
               exporters: [otlp]
 
 # Log gateway. Exports all logs from the cluster.
@@ -511,6 +550,14 @@ gateway_logs:
           check_interval: 500ms # Poll Go heap Alloc. Bursts can allocate between checks.
           limit_percentage: 80 # Hard heap threshold, 6.4Gi. Leaves room below the container cap.
           spike_limit_percentage: 25 # Subtract from hard threshold for soft refusal at 55% (4.4Gi).
+        transform/cluster:
+          # Sets k8s.cluster.name from global.clusterName, or "unknown", unless the sender set one.
+          # The variable is inside an OTTL string so that names such as 42 or true stay strings.
+          error_mode: ignore
+          log_statements:
+            - context: resource
+              statements:
+                - 'set(attributes["k8s.cluster.name"], "${env:K8S_CLUSTER_NAME:-unknown}") where attributes["k8s.cluster.name"] == nil'
       exporters:
         otlp:
           endpoint: lgtm:4317
@@ -560,7 +607,7 @@ gateway_logs:
         pipelines:
           logs:
             receivers: [otlp]
-            processors: [memory_limiter, redaction/basic_v1]
+            processors: [memory_limiter, redaction/basic_v1, transform/cluster]
             exporters: [otlp]
   # Native sidecar for this workload's own telemetry. It buffers through outages,
   # keeps only error and slow traces, and exports over gRPC to nktp-watchdog-collector:4317.
@@ -798,6 +845,14 @@ gateway_metrics:
           check_interval: 500ms # Poll Go heap Alloc. Bursts can allocate between checks.
           limit_percentage: 80 # Hard heap threshold, 6.4Gi. Leaves room below the container cap.
           spike_limit_percentage: 25 # Subtract from hard threshold for soft refusal at 55% (4.4Gi).
+        transform/cluster:
+          # Sets k8s.cluster.name from global.clusterName, or "unknown", unless the sender set one.
+          # The variable is inside an OTTL string so that names such as 42 or true stay strings.
+          error_mode: ignore
+          metric_statements:
+            - context: resource
+              statements:
+                - 'set(attributes["k8s.cluster.name"], "${env:K8S_CLUSTER_NAME:-unknown}") where attributes["k8s.cluster.name"] == nil'
       exporters:
         otlp:
           endpoint: lgtm:4317
@@ -847,7 +902,7 @@ gateway_metrics:
         pipelines:
           metrics:
             receivers: [otlp]
-            processors: [memory_limiter, redaction/basic_v1]
+            processors: [memory_limiter, redaction/basic_v1, transform/cluster]
             exporters: [otlp]
   # Native sidecar for this workload's own telemetry. It buffers through outages,
   # keeps only error and slow traces, and exports over gRPC to nktp-watchdog-collector:4317.
@@ -1085,6 +1140,14 @@ gateway_traces:
           check_interval: 500ms # Poll Go heap Alloc. Bursts can allocate between checks.
           limit_percentage: 80 # Hard heap threshold, 6.4Gi. Leaves room below the container cap.
           spike_limit_percentage: 25 # Subtract from hard threshold for soft refusal at 55% (4.4Gi).
+        transform/cluster:
+          # Sets k8s.cluster.name from global.clusterName, or "unknown", unless the sender set one.
+          # The variable is inside an OTTL string so that names such as 42 or true stay strings.
+          error_mode: ignore
+          trace_statements:
+            - context: resource
+              statements:
+                - 'set(attributes["k8s.cluster.name"], "${env:K8S_CLUSTER_NAME:-unknown}") where attributes["k8s.cluster.name"] == nil'
       exporters:
         otlp:
           endpoint: lgtm:4317
@@ -1134,7 +1197,7 @@ gateway_traces:
         pipelines:
           traces:
             receivers: [otlp]
-            processors: [memory_limiter, redaction/basic_v1]
+            processors: [memory_limiter, redaction/basic_v1, transform/cluster]
             exporters: [otlp]
   # Native sidecar for this workload's own telemetry. It buffers through outages,
   # keeps only error and slow traces, and exports over gRPC to nktp-watchdog-collector:4317.
