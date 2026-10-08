@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/NVIDIA-dev/nktp/tests/scale/pkg/internal/lifecycle"
 	"go.yaml.in/yaml/v3"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -92,7 +93,7 @@ func NewJobGenerator(spec yaml.Node, kubeconfig string) (*JobGenerator, error) {
 // before returning, with up to 30 seconds for cleanup after cancellation.
 func (g *JobGenerator) Run(ctx context.Context) error {
 	if err := ctx.Err(); err != nil {
-		return err
+		return lifecycle.RunError(ctx, err)
 	}
 	if g.config.Count == 0 {
 		return nil
@@ -129,6 +130,7 @@ func (g *JobGenerator) run(ctx context.Context, batch batchclient.BatchV1Interfa
 	})
 }
 
+// runJob owns one Job and retains cleanup failures after a requested stop.
 func (g *JobGenerator) runJob(ctx context.Context, batch batchclient.BatchV1Interface, core coreclient.CoreV1Interface) (err error) {
 	deadline, _ := ctx.Deadline()
 	job := g.manifest(deadline)
@@ -138,7 +140,7 @@ func (g *JobGenerator) runJob(ctx context.Context, batch batchclient.BatchV1Inte
 	defer func() {
 		cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), jobCleanupTimeout)
 		defer cancel()
-		err = errors.Join(err, cleanupJob(cleanupCtx, jobs, pods, job), ctx.Err())
+		err = errors.Join(lifecycle.RunError(ctx, err), cleanupJob(cleanupCtx, jobs, pods, job), lifecycle.RunError(ctx, ctx.Err()))
 	}()
 	created, err := jobs.Create(ctx, job, metav1.CreateOptions{})
 	if err != nil {

@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/NVIDIA-dev/nktp/tests/scale/pkg/internal/lifecycle"
 	"go.yaml.in/yaml/v3"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -101,7 +102,7 @@ func NewKubernetesGenerator(spec yaml.Node, kubeconfig string) (*KubernetesGener
 // The returned error includes both run and cleanup failures.
 func (g *KubernetesGenerator) Run(ctx context.Context) error {
 	if err := ctx.Err(); err != nil {
-		return err
+		return lifecycle.RunError(ctx, err)
 	}
 	credentials, err := clientcmd.LoadFromFile(g.kubeconfig)
 	if err != nil {
@@ -130,7 +131,7 @@ func (g *KubernetesGenerator) run(ctx context.Context, nodes coreclient.NodeInte
 	defer func() {
 		cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), kubernetesNodeCleanupBudget(len(owned)))
 		defer cancel()
-		err = errors.Join(err, cleanupKubernetesNodes(cleanupCtx, nodes, owned), ctx.Err())
+		err = errors.Join(lifecycle.RunError(ctx, err), cleanupKubernetesNodes(cleanupCtx, nodes, owned), lifecycle.RunError(ctx, ctx.Err()))
 	}()
 	for _, group := range g.config.NodeGroups {
 		for i := range *group.Replicas {

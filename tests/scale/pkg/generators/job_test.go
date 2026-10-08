@@ -10,6 +10,7 @@ import (
 	"testing/synctest"
 	"time"
 
+	"github.com/NVIDIA-dev/nktp/tests/scale/pkg/internal/lifecycle"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	batchv1 "k8s.io/api/batch/v1"
@@ -135,6 +136,7 @@ func TestJobManifestPreservesTemplate(t *testing.T) {
 	assert.Equal(t, *source, g.config.PodTemplate, "manifest does not mutate configuration")
 }
 
+// TestJobGeneratorRun checks completion, cancellation and preservation of cleanup errors.
 func TestJobGeneratorRun(t *testing.T) {
 	createErr := errors.New("create rejected")
 	readErr := errors.New("read failed")
@@ -146,6 +148,7 @@ func TestJobGeneratorRun(t *testing.T) {
 		lostResponse bool
 		readErr      error
 		cancel       bool
+		stop         bool
 		replaced     bool
 		foreignOwner bool
 		cleanupErr   error
@@ -157,6 +160,8 @@ func TestJobGeneratorRun(t *testing.T) {
 		{name: "replaced", replaced: true, wantErr: "job was replaced"},
 		{name: "foreign owner", condition: batchv1.JobComplete, foreignOwner: true, wantErr: "refuse to delete unowned"},
 		{name: "get failed", readErr: readErr, wantErr: "read failed", wantDelete: true},
+		{name: "target reached", stop: true, wantDelete: true},
+		{name: "target reached with cleanup failure", stop: true, cleanupErr: cleanupErr, wantErr: "delete Job", wantDelete: true},
 		{name: "canceled", cancel: true, wantErr: "context canceled", wantDelete: true},
 		{name: "deadline", wantErr: "context deadline exceeded", wantDelete: true},
 		{name: "create rejected", createErr: createErr, wantErr: "create Job"},
@@ -170,6 +175,8 @@ func TestJobGeneratorRun(t *testing.T) {
 				require.NoError(t, err)
 				ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
 				defer cancel()
+				ctx, stop := context.WithCancelCause(ctx)
+				defer stop(nil)
 				client := fake.NewClientset()
 				resource := batchv1.SchemeGroupVersion.WithResource("jobs")
 				var job *batchv1.Job
@@ -185,6 +192,9 @@ func TestJobGeneratorRun(t *testing.T) {
 					}
 					if test.cancel {
 						cancel()
+					}
+					if test.stop {
+						stop(lifecycle.ErrStageComplete)
 					}
 					return true, job, nil
 				})
@@ -238,7 +248,11 @@ func TestJobGeneratorRun(t *testing.T) {
 				err = g.run(ctx, client.BatchV1(), client.CoreV1())
 				if test.wantErr == "" {
 					assert.NoError(t, err)
-					assert.Equal(t, 2*time.Second, time.Since(start), "wait for Job completion and owned Pods to disappear")
+					if test.stop {
+						assert.Equal(t, time.Second, time.Since(start), "wait for cleanup after successful stopping")
+					} else {
+						assert.Equal(t, 2*time.Second, time.Since(start), "wait for Job completion and owned Pods to disappear")
+					}
 				} else {
 					require.ErrorContains(t, err, test.wantErr)
 				}
@@ -250,7 +264,9 @@ func TestJobGeneratorRun(t *testing.T) {
 					_, getErr := client.Tracker().Get(resource, job.Namespace, job.Name)
 					assert.True(t, apierrors.IsNotFound(getErr), "Job removed before returning")
 				}
-				if ctx.Err() != nil {
+				if test.stop {
+					assert.NotErrorIs(t, err, context.Canceled)
+				} else if ctx.Err() != nil {
 					assert.ErrorIs(t, err, ctx.Err())
 					assert.NotContains(t, err.Error(), "cleanup", "cleanup survives run cancellation")
 				}

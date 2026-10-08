@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"sync"
 
+	"github.com/NVIDIA-dev/nktp/tests/scale/pkg/internal/lifecycle"
 	"github.com/NVIDIA-dev/nktp/tests/scale/pkg/measurements"
 )
 
@@ -23,9 +24,11 @@ type generator interface {
 // measurement observes and evaluates a stage concurrently with its generators.
 // Run is called once per instance, must honor cancellation, and must finish its
 // goroutines and bounded cleanup before returning. It may return a partial report
-// with an error. A successful report may be empty. Failed checks return errors.
+// with an error. When CompletesStage is true, Run succeeds only after reaching
+// its target and generators must remain active until then.
 type measurement interface {
 	Run(context.Context) (measurements.Report, error)
+	CompletesStage() bool
 }
 
 // StageReport attributes a measurement report and component errors to one stage.
@@ -167,15 +170,17 @@ func executeStages(ctx context.Context, logger *slog.Logger, stages []preparedSt
 }
 
 // executeStage runs all components to completion, canceling peers on error.
-// Successful completion does not stop other components. Each goroutine owns a
+// A reached measurement target requests successful generator shutdown. Generators
+// that finish before a required target fail the stage. Each goroutine owns a
 // separate result slot, and all resource cleanup finishes before the report returns.
 func executeStage(ctx context.Context, logger *slog.Logger, stage preparedStage) StageReport {
 	report := StageReport{
 		Name: stage.name, Measurement: stage.measurementType,
 		Generators: make([]GeneratorReport, len(stage.generators)),
 	}
-	stageCtx, cancel := context.WithCancel(ctx)
-	defer cancel()
+	stageCtx, cancel := context.WithCancelCause(ctx)
+	defer cancel(nil)
+	requiresTarget := stage.measurement != nil && stage.measurement.CompletesStage()
 	if stageCtx.Err() == nil {
 		logger.InfoContext(stageCtx, "stage started", "stage", stage.name)
 	}
@@ -187,9 +192,12 @@ func executeStage(ctx context.Context, logger *slog.Logger, stage preparedStage)
 			if err == nil {
 				err = g.generator.Run(stageCtx)
 			}
-			report.Generators[i].Error = err
+			if err == nil && requiresTarget && stageCtx.Err() == nil {
+				err = errors.New("generator finished before the completion target")
+			}
+			report.Generators[i].Error = lifecycle.RunError(stageCtx, err)
 			if report.Generators[i].Error != nil {
-				cancel()
+				cancel(err)
 			}
 		})
 	}
@@ -200,8 +208,10 @@ func executeStage(ctx context.Context, logger *slog.Logger, stage preparedStage)
 				report.Report, err = stage.measurement.Run(stageCtx)
 			}
 			report.MeasurementError = err
-			if report.MeasurementError != nil {
-				cancel()
+			if err != nil {
+				cancel(err)
+			} else if requiresTarget {
+				cancel(lifecycle.ErrStageComplete)
 			}
 		})
 	}

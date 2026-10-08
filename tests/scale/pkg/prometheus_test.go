@@ -148,3 +148,56 @@ measurements:
 	assert.Contains(t, formatted, "FIRED at")
 	assert.Contains(t, formatted, `Series: {instance="gateway"}`)
 }
+
+// TestPrometheusCompletionAdvancesStages exercises warmup, baseline and stress in order.
+func TestPrometheusCompletionAdvancesStages(t *testing.T) {
+	started := make(chan struct{})
+	cleaned := false
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		<-started
+		_, err := fmt.Fprint(w, `{"status":"success","data":{"resultType":"vector","result":[{"metric":{},"value":[100,"1"]}]}}`)
+		assert.NoError(t, err)
+	}))
+	defer server.Close()
+	var spec yaml.Node
+	require.NoError(t, yaml.Unmarshal([]byte(fmt.Sprintf(`endpoint: %q
+duration: 2s
+interval: 5ms
+measurements:
+  - name: ready
+    check: {expr: "sum(up) > 0", for: 10ms, action: complete}
+`, server.URL)), &spec))
+	warmup, err := measurements.NewPrometheus(*spec.Content[0])
+	require.NoError(t, err)
+	baseline, err := measurements.NewPrometheus(*spec.Content[0])
+	require.NoError(t, err)
+	stages := []preparedStage{
+		{name: "warmup", measurement: warmup, generators: []preparedGenerator{
+			{name: "load", generator: generatorFunc(func(ctx context.Context) error {
+				close(started)
+				<-ctx.Done()
+				cleaned = true
+				return ctx.Err()
+			})},
+		}},
+		{name: "baseline", measurement: baseline},
+		{name: "stress", generators: []preparedGenerator{
+			{name: "load", generator: generatorFunc(func(context.Context) error {
+				assert.True(t, cleaned, "warmup cleanup must finish before stress starts")
+				return nil
+			})},
+		}},
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+	reports, err := executeStages(ctx, slog.Default(), stages)
+	require.NoError(t, err)
+	require.Len(t, reports, 3)
+	for _, report := range reports[:2] {
+		check := report.Report["queries"].(map[string]measurements.QueryReport)["ready"]
+		require.NotNil(t, check.Check.FiredAt)
+		assert.GreaterOrEqual(t, check.Check.FiredAt.Sub(check.Observations[0].EvaluatedAt), 10*time.Millisecond)
+		assert.Contains(t, format.Format(report.Report), "Action: complete")
+	}
+	assert.NoError(t, reports[0].Generators[0].Error)
+}

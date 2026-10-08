@@ -2,6 +2,7 @@ package measurements
 
 import (
 	"fmt"
+	"math"
 	"testing"
 	"time"
 
@@ -25,7 +26,8 @@ func TestCheckValidation(t *testing.T) {
 		{name: "hold equals duration", entry: "check: {expr: up == 0, for: 1m}"},
 		{name: "hold exceeds duration", entry: "check: {expr: up == 0, for: 2m}"},
 		{name: "numeric expression", entry: "check: {expr: 1}"},
-		{name: "unsupported action", entry: "check: {expr: up == 0, action: complete_stage}"},
+		{name: "multiple completion targets", entry: "check: {expr: up == 1, action: complete}\n  - name: other\n    check: {expr: up == 1, action: complete}"},
+		{name: "unsupported action", entry: "check: {expr: up == 0, action: unknown}"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			spec := fmt.Sprintf("endpoint: http://localhost:9090\nduration: 1m\nmeasurements:\n  - name: unavailable\n    %s\n", test.entry)
@@ -39,6 +41,7 @@ func TestCheckValidation(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, measurement.config.Measurements[0].Check)
 		assert.Equal(t, "up == 0", measurement.config.Measurements[0].Check.Expr)
+		assert.Equal(t, Fail, measurement.config.Measurements[0].Check.Action)
 	}
 }
 
@@ -77,4 +80,31 @@ func TestCheckImmediate(t *testing.T) {
 	assert.Equal(t, []model.Metric{labels}, fired)
 	_, err = state.evaluate(&model.Scalar{Value: 1}, at)
 	assert.ErrorContains(t, err, "instant vector")
+}
+
+// TestCompletionCheckData requires a single finite aggregate match for completion.
+func TestCompletionCheckData(t *testing.T) {
+	for _, test := range []struct {
+		name      string
+		vector    model.Vector
+		wantError bool
+	}{
+		{name: "empty"},
+		{name: "finite match", vector: model.Vector{&model.Sample{Value: 0}}},
+		{name: "multiple series", vector: model.Vector{&model.Sample{}, &model.Sample{}}, wantError: true},
+		{name: "NaN", vector: model.Vector{&model.Sample{Value: model.SampleValue(math.NaN())}}, wantError: true},
+		{name: "infinity", vector: model.Vector{&model.Sample{Value: model.SampleValue(math.Inf(1))}}, wantError: true},
+		{name: "histogram", vector: model.Vector{&model.Sample{Histogram: &model.SampleHistogram{}}}, wantError: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			state := checkState{complete: true}
+			fired, err := state.evaluate(test.vector, time.Now())
+			if test.wantError {
+				assert.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			assert.Len(t, fired, len(test.vector))
+		})
+	}
 }

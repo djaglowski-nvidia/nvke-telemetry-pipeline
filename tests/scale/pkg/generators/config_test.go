@@ -4,8 +4,10 @@
 package generators
 
 import (
+	"context"
 	"testing"
 
+	"github.com/NVIDIA-dev/nktp/tests/scale/pkg/internal/lifecycle"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.yaml.in/yaml/v3"
@@ -83,4 +85,15 @@ func TestPreparePodTemplate(t *testing.T) {
 			assert.Equal(t, *original, source, "prepared template must not share mutable fields with its source")
 		})
 	}
+}
+
+// TestRunInstancesSuccessfulStop avoids starting instances after the target is reached.
+func TestRunInstancesSuccessfulStop(t *testing.T) {
+	ctx, stop := context.WithCancelCause(t.Context())
+	stop(lifecycle.ErrStageComplete)
+	err := runInstances(ctx, 3, func(context.Context) error {
+		assert.Fail(t, "instance started after successful stop")
+		return nil
+	})
+	assert.NoError(t, err)
 }

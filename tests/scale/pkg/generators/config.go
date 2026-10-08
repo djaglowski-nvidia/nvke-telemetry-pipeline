@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/NVIDIA-dev/nktp/tests/scale/pkg/internal/lifecycle"
 	"go.yaml.in/yaml/v3"
 	corev1 "k8s.io/api/core/v1"
 	k8syaml "sigs.k8s.io/yaml"
@@ -45,7 +46,7 @@ func preparePodTemplate(src corev1.PodTemplateSpec, owner string) corev1.PodTemp
 // An error cancels the remaining instances.
 func runInstances(ctx context.Context, count int, run func(context.Context) error) error {
 	if err := ctx.Err(); err != nil {
-		return err
+		return lifecycle.RunError(ctx, err)
 	}
 	if count == 1 {
 		return run(ctx)
@@ -57,7 +58,7 @@ func runInstances(ctx context.Context, count int, run func(context.Context) erro
 	for i := range count {
 		wg.Go(func() {
 			if err := ctx.Err(); err != nil {
-				errs[i] = err
+				errs[i] = lifecycle.RunError(ctx, err)
 				return
 			}
 			errs[i] = run(ctx)

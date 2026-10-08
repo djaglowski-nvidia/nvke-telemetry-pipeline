@@ -431,3 +431,69 @@ func TestPrometheusQueryRetainsOfficialResults(t *testing.T) {
 		})
 	}
 }
+
+// TestPrometheusCompletion covers target expiry and errors winning in the same round.
+func TestPrometheusCompletion(t *testing.T) {
+	for _, test := range []struct {
+		name       string
+		missing    bool
+		failure    bool
+		queryError bool
+		slowGuard  bool
+		wantError  string
+	}{
+		{name: "target reached"},
+		{name: "target unmet", missing: true, wantError: "was not confirmed"},
+		{name: "failure wins", failure: true, wantError: `check "z_guard" fired`},
+		{name: "query error wins", queryError: true, wantError: "503"},
+		{name: "window expires before guard finishes", slowGuard: true, wantError: "was not confirmed"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				assert.NoError(t, r.ParseForm())
+				target := r.Form.Get("query") == "ready"
+				if !target && test.slowGuard {
+					<-r.Context().Done()
+					return
+				}
+				if !target && test.queryError {
+					http.Error(w, "unavailable", http.StatusServiceUnavailable)
+					return
+				}
+				result := `[]`
+				if target && !test.missing || !target && test.failure {
+					result = `[{"metric":{},"value":[100,"0"]}]`
+				}
+				_, err := fmt.Fprintf(w, `{"status":"success","data":{"resultType":"vector","result":%s}}`, result)
+				assert.NoError(t, err)
+			}))
+			defer server.Close()
+			measurement, err := NewPrometheus(measurementSpec(t, fmt.Sprintf(`endpoint: %q
+duration: 80ms
+interval: 5ms
+measurements:
+  - name: a_ready
+    check: {expr: ready, action: complete}
+  - name: z_guard
+    check: {expr: unhealthy}
+`, server.URL)))
+			require.NoError(t, err)
+			assert.True(t, measurement.CompletesStage())
+			report, err := measurement.Run(t.Context())
+			if test.wantError != "" {
+				assert.ErrorContains(t, err, test.wantError)
+			} else {
+				require.NoError(t, err)
+			}
+			queries := report["queries"].(map[string]QueryReport)
+			assert.NotEmpty(t, queries["a_ready"].Observations)
+			if test.slowGuard {
+				assert.NotNil(t, queries["a_ready"].Check.FiredAt)
+				assert.Empty(t, queries["z_guard"].Observations)
+			} else {
+				assert.NotEmpty(t, queries["z_guard"].Observations)
+			}
+			assert.NotNil(t, report["finished_at"])
+		})
+	}
+}

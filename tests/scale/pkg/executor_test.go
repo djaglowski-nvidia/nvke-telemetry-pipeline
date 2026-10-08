@@ -11,6 +11,7 @@ import (
 	"testing/synctest"
 	"time"
 
+	"github.com/NVIDIA-dev/nktp/tests/scale/pkg/internal/lifecycle"
 	"github.com/NVIDIA-dev/nktp/tests/scale/pkg/measurements"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -27,6 +28,9 @@ type measurementFunc func(context.Context) (measurements.Report, error)
 
 // Run executes the configured measurement behavior.
 func (f measurementFunc) Run(ctx context.Context) (measurements.Report, error) { return f(ctx) }
+
+// CompletesStage keeps ordinary test measurements independent of generator lifetime.
+func (measurementFunc) CompletesStage() bool { return false }
 
 // TestStageScheduling checks parallel components, sequential stages and ordered reports.
 func TestStageScheduling(t *testing.T) {
@@ -231,4 +235,80 @@ func TestIgnoredDeadlineCannotPass(t *testing.T) {
 		_, err := executeStages(ctx, slog.Default(), []preparedStage{stage})
 		assert.ErrorIs(t, err, context.DeadlineExceeded)
 	})
+}
+
+// completionFunc supplies a completion target for lifecycle tests.
+type completionFunc func(context.Context) (measurements.Report, error)
+
+// Run returns the test-controlled target outcome.
+func (f completionFunc) Run(ctx context.Context) (measurements.Report, error) { return f(ctx) }
+
+// CompletesStage requires generators to stay active until this target is reached.
+func (completionFunc) CompletesStage() bool { return true }
+
+// TestStageTargetShutdown waits for cleanup and never hides errors behind success.
+func TestStageTargetShutdown(t *testing.T) {
+	failure := errors.New("cleanup failed")
+	for _, test := range []struct {
+		name           string
+		generatorError error
+		cancelCaller   bool
+		wantError      error
+	}{
+		{name: "clean shutdown"},
+		{name: "cleanup failed", generatorError: errors.Join(context.Canceled, failure), wantError: failure},
+		{name: "caller canceled during cleanup", cancelCaller: true, wantError: context.Canceled},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				ctx, cancel := context.WithCancel(t.Context())
+				defer cancel()
+				started := make(chan struct{}, 2)
+				cleaned := [2]bool{}
+				nextStarted := false
+				stage := preparedStage{name: "warmup", measurement: completionFunc(func(context.Context) (measurements.Report, error) {
+					<-started
+					<-started
+					return measurements.Report{"ready": true}, nil
+				})}
+				for i := range 2 {
+					stage.generators = append(stage.generators, preparedGenerator{generator: generatorFunc(func(ctx context.Context) error {
+						started <- struct{}{}
+						<-ctx.Done()
+						assert.ErrorIs(t, context.Cause(ctx), lifecycle.ErrStageComplete)
+						time.Sleep(time.Second)
+						cleaned[i] = true
+						if test.cancelCaller {
+							cancel()
+						}
+						return test.generatorError
+					})})
+				}
+				later := preparedStage{name: "stress", generators: []preparedGenerator{{generator: generatorFunc(func(context.Context) error {
+					nextStarted = true
+					assert.Equal(t, [2]bool{true, true}, cleaned)
+					return nil
+				})}}}
+				reports, err := executeStages(ctx, slog.Default(), []preparedStage{stage, later})
+				assert.ErrorIs(t, err, test.wantError)
+				assert.Equal(t, test.wantError == nil, nextStarted)
+				assert.Equal(t, [2]bool{true, true}, cleaned)
+				assert.Equal(t, true, reports[0].Report["ready"])
+			})
+		})
+	}
+}
+
+// TestStageRejectsEarlyGeneratorCompletion prevents targets reached after load ends.
+func TestStageRejectsEarlyGeneratorCompletion(t *testing.T) {
+	stage := preparedStage{
+		name:       "warmup",
+		generators: []preparedGenerator{{generator: generatorFunc(func(context.Context) error { return nil })}},
+		measurement: completionFunc(func(ctx context.Context) (measurements.Report, error) {
+			<-ctx.Done()
+			return nil, ctx.Err()
+		}),
+	}
+	_, err := executeStages(t.Context(), slog.Default(), []preparedStage{stage})
+	assert.ErrorContains(t, err, "generator finished before the completion target")
 }

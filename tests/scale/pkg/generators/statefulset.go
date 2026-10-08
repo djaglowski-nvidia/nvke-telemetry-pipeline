@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/NVIDIA-dev/nktp/tests/scale/pkg/internal/lifecycle"
 	"go.yaml.in/yaml/v3"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -77,7 +78,7 @@ func NewStatefulSetGenerator(spec yaml.Node, kubeconfig string) (*StatefulSetGen
 // and has its own five-minute timeout. Run returns both run and cleanup errors.
 func (g *StatefulSetGenerator) Run(ctx context.Context) error {
 	if ctx.Err() != nil {
-		return ctx.Err()
+		return lifecycle.RunError(ctx, ctx.Err())
 	}
 	if g.config.Count == 0 || g.config.Replicas == 0 {
 		return nil
@@ -115,6 +116,7 @@ func (g *StatefulSetGenerator) run(ctx context.Context, apps appsclient.AppsV1In
 	})
 }
 
+// runStatefulSet owns one StatefulSet and retains cleanup failures after a requested stop.
 func (g *StatefulSetGenerator) runStatefulSet(ctx context.Context, apps appsclient.AppsV1Interface, core coreclient.CoreV1Interface) (err error) {
 	// workload carries ownership before Create so a lost response can be cleaned up.
 	workload := newStatefulSet(g.config)
@@ -124,7 +126,7 @@ func (g *StatefulSetGenerator) runStatefulSet(ctx context.Context, apps appsclie
 		// cleanupCtx remains usable after cancellation of the plan.
 		cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), statefulSetCleanupTimeout)
 		defer cancel()
-		err = errors.Join(err, cleanupStatefulSet(cleanupCtx, sets, workload), ctx.Err())
+		err = errors.Join(lifecycle.RunError(ctx, err), cleanupStatefulSet(cleanupCtx, sets, workload), lifecycle.RunError(ctx, ctx.Err()))
 	}()
 	// created supplies the UID for deletion preconditions and dependent ownership.
 	created, err := sets.Create(ctx, workload, metav1.CreateOptions{})

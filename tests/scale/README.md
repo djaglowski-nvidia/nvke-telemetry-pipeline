@@ -4,8 +4,8 @@ Plan-driven testing of NKTP correctness and capacity under telemetry load.
 The harness runs no-op components without a cluster, or finite binary workloads
 through the Kubernetes Job generator. The Kubernetes emulator creates temporary
 KWOK nodes with configured capacity. Measurements support no-op observations and
-Prometheus queries and failure checks. Queries collect data without performance
-verdicts, while checks stop the test when a failure condition holds. Successful Job
+Prometheus queries and checks. Queries collect data without performance
+verdicts, while checks can fail the test or complete a stage. Successful Job
 execution alone does not verify backend delivery or NKTP performance.
 
 For the mixed 100M Avalanche workload with node-local and large-target scraping,
@@ -267,7 +267,8 @@ literal text `{{ .Args.name }}`, write `{{ "{{ .Args.name }}" }}`.
 ## Prometheus measurements
 
 Prometheus measurements collect metrics during a load test. Queries summarize
-observations, while checks stop the test when a failure condition persists.
+observations, while checks fail the test or advance to the next stage when a
+condition holds.
 
 ```yaml
 measurement:
@@ -303,10 +304,10 @@ query display, with automatic scaling for `bytes` and `bytes/s`. Multiline
 expressions can use YAML block scalars. No-op measurements accept query examples
 but reject checks.
 
-A check requires an `expr` returning an instant vector. Every returned series is
-a violation, including a sample with value zero. Use filtering comparisons such
-as `up == 0`, without `bool`. Omit `for`, or set it to `0s`, to fail on the first
-match. Otherwise the same series must remain present at every evaluation for
+A check requires an `expr` returning an instant vector. Its `action` defaults to
+`fail`. Every returned series is a match, including a sample with value zero.
+Use filtering comparisons such as `up == 0`, without `bool`. Omit `for`, or set it
+to `0s`, to act on the first match. Otherwise the same series must remain present at every evaluation for
 that duration. `for` must be shorter than the collection `duration`. A missing
 series resets its timer. Empty results do not fail the test. Use an explicit
 absence expression if missing telemetry should fail.
@@ -317,10 +318,33 @@ The example fails if a gateway remains down for one minute.
 another environment, use an endpoint reachable from the test host.
 
 Collection starts with the stage and polls queries and checks at `interval` for
-`duration`. A fired check or query error fails the plan and preserves collected
-results. Query reports show statistics and histograms per label set, with missing
+`duration`. A fired failure check or query error fails the plan and preserves
+collected results. Query reports show statistics and histograms per label set, with missing
 data and errors shown separately. Check findings identify the check, firing time
 and affected series.
+
+To advance after reaching a target, add a check with `action: complete`:
+
+```yaml
+- name: gatewayReady
+  check:
+    expr: sum(rate(otelcol_exporter_sent_metric_points_total{job="nktp-gateway-metrics"}[1m])) >= 10000
+    for: 30s
+    action: complete
+```
+
+This example completes the stage once throughput stays at or above 10,000 points/s
+for 30 seconds. The runner stops its generators and finishes cleanup before the
+next stage. Only one completion check is allowed per measurement. It must return
+a single finite float series with stable labels. Empty results cannot complete a
+stage. The condition should verify the required load, targets and fresh data,
+accounting for earlier stages in PromQL lookback windows.
+
+With a completion target, `duration` is the maximum wait. An unmet target or a
+generator finishing before it fails the stage, so configure generators to run
+longer than this window. Observation-only stages may omit generators. Failure
+checks, query errors, cleanup errors and caller cancellation take precedence over
+completion. Without a target, the stage waits for all components.
 
 ## Execution and extension
 
@@ -336,16 +360,15 @@ provides a `Noop` implementation, a `NewNoop` constructor, and private spec
 validation as the example for future implementations: validate the spec before
 returning a runnable, without acquiring resources.
 
-`measurements.Report` holds the measurement's findings. `StageReport` and
-`PlanReport` stay with the executor. Both implementation packages satisfy the
-executor's interfaces without importing the runner package. `main_test.go`
-imports `tests/scale/pkg` as `runner`.
+`measurements.Report` carries the findings. `StageReport` and `PlanReport` stay
+with the executor. Both implementation packages satisfy the executor's interfaces
+without importing the runner package. `main_test.go` imports `tests/scale/pkg` as
+`runner`.
 
-A component error cancels the other components in its stage and prevents later
-stages from starting. Successful completion does not cancel other components.
-Plan timeout or caller cancellation also stops active work. Reports contain the
-stages that started, with generator outcomes in declaration order and any partial
-measurement findings.
+When `CompletesStage()` is true, measurements must return an error unless their
+target is reached. See [Prometheus measurements](#prometheus-measurements) for
+stage completion behavior. Reports contain started stages, generator outcomes in
+declaration order and any partial findings.
 
 Every runnable must honor its context and finish its goroutines and bounded
 cleanup before returning, including after partial startup. The executor waits

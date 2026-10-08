@@ -2,14 +2,16 @@ package measurements
 
 import (
 	"fmt"
+	"math"
 	"time"
 
 	"github.com/prometheus/common/model"
 )
 
-// CheckReport retains the hold duration and the series that caused failure.
+// CheckReport retains the action, hold duration and matching series.
 // A nil FiredAt means the check did not fire during collection.
 type CheckReport struct {
+	Action  Action         `json:"action"`
 	For     time.Duration  `json:"for"`
 	FiredAt *time.Time     `json:"fired_at,omitempty"`
 	Series  []model.Metric `json:"series,omitempty"`
@@ -17,6 +19,8 @@ type CheckReport struct {
 
 // checkState tracks each series independently within one measurement run.
 type checkState struct {
+	// complete requires one finite aggregate series for a completion target.
+	complete bool
 	// hold is the required duration across consecutive matching evaluations.
 	hold time.Duration
 	// pending maps complete label sets to their first matching evaluation.
@@ -29,6 +33,17 @@ func (s *checkState) evaluate(value model.Value, at time.Time) ([]model.Metric, 
 	vector, ok := value.(model.Vector)
 	if !ok {
 		return nil, fmt.Errorf("check expression must return an instant vector, got %T", value)
+	}
+	if s.complete {
+		if len(vector) > 1 {
+			return nil, fmt.Errorf("completion check must return at most one series, got %d", len(vector))
+		}
+		if len(vector) == 1 {
+			sample := vector[0]
+			if sample.Histogram != nil || math.IsNaN(float64(sample.Value)) || math.IsInf(float64(sample.Value), 0) {
+				return nil, fmt.Errorf("completion check must return a finite float sample")
+			}
+		}
 	}
 	current := make(map[string]time.Time, len(vector))
 	var fired []model.Metric

@@ -24,7 +24,10 @@ func NewNoop(spec yaml.Node) (Noop, error) {
 	return Noop{}, nil
 }
 
-// Run returns an empty successful report.
+// CompletesStage reports that Noop has no completion target.
+func (Noop) CompletesStage() bool { return false }
+
+// Run returns an empty report.
 func (Noop) Run(context.Context) (Report, error) {
 	return Report{}, nil
 }

@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/NVIDIA-dev/nktp/tests/scale/pkg/internal/lifecycle"
 	"go.yaml.in/yaml/v3"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -68,7 +69,7 @@ func NewPodGenerator(spec yaml.Node, kubeconfig string) (*PodGenerator, error) {
 // with up to five minutes for cleanup after cancellation.
 func (g *PodGenerator) Run(ctx context.Context) error {
 	if err := ctx.Err(); err != nil {
-		return err
+		return lifecycle.RunError(ctx, err)
 	}
 	if g.config.Count == 0 {
 		return nil
@@ -106,7 +107,7 @@ func (g *PodGenerator) run(ctx context.Context, core coreclient.CoreV1Interface)
 		// cleanupCtx remains usable after the plan is canceled.
 		cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), podCleanupTimeout)
 		defer cancel()
-		err = errors.Join(err, cleanupPods(cleanupCtx, pods, owner, owned), ctx.Err())
+		err = errors.Join(lifecycle.RunError(ctx, err), cleanupPods(cleanupCtx, pods, owner, owned), lifecycle.RunError(ctx, ctx.Err()))
 	}()
 	for i := 0; i < g.config.Count; i++ {
 		// Each replica has independent metadata and native Pod fields.

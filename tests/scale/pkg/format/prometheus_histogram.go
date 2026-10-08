@@ -91,9 +91,12 @@ func Format(report measurements.Report) string {
 	return strings.TrimSuffix(out.String(), "\n")
 }
 
-// formatCheck shows the failure condition and any series that fired.
+// formatCheck shows the check outcome and any series that fired.
 func formatCheck(out *strings.Builder, name string, query measurements.QueryReport) {
 	fmt.Fprintf(out, "\n%s\n  Check: %s\n  For: %s\n  Attempts: %d\n", name, query.Expression, query.Check.For, len(query.Observations))
+	if query.Check.Action == measurements.Complete {
+		out.WriteString("  Action: complete\n")
+	}
 	if query.Check.FiredAt == nil {
 		out.WriteString("  Check did not fire.\n")
 	} else {
