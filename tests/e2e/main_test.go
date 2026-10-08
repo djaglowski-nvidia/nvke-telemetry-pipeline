@@ -3,170 +3,201 @@
 
 //go:build e2e
 
-// Package e2e asserts user-visible NKTP behavior on a Kubernetes cluster.
-// With -nktp.install=true each test installs the chart before its assertions;
-// with -nktp.install=false each test requires the configured release to exist.
 package e2e
 
 import (
 	"context"
 	"flag"
 	"fmt"
+	"log/slog"
 	"os"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
+	workload "github.com/NVIDIA-dev/nktp/tests/internal"
 	"github.com/stretchr/testify/require"
+	"helm.sh/helm/v4/pkg/action"
+	"helm.sh/helm/v4/pkg/chart/common"
+	"helm.sh/helm/v4/pkg/chart/loader"
+	"helm.sh/helm/v4/pkg/kube"
+	coordinationv1 "k8s.io/api/coordination/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-
-	"github.com/NVIDIA-dev/nktp/tests/internal/framework"
-	"github.com/NVIDIA-dev/nktp/tests/internal/helm"
-	"github.com/NVIDIA-dev/nktp/tests/internal/kube"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/cli-runtime/pkg/genericclioptions"
+	"sigs.k8s.io/e2e-framework/pkg/env"
+	"sigs.k8s.io/e2e-framework/pkg/envconf"
+	"sigs.k8s.io/e2e-framework/pkg/features"
 )
 
 var (
-	kubeconfig = flag.String("nktp.kubeconfig", os.Getenv("KUBECONFIG"),
-		"kubeconfig of the cluster to test against")
-	chart = flag.String("nktp.chart", "../../nktp",
-		"path to the chart under test, whose dependencies must already be built")
-	release = flag.String("nktp.release", "nktp",
-		"name to install the release under")
-	namespace = flag.String("nktp.namespace", "nktp",
-		"namespace to install the release into")
-	timeout = flag.Duration("nktp.timeout", 15*time.Minute,
-		"how long any one install, rollout, or removal may take")
-	install = flag.Bool("nktp.install", true,
-		"true installs and removes a fresh release for each test; false requires and reuses the named existing release without modifying it")
-	stableReapply = flag.Bool("nktp.stable-reapply", true,
-		"fail when reapplying the release moves a workload Helm manages; unset once the chart generates anything at install time, which moves them for a reason of its own")
-
-	valueFiles valuesFlag
+	testenv    env.Environment
+	chartPath  = flag.String("chart", "../../nktp", "Path to the Helm chart under test")
+	valuesPath = flag.String("values", "values.yaml", "Path to the Helm values file")
 )
 
-// kubeclient is created once and shared by all the tests
-var k *kube.Client
+const releaseName = "nktp-e2e"
 
-// valuesFlag collects a repeatable -nktp.values in the order given, which is
-// the order Helm layers the files in.
-type valuesFlag []string
-
-func (v *valuesFlag) String() string { return strings.Join(*v, " ") }
-
-func (v *valuesFlag) Set(path string) error {
-	*v = append(*v, path)
-	return nil
-}
-
-func init() {
-	flag.Var(&valueFiles, "nktp.values", "values file to layer on the chart defaults (repeatable)")
-}
-
-func TestMain(m *testing.M) {
-	flag.Parse()
-	if *kubeconfig == "" {
-		fmt.Fprintln(os.Stderr,
-			"No cluster to test against: set KUBECONFIG, or pass -nktp.kubeconfig. Run `task e2e:test` to have a throwaway one created.")
-		os.Exit(1)
-	}
-	var err error
-	k, err = kube.New(*kubeconfig)
+func TestMain(t *testing.M) {
+	var helmcfg *action.Configuration
+	cfg, err := envconf.NewFromFlags()
 	if err != nil {
-		fmt.Fprintln(os.Stderr,
-			"connecting to the cluster:", err)
+		fmt.Fprintf(os.Stderr, "error while creating env config: %v\n", err)
 		os.Exit(1)
 	}
-	os.Exit(m.Run())
-}
 
-// newChart returns an installer for the configured release.
-func newChart(t *testing.T) *framework.Chart {
-	t.Helper()
-	return &framework.Chart{
-		Helm:       &helm.Client{Kubeconfig: *kubeconfig, Log: logWriter{t}},
-		Kube:       k,
-		Release:    helm.Release{Name: *release, Namespace: *namespace},
-		Path:       *chart,
-		ValueFiles: valueFiles,
-		Timeout:    *timeout,
+	if cfg.Namespace() == "" {
+		cfg.WithNamespace("nktp")
 	}
-}
 
-// readyRelease makes the configured release ready by installing it or waiting
-// for an existing one, according to -nktp.install. It uses the global client
-// and returns the chart for tests that need to modify the release.
-func readyRelease(ctx context.Context, t *testing.T) *framework.Chart {
-	t.Helper()
-	deployed := newChart(t)
-
-	ctx, cancel := deadline(ctx)
-	defer cancel()
-
-	if *install {
-		t.Logf("installing a fresh release %v/%v (all OpenTelemetryCollectors must be Ready)", deployed.Release.Namespace, deployed.Release.Name)
-		owned, err := deployed.InstallFresh(ctx)
-		if owned {
-			registerChartCleanup(t, deployed)
+	ensureCleanup := func(ctx context.Context, cfg *envconf.Config) error {
+		releaseNamespace := cfg.Namespace()
+		uninstall := action.NewUninstall(helmcfg)
+		uninstall.Timeout = time.Minute * 5
+		uninstall.WaitStrategy = kube.StatusWatcherStrategy
+		uninstall.IgnoreNotFound = true
+		if _, err := uninstall.Run(releaseName); err != nil {
+			return fmt.Errorf("uninstalling chart: %w", err)
 		}
-		require.NoError(t, err, "installing a fresh release %v/%v", deployed.Release.Namespace, deployed.Release.Name)
-	} else {
-		t.Logf("waiting for the shared release %v/%v (all OpenTelemetryCollectors must be Ready)", deployed.Release.Namespace, deployed.Release.Name)
-		exists, err := deployed.Helm.Installed(ctx, deployed.Release)
-		require.NoError(t, err, "checking for the shared release %v/%v", deployed.Release.Namespace, deployed.Release.Name)
-		require.True(t, exists,
-			"release %s must already exist in namespace %s when -nktp.install=false",
-			deployed.Release.Name, deployed.Release.Namespace)
-		require.NoError(t, deployed.WaitReady(ctx), "waiting for the shared release %v/%v", deployed.Release.Namespace, deployed.Release.Name)
-	}
-	return deployed
-}
-
-// deadline budgets one operation. The grace beyond the timeout is there so
-// that a command handed the same timeout reports its own failure, instead of
-// being cut off by the context first and reporting a less specific one.
-func deadline(ctx context.Context) (context.Context, context.CancelFunc) {
-	return context.WithTimeout(ctx, *timeout+30*time.Second)
-}
-
-// registerChartCleanup records ownership before a readiness assertion can
-// stop its caller. Cleanup uses independent contexts because a test's context
-// is canceled before its cleanup functions run.
-func registerChartCleanup(t *testing.T, deployed *framework.Chart) {
-	t.Helper()
-	t.Cleanup(func() {
-		uninstallCtx, cancelUninstall := context.WithTimeout(context.WithoutCancel(t.Context()), *timeout+30*time.Second)
-		assert.NoError(t, deployed.Uninstall(uninstallCtx), "uninstalling the test release")
-		ll, err := k.ListLeases(uninstallCtx, *namespace)
-		assert.NoError(t, err, "failed to list leases in namespace")
-		if err == nil {
-			for _, lease := range ll.Items {
-				if strings.HasSuffix(lease.Name, ".opentelemetry.io") {
-					assert.NoError(t, k.DeleteLease(uninstallCtx, *namespace, lease.Name), "clearing the Operator's leftover leader-election lease")
-				}
+		client, err := cfg.NewClient()
+		if err != nil {
+			return fmt.Errorf("creating client for lease cleanup: %w", err)
+		}
+		resources := client.Resources(releaseNamespace)
+		var leases coordinationv1.LeaseList
+		if err := resources.List(ctx, &leases); err != nil {
+			if apierrors.IsNotFound(err) {
+				return nil
+			}
+			return fmt.Errorf("listing leases in %s: %w", releaseNamespace, err)
+		}
+		for _, lease := range leases.Items {
+			if !strings.HasSuffix(lease.Name, ".opentelemetry.io") {
+				continue
+			}
+			if err := resources.Delete(ctx, &lease); err != nil && !apierrors.IsNotFound(err) {
+				return fmt.Errorf("deleting lease %s/%s: %w", releaseNamespace, lease.Name, err)
 			}
 		}
-		cancelUninstall()
-		waitCtx, cancelWait := context.WithTimeout(context.WithoutCancel(t.Context()), *timeout+30*time.Second)
-		defer cancelWait()
-		assert.NoError(t, k.WaitWorkloadsGone(waitCtx, *namespace), "waiting for the test workloads to be removed")
-	})
-}
-
-// names lists what a set of custom resources is called.
-func names(resources []unstructured.Unstructured) []string {
-	out := make([]string, 0, len(resources))
-	for _, resource := range resources {
-		out = append(out, resource.GetName())
+		return nil
 	}
-	return out
+
+	testenv = env.NewWithConfig(cfg)
+	testenv.Setup(func(ctx context.Context, cfg *envconf.Config) (context.Context, error) {
+		releaseNamespace := cfg.Namespace()
+		slog.Info("cleaning up any pre-existing deployed nktp charts")
+		getter := &genericclioptions.ConfigFlags{
+			KubeConfig: new(cfg.KubeconfigFile()),
+			Namespace:  new(cfg.Namespace()),
+		}
+		helmcfg = action.NewConfiguration()
+		err := helmcfg.Init(getter, cfg.Namespace(), "secret")
+		if err != nil {
+			return ctx, fmt.Errorf("failed to create helm install config: %w", err)
+		}
+		if err := ensureCleanup(ctx, cfg); err != nil {
+			return ctx, fmt.Errorf("cleaning up helm chart in target cluster: %w", err)
+		}
+		chart, err := loader.Load(*chartPath)
+		if err != nil {
+			return ctx, fmt.Errorf("failed to load chart at target path %s: %w", *chartPath, err)
+		}
+		values, err := common.ReadValuesFile(*valuesPath)
+		if err != nil {
+			return ctx, fmt.Errorf("failed to load values file at target path %s: %w", *valuesPath, err)
+		}
+		install := action.NewInstall(helmcfg)
+		install.ReleaseName = releaseName
+		install.Namespace = releaseNamespace
+		install.CreateNamespace = true
+		install.WaitStrategy = kube.StatusWatcherStrategy
+		install.Timeout = 5 * time.Minute
+		install.WaitForJobs = true
+		slog.Info("installing chart to target cluster", "release", releaseName, "namespace", releaseNamespace)
+		if _, err = install.RunWithContext(ctx, chart, values); err != nil {
+			return ctx, fmt.Errorf("failed to helm install: %w", err)
+		}
+		slog.Info("setup complete, starting suite")
+		return ctx, nil
+	}).Finish(func(ctx context.Context, c *envconf.Config) (context.Context, error) {
+		slog.Info("uninstalling chart from target cluster")
+		if err := ensureCleanup(ctx, c); err != nil {
+			return ctx, fmt.Errorf("uninstalling chart: %w", err)
+		}
+		return ctx, nil
+	})
+
+	os.Exit(testenv.Run(t))
 }
 
-// logWriter sends a command's output to the test log, which keeps it with the
-// test that ran the command.
-type logWriter struct{ t *testing.T }
-
-func (w logWriter) Write(p []byte) (int, error) {
-	w.t.Log(strings.TrimRight(string(p), "\n"))
-	return len(p), nil
+func TestOperatorCollectorsReady(t *testing.T) {
+	var collectors unstructured.UnstructuredList
+	f := features.New("OpenTelemetry collector operator").
+		Setup(func(ctx context.Context, t *testing.T, c *envconf.Config) context.Context {
+			releaseNamespace := c.Namespace()
+			collectors.SetGroupVersionKind(schema.GroupVersionKind{
+				Group:   "opentelemetry.io",
+				Version: "v1beta1",
+				Kind:    "OpenTelemetryCollectorList",
+			})
+			require.NoError(t, c.Client().Resources(releaseNamespace).List(ctx, &collectors), "listing collector CRs")
+			require.NotEmpty(t, collectors.Items, "no OpenTelemetryCollector resources found in %s", releaseNamespace)
+			return ctx
+		}).
+		Assess("Deployments are ready", func(ctx context.Context, t *testing.T, c *envconf.Config) context.Context {
+			releaseNamespace := c.Namespace()
+			clone := slices.Clone(collectors.Items)
+			expected := slices.DeleteFunc(clone, func(c unstructured.Unstructured) bool {
+				mode, _, _ := unstructured.NestedString(c.Object, "spec", "mode")
+				return mode != "deployment"
+			})
+			waitCtx, cancel := context.WithTimeout(ctx, time.Minute*5)
+			defer cancel()
+			client := c.Client()
+			for _, collector := range expected {
+				name := collector.GetName() + "-collector"
+				require.NoError(t, workload.WaitForDeployment(waitCtx, workload.DeploymentWaitOptions{
+					Name: name, Namespace: releaseNamespace, Client: client,
+				}), "waiting for Deployment %s/%s", releaseNamespace, name)
+			}
+			return ctx
+		}).
+		Assess("Daemonsets are ready", func(ctx context.Context, t *testing.T, c *envconf.Config) context.Context {
+			releaseNamespace := c.Namespace()
+			expected := slices.DeleteFunc(slices.Clone(collectors.Items), func(c unstructured.Unstructured) bool {
+				mode, _, _ := unstructured.NestedString(c.Object, "spec", "mode")
+				return mode != "daemonset"
+			})
+			waitCtx, cancel := context.WithTimeout(ctx, 5*time.Minute)
+			defer cancel()
+			client := c.Client()
+			for _, collector := range expected {
+				name := collector.GetName() + "-collector"
+				require.NoError(t, workload.WaitForDaemonSet(waitCtx, workload.DaemonSetWaitOptions{
+					Name: name, Namespace: releaseNamespace, Client: client,
+				}), "waiting for DaemonSet %s/%s", releaseNamespace, name)
+			}
+			return ctx
+		}).
+		Assess("Statefulsets are ready", func(ctx context.Context, t *testing.T, c *envconf.Config) context.Context {
+			releaseNamespace := c.Namespace()
+			expected := slices.DeleteFunc(slices.Clone(collectors.Items), func(c unstructured.Unstructured) bool {
+				mode, _, _ := unstructured.NestedString(c.Object, "spec", "mode")
+				return mode != "statefulset"
+			})
+			waitCtx, cancel := context.WithTimeout(ctx, 5*time.Minute)
+			defer cancel()
+			client := c.Client()
+			for _, collector := range expected {
+				name := collector.GetName() + "-collector"
+				require.NoError(t, workload.WaitForStatefulSet(waitCtx, workload.StatefulSetWaitOptions{
+					Name: name, Namespace: releaseNamespace, Client: client,
+				}), "waiting for StatefulSet %s/%s", releaseNamespace, name)
+			}
+			return ctx
+		}).
+		Feature()
+	testenv.Test(t, f)
 }

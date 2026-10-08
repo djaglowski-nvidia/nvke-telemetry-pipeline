@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-//go:build e2e && (e2e_release_shared || !e2e_release_owned)
+//go:build e2e
 
 package e2e
 
@@ -12,28 +12,28 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-
-	"github.com/NVIDIA-dev/nktp/tests/internal/framework"
+	"sigs.k8s.io/e2e-framework/pkg/envconf"
+	"sigs.k8s.io/e2e-framework/pkg/features"
 )
 
 const collectorValidationWebhook = "vopentelemetrycollectorcreateupdatebeta.kb.io"
 
-// TestAdmissionWebhook uses the configured release mode, submits a disposable
-// OpenTelemetryCollector that is structurally valid but combines deployment
+// TestAdmissionWebhook submits a disposable OpenTelemetryCollector to the
+// suite's release that is structurally valid but combines deployment
 // mode with a target allocator, and requires the Operator's validating webhook
 // to deny it. Matching the webhook's name in the denial proves that the API
 // server reached the webhook, rather than rejecting the object through CRD
 // schema validation or failing to connect.
 func TestAdmissionWebhook(t *testing.T) {
-	readyRelease(t.Context(), t)
-	name := "nktp-e2e-invalid-webhook-probe"
+	const name = "nktp-e2e-invalid-webhook-probe"
 	invalid := &unstructured.Unstructured{Object: map[string]any{
 		"apiVersion": "opentelemetry.io/v1beta1",
 		"kind":       "OpenTelemetryCollector",
 		"metadata": map[string]any{
 			"name":      name,
-			"namespace": *namespace,
+			"namespace": testenv.EnvConf().Namespace(),
 		},
 		"spec": map[string]any{
 			"mode": "deployment",
@@ -62,17 +62,24 @@ func TestAdmissionWebhook(t *testing.T) {
 			},
 		},
 	}}
-
-	ctx, cancel := deadline(t.Context())
-	defer cancel()
-	_, err := k.CreateCustomResource(ctx, *namespace, framework.Collectors, invalid)
-	if err == nil {
-		t.Cleanup(func() {
-			cleanupCtx, cleanupCancel := context.WithTimeout(context.WithoutCancel(t.Context()), *timeout+30*time.Second)
-			defer cleanupCancel()
-			assert.NoError(t, k.DeleteCustomResource(cleanupCtx, *namespace, framework.Collectors, name), "deleting invalid Collector %s", name)
-		})
-	}
-	require.Error(t, err, "an invalid Collector should be denied")
-	assert.ErrorContains(t, err, `admission webhook "`+collectorValidationWebhook+`" denied the request`)
+	f := features.New("OpenTelemetry admission webhook").
+		Assess("Rejects deployment collectors with a target allocator", func(ctx context.Context, t *testing.T, c *envconf.Config) context.Context {
+			requestCtx, cancel := context.WithTimeout(ctx, 5*time.Minute)
+			defer cancel()
+			resources := c.Client().Resources(c.Namespace())
+			createErr := resources.Create(requestCtx, invalid)
+			require.Error(t, createErr, "an invalid Collector should be denied")
+			assert.ErrorContains(t, createErr, `admission webhook "`+collectorValidationWebhook+`" denied the request`)
+			return ctx
+		}).
+		Teardown(func(ctx context.Context, t *testing.T, c *envconf.Config) context.Context {
+			cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Minute+30*time.Second)
+			defer cancel()
+			if err := c.Client().Resources(c.Namespace()).Delete(cleanupCtx, invalid); !apierrors.IsNotFound(err) {
+				assert.NoError(t, err, "deleting invalid Collector %s", invalid.GetName())
+			}
+			return ctx
+		}).
+		Feature()
+	testenv.Test(t, f)
 }

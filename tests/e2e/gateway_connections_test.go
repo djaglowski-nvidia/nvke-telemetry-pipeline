@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-//go:build e2e && (e2e_release_shared || !e2e_release_owned)
+//go:build e2e
 
 package e2e
 
@@ -25,17 +25,20 @@ import (
 	"testing"
 	"time"
 
-	"github.com/NVIDIA-dev/nktp/tests/internal/kube"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/apimachinery/pkg/util/wait"
 	kubeyaml "k8s.io/apimachinery/pkg/util/yaml"
+	"k8s.io/client-go/kubernetes"
+	"sigs.k8s.io/e2e-framework/pkg/envconf"
+	"sigs.k8s.io/e2e-framework/pkg/features"
 	"sigs.k8s.io/yaml"
 )
 
@@ -62,46 +65,50 @@ import (
 // finite observation cannot prove clients never reconnect; reconnects to the
 // original gateway are undetected.
 func TestGatewayConnections(t *testing.T) {
-	ctx, cancel := deadline(t.Context())
-	defer cancel()
-
-	args := []string{"template", *release, *chart, "--namespace", *namespace}
-	for _, file := range valueFiles {
-		args = append(args, "--values", file)
-	}
-	for _, template := range []string{"gateway-logs", "gateway-metrics", "gateway-traces", "daemonset"} {
-		args = append(args, "--show-only", "templates/"+template+".yaml")
-	}
-	rendered, err := exec.CommandContext(ctx, "helm", args...).Output()
-	require.NoError(t, err, "rendering the chart's connection settings")
 	collectors := map[string]*collectorSpec{}
-	decoder := kubeyaml.NewYAMLOrJSONDecoder(bytes.NewReader(rendered), 4096)
-	for {
-		var object struct {
-			Metadata metav1.ObjectMeta `json:"metadata"`
-			Spec     *collectorSpec    `json:"spec"`
-		}
-		err := decoder.Decode(&object)
-		if err == io.EOF {
-			break
-		}
-		require.NoError(t, err)
-		require.NotNil(t, object.Spec)
-		collectors[object.Metadata.Name] = object.Spec
-	}
+	var k kubernetes.Interface
+	f := features.New("Gateway connection rotation").
+		Setup(func(ctx context.Context, t *testing.T, c *envconf.Config) context.Context {
+			var err error
+			k, err = kubernetes.NewForConfig(c.Client().RESTConfig())
+			require.NoError(t, err, "creating Kubernetes client")
+			renderCtx, cancel := context.WithTimeout(ctx, 5*time.Minute)
+			defer cancel()
+			args := []string{"template", releaseName, *chartPath, "--namespace", c.Namespace(), "--values", *valuesPath}
+			for _, template := range []string{"gateway-logs", "gateway-metrics", "gateway-traces", "daemonset"} {
+				args = append(args, "--show-only", "templates/"+template+".yaml")
+			}
+			rendered, err := exec.CommandContext(renderCtx, "helm", args...).Output()
+			require.NoError(t, err, "rendering the chart's connection settings")
+			decoder := kubeyaml.NewYAMLOrJSONDecoder(bytes.NewReader(rendered), 4096)
+			for {
+				var object struct {
+					Metadata metav1.ObjectMeta `json:"metadata"`
+					Spec     *collectorSpec    `json:"spec"`
+				}
+				err := decoder.Decode(&object)
+				if err == io.EOF {
+					break
+				}
+				require.NoError(t, err)
+				require.NotNil(t, object.Spec)
+				collectors[object.Metadata.Name] = object.Spec
+			}
 
-	for _, name := range []string{"nktp-gateway-logs", "nktp-gateway-metrics", "nktp-gateway-traces"} {
-		configured := collectors[name]
-		require.NotNil(t, configured)
-		require.NotNil(t, configured.Config.Receivers.OTLP)
-		listener, found := configured.Config.Receivers.OTLP.Protocols["grpc"]
-		require.True(t, found)
-		require.NotNil(t, listener.Keepalive)
-		require.NotNil(t, listener.Keepalive.ServerParameters)
-		age, err := time.ParseDuration(listener.Keepalive.ServerParameters.MaxConnectionAge)
-		require.NoError(t, err, "%s max_connection_age must be a duration", name)
-		require.Positive(t, age, "%s must enable connection rotation", name)
-	}
+			for _, name := range []string{"nktp-gateway-logs", "nktp-gateway-metrics", "nktp-gateway-traces"} {
+				configured := collectors[name]
+				require.NotNil(t, configured)
+				require.NotNil(t, configured.Config.Receivers.OTLP)
+				listener, found := configured.Config.Receivers.OTLP.Protocols["grpc"]
+				require.True(t, found)
+				require.NotNil(t, listener.Keepalive)
+				require.NotNil(t, listener.Keepalive.ServerParameters)
+				age, err := time.ParseDuration(listener.Keepalive.ServerParameters.MaxConnectionAge)
+				require.NoError(t, err, "%s max_connection_age must be a duration", name)
+				require.Positive(t, age, "%s must enable connection rotation", name)
+			}
+			return ctx
+		})
 	const recentWindow = 5 * time.Second
 
 	for _, tc := range []struct {
@@ -112,8 +119,8 @@ func TestGatewayConnections(t *testing.T) {
 		{name: "grpc_with_max_connection_age", rotate: true, protocol: "grpc"},
 		{name: "grpc_without_max_connection_age", protocol: "grpc"},
 	} {
-		t.Run(tc.name, func(t *testing.T) {
-			ctx, cancel := deadline(t.Context())
+		f.Assess(tc.name, func(featureCtx context.Context, t *testing.T, c *envconf.Config) context.Context {
+			ctx, cancel := context.WithTimeout(featureCtx, 15*time.Minute)
 			defer cancel()
 			clientCount := 1
 			if tc.rotate {
@@ -168,13 +175,19 @@ func TestGatewayConnections(t *testing.T) {
 					logConnectionFailure(diagnosticCtx, t, k, ns.Name, stage)
 					cancel()
 				}
-				cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(t.Context()), *timeout)
+				cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(featureCtx), 15*time.Minute)
 				defer cancel()
-				assert.NoError(t, k.CoreV1().Namespaces().Delete(cleanupCtx, ns.Name, metav1.DeleteOptions{
+				err := k.CoreV1().Namespaces().Delete(cleanupCtx, ns.Name, metav1.DeleteOptions{
 					Preconditions: &metav1.Preconditions{UID: &ns.UID},
-				}))
+				})
+				if !apierrors.IsNotFound(err) {
+					assert.NoError(t, err, "deleting fixture namespace %s", ns.Name)
+				}
 				assert.NoError(t, wait.PollUntilContextCancel(cleanupCtx, time.Second, true, func(ctx context.Context) (bool, error) {
 					pods, err := k.CoreV1().Pods(ns.Name).List(ctx, metav1.ListOptions{})
+					if apierrors.IsNotFound(err) {
+						return true, nil
+					}
 					return err == nil && len(pods.Items) == 0, err
 				}), "waiting for fixture pods to be removed")
 			})
@@ -331,8 +344,14 @@ service:
 			started := time.Now()
 			stage = "observing delivery after gateway scale-out"
 			var first, second map[string]time.Time
-			err = wait.PollUntilContextCancel(observeCtx, time.Second, true, func(ctx context.Context) (bool, error) {
-				if err := waitConnectionPods(ctx, k, ns.Name, clientCount+gatewayCount, identities, reportPods); err != nil {
+			err = wait.PollUntilContextCancel(observeCtx, time.Second, true, func(pollCtx context.Context) (bool, error) {
+				probeParent := pollCtx
+				if !tc.rotate {
+					probeParent = ctx
+				}
+				probeCtx, cancel := context.WithTimeout(probeParent, 15*time.Second)
+				defer cancel()
+				if err := waitConnectionPods(probeCtx, k, ns.Name, clientCount+gatewayCount, identities, reportPods); err != nil {
 					return false, err
 				}
 				// Negative cases must catch every visit to gateway-1, even if
@@ -342,11 +361,11 @@ service:
 					since = started
 				}
 				var err error
-				first, err = gatewayClients(ctx, k, ns.Name, "gateway-0", time.Now().Add(-recentWindow))
+				first, err = gatewayClients(probeCtx, k, ns.Name, "gateway-0", time.Now().Add(-recentWindow))
 				if err != nil {
 					return false, err
 				}
-				second, err = gatewayClients(ctx, k, ns.Name, "gateway-1", since)
+				second, err = gatewayClients(probeCtx, k, ns.Name, "gateway-1", since)
 				if err != nil {
 					return false, err
 				}
@@ -379,8 +398,10 @@ service:
 				require.Len(t, first, expectedDeliveries, "every client must still deliver every signal to gateway-0")
 			}
 			require.NoError(t, waitConnectionPods(ctx, k, ns.Name, clientCount+gatewayCount, identities, reportPods))
+			return featureCtx
 		})
 	}
+	testenv.Test(t, f.Feature())
 }
 
 // Only fields inspected or changed by the test need Go types. Component
@@ -642,7 +663,7 @@ done`}
 
 // Issue fixture credentials for its Service name; production certificates name
 // the chart's gateway Services and cannot authenticate this isolated fixture.
-func createConnectionTLS(ctx context.Context, t *testing.T, k *kube.Client, ns string) {
+func createConnectionTLS(ctx context.Context, t *testing.T, k kubernetes.Interface, ns string) {
 	t.Helper()
 	caPublic, caKey, err := ed25519.GenerateKey(rand.Reader)
 	require.NoError(t, err)
@@ -682,7 +703,7 @@ func createConnectionTLS(ctx context.Context, t *testing.T, k *kube.Client, ns s
 	}
 }
 
-func createConnectionGateway(ctx context.Context, t *testing.T, k *kube.Client, ns, name, image string, port int32) {
+func createConnectionGateway(ctx context.Context, t *testing.T, k kubernetes.Interface, ns, name, image string, port int32) {
 	t.Helper()
 	template := connectionPodTemplate(image, "gateway", port)
 	pod := &corev1.Pod{ObjectMeta: template.ObjectMeta, Spec: template.Spec}
@@ -691,7 +712,7 @@ func createConnectionGateway(ctx context.Context, t *testing.T, k *kube.Client, 
 	require.NoError(t, err, "creating %s", name)
 }
 
-func createConnectionClients(ctx context.Context, t *testing.T, k *kube.Client, ns, image string, replicas int) {
+func createConnectionClients(ctx context.Context, t *testing.T, k kubernetes.Interface, ns, image string, replicas int) {
 	t.Helper()
 	labels := map[string]string{"role": "client"}
 	_, err := k.CoreV1().Services(ns).Create(ctx, &corev1.Service{
@@ -712,7 +733,7 @@ func createConnectionClients(ctx context.Context, t *testing.T, k *kube.Client, 
 	require.NoError(t, err, "creating %d Collector client replicas", replicas)
 }
 
-func waitConnectionPods(ctx context.Context, k *kube.Client, ns string, count int, identities map[string]types.UID, report func([]corev1.Pod)) error {
+func waitConnectionPods(ctx context.Context, k kubernetes.Interface, ns string, count int, identities map[string]types.UID, report func([]corev1.Pod)) error {
 	return wait.PollUntilContextCancel(ctx, time.Second, true, func(ctx context.Context) (bool, error) {
 		pods, err := k.CoreV1().Pods(ns).List(ctx, metav1.ListOptions{})
 		if err != nil {
@@ -746,7 +767,7 @@ func waitConnectionPods(ctx context.Context, k *kube.Client, ns string, count in
 	})
 }
 
-func waitGatewayEndpoints(ctx context.Context, k *kube.Client, ns string, count int) error {
+func waitGatewayEndpoints(ctx context.Context, k kubernetes.Interface, ns string, count int) error {
 	return wait.PollUntilContextCancel(ctx, time.Second, true, func(ctx context.Context) (bool, error) {
 		slices, err := k.DiscoveryV1().EndpointSlices(ns).List(ctx, metav1.ListOptions{LabelSelector: "kubernetes.io/service-name=gateway"})
 		if err != nil {
@@ -766,7 +787,7 @@ func waitGatewayEndpoints(ctx context.Context, k *kube.Client, ns string, count 
 
 var connectionSignals = []string{"logs", "metrics", "traces"}
 
-func logConnectionNodeCapacity(ctx context.Context, t *testing.T, k *kube.Client) {
+func logConnectionNodeCapacity(ctx context.Context, t *testing.T, k kubernetes.Interface) {
 	nodes, err := k.CoreV1().Nodes().List(ctx, metav1.ListOptions{})
 	if err != nil {
 		t.Logf("reading node capacity: %v", err)
@@ -806,7 +827,7 @@ func connectionDeliverySummary(first, second map[string]time.Time, expected int)
 	return strings.Join(summaries, "; ")
 }
 
-func logConnectionFailure(ctx context.Context, t *testing.T, k *kube.Client, ns, stage string) {
+func logConnectionFailure(ctx context.Context, t *testing.T, k kubernetes.Interface, ns, stage string) {
 	t.Logf("%s: failed during %q; fixture namespace=%s", t.Name(), stage, ns)
 	pods, err := k.CoreV1().Pods(ns).List(ctx, metav1.ListOptions{})
 	if err != nil {
@@ -886,7 +907,7 @@ func connectionDestinations(first, second map[string]time.Time, signal string) (
 
 var connectionClientID = regexp.MustCompile(`rotation-(logs|metrics|traces)-client-[0-9]\b`)
 
-func gatewayClients(ctx context.Context, k *kube.Client, ns, pod string, since time.Time) (map[string]time.Time, error) {
+func gatewayClients(ctx context.Context, k kubernetes.Interface, ns, pod string, since time.Time) (map[string]time.Time, error) {
 	body, err := k.CoreV1().Pods(ns).GetLogs(pod, &corev1.PodLogOptions{
 		Container: "collector", Timestamps: true, SinceTime: &metav1.Time{Time: since}, LimitBytes: new(int64(4 << 20)),
 	}).DoRaw(ctx)

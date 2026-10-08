@@ -3,56 +3,19 @@
 
 version: "3"
 
-# What a run needs from outside the test suite: a cluster to work on, and the
-# chart's dependencies fetched from the upstream Helm repositories. By default
-# each Go test installs the chart before its assertions and removes it afterward;
-# INSTALL=false instead requires the configured release to exist already.
-#
-# The three tasks below are separate because the caller owns the cluster. CI
-# brings one up, runs the suite, and takes it down again; a developer can leave
-# one up across several runs, and point the suite at a cluster these tasks
-# never created.
-#
-# The suite owns its cluster lifecycle rather than sharing one with the dev
-# loop, following the submodule tooling pattern in CONTRIBUTING.md. Only
-# the node image is shared, from the root Taskfile.
-
 vars:
-  # Deliberately distinct from the dev loop's cluster and kubeconfig, so a test
-  # run cannot disturb a dev session or reach any other cluster.
   CLUSTER: nktp-e2e
-
-  # The file e2e:up writes and e2e:down deletes. Fixed rather than overridable,
-  # because down removes it: Task reads an exported KUBECONFIG as a variable,
-  # so a caller who has one would otherwise lose their own kubeconfig to a
-  # teardown.
-  CLUSTER_KUBECONFIG: '{{.TASKFILE_DIR}}/.kubeconfig'
-
-  # Which cluster the suite runs against, which is the one above unless the
-  # caller brought their own.
-  #
-  # KUBECONFIG, VALUES, HELM_VALUES_FILE, READY_TIMEOUT, and INSTALL are
-  # overrides, so they are
-  # deliberately not declared: an included Taskfile's own variables outrank the
-  # ones given on the command line, while undeclared ones do not, which would
-  # make `task e2e:test VALUES=...` silently do nothing.
-  KUBECONFIG_PATH: '{{.KUBECONFIG | default .CLUSTER_KUBECONFIG}}'
-
+  CLUSTER_KUBECONFIG: "{{.TASKFILE_DIR}}/.kubeconfig"
+  KUBECONFIG_PATH: "{{.KUBECONFIG | default .CLUSTER_KUBECONFIG}}"
   NAMESPACE: nktp
-  CHART: '{{.ROOT_DIR}}/nktp'
-
-  # Cuts replica counts and resource requests down to what a single node can
-  # schedule. See the file for why that is not cheating.
-  SIZING: '{{.TASKFILE_DIR}}/values.yaml'
+  CHART: "{{.ROOT_DIR}}/nktp"
+  VALUES: "{{.TASKFILE_DIR}}/values.yaml"
 
   SUITE_FLAGS: >-
-    -nktp.kubeconfig={{.KUBECONFIG_PATH}}
-    -nktp.chart={{.CHART}}
-    -nktp.namespace={{.NAMESPACE}}
-    -nktp.values={{.SIZING}}
-    {{if .VALUES}}-nktp.values={{.ROOT_DIR}}/{{.VALUES}}{{end}}
-    {{if .READY_TIMEOUT}}-nktp.timeout={{.READY_TIMEOUT}}{{end}}
-    {{if .INSTALL}}-nktp.install={{.INSTALL}}{{end}}
+    -kubeconfig={{.KUBECONFIG_PATH}}
+    -chart={{.CHART}}
+    -namespace={{.NAMESPACE}}
+    -values={{.VALUES}}
 
   KUBECTL: kubectl --kubeconfig {{.KUBECONFIG_PATH}} --namespace {{.NAMESPACE}}
 
@@ -60,61 +23,33 @@ tasks:
   up:
     desc: Create the Kind cluster the end-to-end suite runs against, and fetch the chart dependencies
     # Kind resolves the audit policy's relative host mount from this directory.
-    dir: '{{.TASKFILE_DIR}}'
+    dir: "{{.TASKFILE_DIR}}"
     deps: [check-deps]
     preconditions:
       - sh: docker info >/dev/null 2>&1
-        msg: 'Docker daemon is not running. Start it (e.g. colima start, or Docker Desktop) and retry.'
+        msg: "Docker daemon is not running. Start it (e.g. colima start, or Docker Desktop) and retry."
     cmds:
-      # NODE_IMAGE comes from the root Taskfile, so this cluster and the dev
-      # loop's run the same Kubernetes version.
       - kind create cluster --name {{.CLUSTER}} --image {{.NODE_IMAGE}} --config {{.TASKFILE_DIR}}/kind.yaml --kubeconfig {{.CLUSTER_KUBECONFIG}}
       - kind -q export kubeconfig --name {{.CLUSTER}} --kubeconfig {{.CLUSTER_KUBECONFIG}}
       - kubectl wait --kubeconfig {{.CLUSTER_KUBECONFIG}} --context kind-{{.CLUSTER}} --for=condition=Ready nodes --all --timeout=5m
       - task: dependencies
       - task: :cert-manager:install
         vars:
-          KUBECONFIG_FILE: '{{.CLUSTER_KUBECONFIG}}'
-          KUBE_CONTEXT: 'kind-{{.CLUSTER}}'
+          KUBECONFIG_FILE: "{{.CLUSTER_KUBECONFIG}}"
+          KUBE_CONTEXT: "kind-{{.CLUSTER}}"
 
   test:
-    desc: 'Run the end-to-end suite against an existing cluster (bring one up with: task e2e:up)'
-    dir: '{{.TASKFILE_DIR}}'
+    desc: "Run the end-to-end suite against an existing cluster (bring one up with: task e2e:up)"
+    dir: "{{.TASKFILE_DIR}}"
     preconditions:
-      - sh: 'test -r {{.KUBECONFIG_PATH}}'
+      - sh: "test -r {{.KUBECONFIG_PATH}}"
         msg: "No kubeconfig at {{.KUBECONFIG_PATH}}. Create a cluster with 'task e2e:up', or point at one with 'task e2e:test KUBECONFIG=<path>'."
     cmds:
-      # -count=1 disables Go's test result cache, which CI restores between
-      # runs. Without it a run whose inputs have not changed reports a previous
-      # pass against a cluster that no longer exists.
-      #
-      # -timeout has to cover a whole run, since the default of 10 minutes is
-      # less than one install of this chart takes on a cold cluster. It is kept
-      # under the CI job's own timeout so that a hung run is killed by Go,
-      # which dumps every goroutine, rather than by the runner, which says only
-      # that time ran out.
-      # TAGS selects a release-ownership group; e2e alone includes both.
-      - go test -tags 'e2e{{if .TAGS}},{{.TAGS}}{{end}}' -count=1 -v -timeout 30m {{.CLI_ARGS}} . -args {{.SUITE_FLAGS}}
-
-  install:
-    desc: Install or update one NKTP release for repeated tests with INSTALL=false
-    deps: [dependencies]
-    preconditions:
-      - sh: 'test -r {{.KUBECONFIG_PATH | shellQuote}}'
-        msg: "No kubeconfig at {{.KUBECONFIG_PATH}}. Create a cluster with 'task e2e:up', or pass KUBECONFIG=<path>."
-    cmds:
-      - task: :install
-        vars:
-          KUBECONFIG_FILE: '{{.KUBECONFIG_PATH}}'
-          BASE_HELM_VALUES_FILE: '{{.SIZING}}'
-          HELM_VALUES_DIR: '{{.TASKFILE_DIR}}'
-          HELM_TIMEOUT: '{{.READY_TIMEOUT | default "15m"}}'
+      - go test -tags 'e2e' -count=1 -v -timeout 30m {{.CLI_ARGS}} . -args {{.SUITE_FLAGS}}
 
   down:
     desc: Delete the cluster e2e:up created, and the kubeconfig it wrote
     cmds:
-      # Only ever the file e2e:up wrote. A cluster the caller brought is
-      # theirs to delete, along with the kubeconfig that reaches it.
       - kind delete cluster --name {{.CLUSTER}} --kubeconfig {{.CLUSTER_KUBECONFIG}}
       - rm -f {{.CLUSTER_KUBECONFIG}}
 
@@ -122,12 +57,10 @@ tasks:
     desc: Report what the cluster makes of a failed run, before it is deleted
     silent: true
     cmds:
-      # Nobody can re-run a CI job and look at the cluster, so a failed run has
-      # to carry the reason with it.
       - echo "--- pods ---"
-      - '{{.KUBECTL}} get pods -o wide || true'
+      - "{{.KUBECTL}} get pods -o wide || true"
       - echo "--- warnings ---"
-      - '{{.KUBECTL}} get events --field-selector type!=Normal --sort-by=.lastTimestamp || true'
+      - "{{.KUBECTL}} get events --field-selector type!=Normal --sort-by=.lastTimestamp || true"
 
   dependencies:
     internal: true

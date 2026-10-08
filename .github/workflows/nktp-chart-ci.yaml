@@ -90,31 +90,16 @@ jobs:
           cache-dependency-path: tests/go.sum
 
       - name: Install Kind and Task
-        # Through the module proxy, which verifies the downloads against the Go
-        # checksum database.
         run: |
           go install sigs.k8s.io/kind@v0.33.0
           go install github.com/go-task/task/v3/cmd/task@v3.45.4
 
-      # e2e:up fetches the chart's dependencies along with the cluster, so this
-      # job needs no setup-chart. Going through Task is what keeps CI and a
-      # local run the same sequence of commands.
       - name: Create the test cluster
         run: task e2e:up NODE_IMAGE=${{ matrix.node-image }}
 
-      # These tests modify or remove their release and cannot reuse an install.
       - name: Run end-to-end tests that own the release
-        run: task e2e:test TAGS=e2e_release_owned INSTALL=true
+        run: task e2e:test
 
-      - name: Install the shared release
-        run: task e2e:install
-
-      # Reuse one release for functional checks, excluding release-owning tests.
-      - name: Run end-to-end tests that share the release
-        run: task e2e:test TAGS=e2e_release_shared INSTALL=false
-
-      # Before the cluster goes away, since nobody can re-run a job and look at
-      # one.
       - name: Diagnose a failed run
         if: failure()
         run: task e2e:diagnose

@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-//go:build e2e && (e2e_release_shared || !e2e_release_owned)
+//go:build e2e
 
 package e2e
 
@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"slices"
 	"strconv"
 	"testing"
 	"time"
@@ -17,94 +18,88 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/apimachinery/pkg/util/wait"
-
-	"github.com/NVIDIA-dev/nktp/tests/internal/framework"
+	coreclient "k8s.io/client-go/kubernetes/typed/core/v1"
+	"sigs.k8s.io/e2e-framework/klient/wait"
+	"sigs.k8s.io/e2e-framework/pkg/envconf"
+	"sigs.k8s.io/e2e-framework/pkg/features"
 )
 
-var certificates = schema.GroupVersionResource{
-	Group: "cert-manager.io", Version: "v1", Resource: "certificates",
-}
-
-var targetAllocatorMTLSCases = []struct {
-	collector   string
-	serviceName string
-}{
-	{collector: "nktp-daemonset", serviceName: "nktp-targetallocator"},
-	{collector: "nktp-large-target-metrics", serviceName: "nktp-large-target-metrics-targetallocator"},
-	{collector: "nktp-watchdog", serviceName: "nktp-watchdog-targetallocator"},
-}
-
-// TestTargetAllocatorMTLS uses the configured release mode and verifies the complete
-// cert-manager path for every Collector/Target Allocator pair. It checks the
-// requested CR settings, all generated certificates, and each HTTPS service.
-// Finally it waits for each allocator's request-duration count to increase for
-// the Collector target endpoint. That metric is recorded inside the HTTPS
-// handler, so a new request proves the Collector completed mTLS and reached
-// the application rather than merely finding a ready certificate.
+// TestTargetAllocatorMTLS verifies the cert-manager path for every
+// Collector/Target Allocator pair: CR settings, certificates, HTTPS service,
+// and a new request to the Collector target endpoint. The request-duration
+// count is recorded inside the HTTPS handler, so an increase proves traffic
+// reached the application over mTLS rather than merely finding a ready certificate.
 func TestTargetAllocatorMTLS(t *testing.T) {
-	readyRelease(t.Context(), t)
-	ctx, cancel := deadline(t.Context())
-	defer cancel()
-	var baseline map[string]float64
-	var lastErr error
-	err := wait.PollUntilContextCancel(ctx, 5*time.Second, true, func(ctx context.Context) (bool, error) {
-		baseline, lastErr = targetAllocatorRequestCounts(ctx)
-		return lastErr == nil, nil
-	})
-	require.NoError(t, err, "reading Target Allocator request counts before checking for new requests: %v", lastErr)
-
-	collectors, err := k.CustomResources(ctx, *namespace, framework.Collectors)
-	require.NoError(t, err)
-	collectorsByName := resourcesByName(collectors)
-
-	issued, err := k.CustomResources(ctx, *namespace, certificates)
-	require.NoError(t, err)
-	certificatesByName := resourcesByName(issued)
-
-	for _, tc := range targetAllocatorMTLSCases {
-		collector, ok := collectorsByName[tc.collector]
-		if assert.True(t, ok, "Collector %s should exist", tc.collector) {
-			enabled, found, nestedErr := unstructured.NestedBool(collector.Object, "spec", "targetAllocator", "mtls", "enabled")
-			require.NoError(t, nestedErr)
-			assert.True(t, found && enabled, "%s should enable Target Allocator mTLS", tc.collector)
-
-			useCertManager, found, nestedErr := unstructured.NestedBool(collector.Object, "spec", "targetAllocator", "mtls", "useCertManager")
-			require.NoError(t, nestedErr)
-			assert.True(t, found && useCertManager, "%s should explicitly use cert-manager", tc.collector)
+	f := features.New("Target Allocator mTLS")
+	for _, collectorName := range []string{"nktp-daemonset", "nktp-large-target-metrics", "nktp-watchdog"} {
+		metricServiceName := collectorName + "-targetallocator"
+		if collectorName == "nktp-daemonset" {
+			metricServiceName = "nktp-targetallocator"
 		}
+		f.Assess(collectorName, func(ctx context.Context, t *testing.T, c *envconf.Config) context.Context {
+			waitCtx, cancel := context.WithTimeout(ctx, 15*time.Minute)
+			defer cancel()
+			client := c.Client()
+			r := client.Resources(c.Namespace())
+			proxyClient, err := coreclient.NewForConfig(client.RESTConfig())
+			require.NoError(t, err, "creating the Service proxy client")
+			services := proxyClient.Services(c.Namespace())
 
-		for _, suffix := range []string{"ca-cert", "ta-server-cert", "ta-client-cert"} {
-			name := tc.collector + "-" + suffix
-			certificate, ok := certificatesByName[name]
-			if assert.True(t, ok, "Certificate %s should exist", name) {
-				assert.True(t, resourceConditionTrue(certificate, "Ready"), "Certificate %s should be Ready", name)
+			var baseline map[string]float64
+			var lastErr error
+			err = wait.For(func(ctx context.Context) (bool, error) {
+				baseline, lastErr = targetAllocatorRequestCounts(ctx, services)
+				return lastErr == nil, nil
+			}, wait.WithContext(waitCtx), wait.WithTimeout(0), wait.WithInterval(5*time.Second), wait.WithImmediate())
+			require.NoError(t, err, "reading Target Allocator request counts before checking for new requests: %v", lastErr)
+
+			var collector unstructured.Unstructured
+			collector.SetGroupVersionKind(schema.GroupVersionKind{
+				Group: "opentelemetry.io", Version: "v1beta1", Kind: "OpenTelemetryCollector",
+			})
+			if assert.NoError(t, r.Get(waitCtx, collectorName, c.Namespace(), &collector), "Collector %s should exist", collectorName) {
+				enabled, found, nestedErr := unstructured.NestedBool(collector.Object, "spec", "targetAllocator", "mtls", "enabled")
+				require.NoError(t, nestedErr)
+				assert.True(t, found && enabled, "%s should enable Target Allocator mTLS", collectorName)
+
+				useCertManager, found, nestedErr := unstructured.NestedBool(collector.Object, "spec", "targetAllocator", "mtls", "useCertManager")
+				require.NoError(t, nestedErr)
+				assert.True(t, found && useCertManager, "%s should explicitly use cert-manager", collectorName)
 			}
-		}
 
-		service, serviceErr := k.CoreV1().Services(*namespace).Get(ctx, tc.collector+"-targetallocator", metav1.GetOptions{})
-		require.NoError(t, serviceErr)
-		assert.True(t, hasServicePort(service, "targetallocation-https", 443),
-			"%s should expose its mTLS endpoint", service.Name)
-	}
+			for _, suffix := range []string{"ca-cert", "ta-server-cert", "ta-client-cert"} {
+				name := collectorName + "-" + suffix
+				var certificate unstructured.Unstructured
+				certificate.SetGroupVersionKind(schema.GroupVersionKind{
+					Group: "cert-manager.io", Version: "v1", Kind: "Certificate",
+				})
+				if assert.NoError(t, r.Get(waitCtx, name, c.Namespace(), &certificate), "Certificate %s should exist", name) {
+					assert.True(t, resourceConditionTrue(certificate, "Ready"), "Certificate %s should be Ready", name)
+				}
+			}
 
-	wantServices := make([]string, 0, len(targetAllocatorMTLSCases))
-	for _, tc := range targetAllocatorMTLSCases {
-		wantServices = append(wantServices, tc.serviceName)
-	}
-	require.NoError(t, waitForTargetAllocatorRequests(ctx, wantServices, baseline),
-		"waiting for every Collector to request targets over mTLS")
-}
+			var service corev1.Service
+			require.NoError(t, r.Get(waitCtx, collectorName+"-targetallocator", c.Namespace(), &service))
+			assert.True(t, slices.ContainsFunc(service.Spec.Ports, func(port corev1.ServicePort) bool {
+				return port.Name == "targetallocation-https" && port.Port == 443
+			}), "%s should expose its mTLS endpoint", service.Name)
 
-func resourcesByName(resources []unstructured.Unstructured) map[string]unstructured.Unstructured {
-	byName := make(map[string]unstructured.Unstructured, len(resources))
-	for _, resource := range resources {
-		byName[resource.GetName()] = resource
+			var got map[string]float64
+			err = wait.For(func(ctx context.Context) (bool, error) {
+				got, lastErr = targetAllocatorRequestCounts(ctx, services)
+				if lastErr != nil {
+					return false, nil
+				}
+				return got[metricServiceName] > baseline[metricServiceName], nil
+			}, wait.WithContext(waitCtx), wait.WithTimeout(0), wait.WithInterval(5*time.Second), wait.WithImmediate())
+			assert.NoError(t, err, "waiting for %s to request targets over mTLS: service %s count was %v, now %v; last query error: %v",
+				collectorName, metricServiceName, baseline[metricServiceName], got[metricServiceName], lastErr)
+			return ctx
+		})
 	}
-	return byName
+	testenv.Test(t, f.Feature())
 }
 
 func resourceConditionTrue(resource unstructured.Unstructured, conditionType string) bool {
@@ -121,40 +116,10 @@ func resourceConditionTrue(resource unstructured.Unstructured, conditionType str
 	return false
 }
 
-func hasServicePort(service *corev1.Service, name string, port int32) bool {
-	for _, candidate := range service.Spec.Ports {
-		if candidate.Name == name && candidate.Port == port {
-			return true
-		}
-	}
-	return false
-}
-
 const targetAllocatorRequestQuery = `sum by (service_name) (opentelemetry_allocator_http_duration_seconds_count{path="/jobs/:job_id/targets"})`
 
-func waitForTargetAllocatorRequests(ctx context.Context, want []string, baseline map[string]float64) error {
-	var got map[string]float64
-	var lastErr error
-	err := wait.PollUntilContextCancel(ctx, 5*time.Second, true, func(ctx context.Context) (bool, error) {
-		got, lastErr = targetAllocatorRequestCounts(ctx)
-		if lastErr != nil {
-			return false, nil
-		}
-		for _, service := range want {
-			if got[service] <= baseline[service] {
-				return false, nil
-			}
-		}
-		return true, nil
-	})
-	if wait.Interrupted(err) {
-		return fmt.Errorf("%w: want allocator services %v to increase from %v, got %v; last query error: %v", err, want, baseline, got, lastErr)
-	}
-	return err
-}
-
-func targetAllocatorRequestCounts(ctx context.Context) (map[string]float64, error) {
-	body, err := k.ServiceEndpointQuery(ctx, *namespace, "lgtm", "9090", "/api/v1/query", map[string]string{"query": targetAllocatorRequestQuery})
+func targetAllocatorRequestCounts(ctx context.Context, services coreclient.ServiceInterface) (map[string]float64, error) {
+	body, err := services.ProxyGet("http", "lgtm", "9090", "/api/v1/query", map[string]string{"query": targetAllocatorRequestQuery}).DoRaw(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("querying Prometheus for Target Allocator requests: %w", err)
 	}
