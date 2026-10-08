@@ -12,7 +12,9 @@ and its values.
 The full list is in [Prerequisites](../nktp/README.md#prerequisites). The ones
 that most often need preparing:
 
-- **cert-manager.** The default values need it. You can run without it; see
+- **cert-manager.** Required with default values; install it separately using
+  the [cert-manager installation instructions](https://cert-manager.io/docs/installation/).
+  To run without it, see
   [Install without cert-manager](guides/configure_cert_manager.md#installing-nktp-without-cert-manager).
 - **The resource metrics API** (`metrics.k8s.io`), which the Collector
   autoscalers read. NKTP can install metrics-server if nothing provides it.
@@ -48,13 +50,46 @@ helm install nktp ./nktp --namespace nktp --values my-values.yaml --wait
 - **The namespace needs the `privileged` Pod Security level,** because the node
   Collector and node-exporter use host paths and namespaces. `--create-namespace`
   would create it without the label.
-- **Wait twice.** `helm install --wait` returns once Helm's own workloads are
-  ready, but the Operator creates the Collectors after that, so a green Helm
-  install can still have crash-looping Collectors.
+- **Wait for the Collectors too.** Helm 3's `--wait` does not wait for the
+  Operator-managed Collector workloads. Run
+  `kubectl get opentelemetrycollector -n nktp` and repeat until every
+  Collector's `READY` column shows all expected replicas ready, such as `2/2`.
+  If readiness stalls, inspect the Collector Pods with
+  `kubectl get pods -n nktp`.
+  When cert-manager is installed, also run `kubectl get certificate -n nktp`
+  and wait for every NKTP Certificate to show `READY=True`; Helm 3's `--wait`
+  does not check this. If certificate readiness stalls, inspect the conditions
+  with `kubectl describe certificate -n nktp`.
 - **`my-values.yaml`** holds your settings from the sections below. Leave it
   out to install with the defaults.
 - **Versions:** release tags and development builds are described in
   [RELEASING.md](../RELEASING.md).
+
+<details>
+<summary>Example Collector and certificate readiness with cert-manager installed</summary>
+
+```bash
+kubectl get opentelemetrycollector -A
+kubectl get certificate -A
+```
+
+Example output for chart version `0.1.0`; names and replica counts depend on the
+chart version and values. `READY=2/2` means both expected Collector replicas
+are ready; certificates should show `READY=True`.
+
+```text
+NAMESPACE   NAME                  MODE          VERSION   READY   AGE   IMAGE                                      MANAGEMENT
+nktp        nktp-cluster-events   statefulset   0.159.0   2/2     23h   otel/opentelemetry-collector-k8s:0.162.0   managed
+...
+```
+
+```text
+NAMESPACE   NAME                         READY   SECRET                          AGE
+nktp        nktp-cluster-events-client   True    nktp-cluster-events-client-tls  23h
+...
+```
+
+</details>
 
 ## First look
 
