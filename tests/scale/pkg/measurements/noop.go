@@ -16,6 +16,7 @@ type Noop struct{}
 // NewNoop validates the spec and constructs a measurement without acquiring resources.
 // The optional measurements sequence holds named examples. Queries are neither
 // parsed as query languages nor executed, and they do not produce findings.
+// Checks are rejected because this implementation cannot enforce them.
 func NewNoop(spec yaml.Node) (Noop, error) {
 	if err := validateNoopSpec(spec); err != nil {
 		return Noop{}, err
@@ -42,5 +43,17 @@ func validateNoopSpec(spec yaml.Node) error {
 	if len(spec.Content) != 2 || spec.Content[0].Tag != "!!str" || spec.Content[0].Value != "measurements" {
 		return errors.New("noop spec only supports a measurements sequence")
 	}
-	return validateMeasurements(*spec.Content[1])
+	if err := validateMeasurements(*spec.Content[1]); err != nil {
+		return err
+	}
+	var entries []Measurement
+	if err := spec.Content[1].Decode(&entries); err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		if entry.Check != nil {
+			return errors.New("noop measurements do not support checks")
+		}
+	}
+	return nil
 }

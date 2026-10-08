@@ -26,7 +26,7 @@ type reportPoint struct {
 	value float64
 }
 
-// Format renders query summaries without modifying the underlying results.
+// Format renders query summaries and check findings without modifying results.
 // Each label set has independent statistics and numeric histogram counts.
 // Histograms count finite query observations, not requests or elapsed time.
 // Other report types fall back to indented JSON. Empty reports have a short message.
@@ -55,21 +55,25 @@ func Format(report measurements.Report) string {
 	out.WriteString("Histograms count finite observations.\n")
 	for _, name := range slices.Sorted(maps.Keys(queries)) {
 		query := queries[name]
-		series := querySeries(query.Observations)
-		scale, unit := reportUnit(query.Unit, series)
-		out.WriteByte('\n')
-		heading := name
-		if unit != "" {
-			heading += " [" + unit + "]"
-		}
-		fmt.Fprintln(&out, heading)
-		fmt.Fprintf(&out, "  Query: %s\n", query.Expression)
-		fmt.Fprintf(&out, "  Attempts: %d\n", len(query.Observations))
-		for i, labels := range slices.Sorted(maps.Keys(series)) {
-			if i > 0 {
-				out.WriteByte('\n')
+		if query.Check != nil {
+			formatCheck(&out, name, query)
+		} else {
+			series := querySeries(query.Observations)
+			scale, unit := reportUnit(query.Unit, series)
+			out.WriteByte('\n')
+			heading := name
+			if unit != "" {
+				heading += " [" + unit + "]"
 			}
-			formatSeries(&out, labels, series[labels], scale)
+			fmt.Fprintln(&out, heading)
+			fmt.Fprintf(&out, "  Query: %s\n", query.Expression)
+			fmt.Fprintf(&out, "  Attempts: %d\n", len(query.Observations))
+			for i, labels := range slices.Sorted(maps.Keys(series)) {
+				if i > 0 {
+					out.WriteByte('\n')
+				}
+				formatSeries(&out, labels, series[labels], scale)
+			}
 		}
 		for _, observation := range query.Observations {
 			at := observation.EvaluatedAt.UTC().Format(time.RFC3339Nano)
@@ -79,12 +83,25 @@ func Format(report measurements.Report) string {
 			if observation.Error != "" {
 				fmt.Fprintf(&out, "  Error at %s: %q\n", at, observation.Error)
 			}
-			if value := observation.Value; value != nil && value.Type() != model.ValVector && value.Type() != model.ValScalar {
+			if value := observation.Value; query.Check == nil && value != nil && value.Type() != model.ValVector && value.Type() != model.ValScalar {
 				fmt.Fprintf(&out, "  Result at %s: %s is retained in the raw report and has no numeric summary\n", at, value.Type())
 			}
 		}
 	}
 	return strings.TrimSuffix(out.String(), "\n")
+}
+
+// formatCheck shows the failure condition and any series that fired.
+func formatCheck(out *strings.Builder, name string, query measurements.QueryReport) {
+	fmt.Fprintf(out, "\n%s\n  Check: %s\n  For: %s\n  Attempts: %d\n", name, query.Expression, query.Check.For, len(query.Observations))
+	if query.Check.FiredAt == nil {
+		out.WriteString("  Check did not fire.\n")
+	} else {
+		fmt.Fprintf(out, "  FIRED at %s\n", query.Check.FiredAt.UTC().Format(time.RFC3339Nano))
+		for _, labels := range query.Check.Series {
+			fmt.Fprintf(out, "  Series: %s\n", labels)
+		}
+	}
 }
 
 // querySeries aligns each full label set with every query attempt, retaining gaps.

@@ -19,7 +19,7 @@ import (
 	"go.yaml.in/yaml/v3"
 )
 
-// Prometheus collects named PromQL observations without performance verdicts.
+// Prometheus collects named PromQL observations and evaluates failure checks.
 // Construct it with NewPrometheus. Each Run owns its report and collection window.
 type Prometheus struct {
 	// config holds validated collection and connection settings.
@@ -35,11 +35,12 @@ type prometheusConfig struct {
 	Measurements []Measurement `yaml:"measurements"`
 }
 
-// QueryReport retains the expression and completed polling attempts in order.
+// QueryReport retains the expression, ordered polling attempts and check findings.
 type QueryReport struct {
 	Expression   string             `json:"expression"`
 	Unit         string             `json:"unit,omitempty"`
 	Observations []QueryObservation `json:"observations"`
+	Check        *CheckReport       `json:"check,omitempty"`
 }
 
 // QueryObservation retains one official Prometheus result, including empty data.
@@ -56,7 +57,8 @@ type QueryObservation struct {
 // Endpoint is an HTTP or HTTPS base URL reachable from the test process.
 // Duration and a nonempty measurements sequence are required. Interval defaults to
 // 15 seconds and query_timeout to 10 seconds. Durations must be positive.
-// Queries are checked for nonempty text. PromQL syntax is validated by the backend.
+// Each measurement declares a query or a check. A check hold must be shorter than
+// the collection duration. PromQL syntax is validated by the backend.
 func NewPrometheus(spec yaml.Node) (*Prometheus, error) {
 	if err := validatePrometheusSpec(spec); err != nil {
 		return nil, err
@@ -83,6 +85,11 @@ func NewPrometheus(spec yaml.Node) (*Prometheus, error) {
 	}
 	if len(cfg.Measurements) == 0 {
 		return nil, errors.New("measurements must contain at least one named PromQL expression")
+	}
+	for _, measurement := range cfg.Measurements {
+		if measurement.Check != nil && measurement.Check.For >= cfg.Duration {
+			return nil, fmt.Errorf("measurement %q: check for must be shorter than duration", measurement.Name)
+		}
 	}
 	return &Prometheus{config: cfg}, nil
 }
@@ -113,9 +120,10 @@ func validatePrometheusSpec(spec yaml.Node) error {
 // elapses. Queries within a round run sequentially with one evaluation timestamp.
 // Slow rounds may skip ticks. A request still running at the end of the window
 // is canceled and omitted. Completed observations are retained on every exit.
-// Empty results and non-finite values are findings, not performance failures.
-// Request errors or caller cancellation return a partial report and an error.
-// Successful completion does not stop the stage's generator.
+// Queries record findings without performance verdicts. Checks fail on sustained
+// vector membership. Empty check results reset pending series.
+// Failed checks, request errors and caller cancellation retain partial reports.
+// Successful completion does not stop the stage's generators.
 func (p *Prometheus) Run(ctx context.Context) (Report, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -124,8 +132,15 @@ func (p *Prometheus) Run(ctx context.Context) (Report, error) {
 	runCtx, cancel := context.WithTimeout(ctx, p.config.Duration)
 	defer cancel()
 	queries := make(map[string]QueryReport, len(p.config.Measurements))
+	checks := make(map[string]*checkState)
 	for _, measurement := range p.config.Measurements {
-		queries[measurement.Name] = QueryReport{Expression: measurement.Query, Unit: measurement.Units, Observations: []QueryObservation{}}
+		query := QueryReport{Expression: measurement.Query, Unit: measurement.Units, Observations: []QueryObservation{}}
+		if check := measurement.Check; check != nil {
+			query.Expression = check.Expr
+			query.Check = &CheckReport{For: check.For}
+			checks[measurement.Name] = &checkState{hold: check.For}
+		}
+		queries[measurement.Name] = query
 	}
 	report := Report{"started_at": started, "interval": p.config.Interval.String(), "queries": queries}
 	defer func() { report["finished_at"] = time.Now().UTC() }()
@@ -148,6 +163,12 @@ func (p *Prometheus) Run(ctx context.Context) (Report, error) {
 			if errors.Is(err, context.DeadlineExceeded) && runCtx.Err() != nil && ctx.Err() == nil {
 				return report, nil
 			}
+			if check := checks[name]; err == nil && check != nil {
+				query.Check.Series, err = check.evaluate(observation.Value, at)
+				if len(query.Check.Series) > 0 {
+					query.Check.FiredAt = &at
+				}
+			}
 			if err != nil {
 				observation.Error = err.Error()
 			}
@@ -155,6 +176,9 @@ func (p *Prometheus) Run(ctx context.Context) (Report, error) {
 			queries[name] = query
 			if err != nil {
 				return report, fmt.Errorf("query %q: %w", name, err)
+			}
+			if query.Check != nil && query.Check.FiredAt != nil {
+				return report, fmt.Errorf("check %q fired for %d series", name, len(query.Check.Series))
 			}
 		}
 		select {

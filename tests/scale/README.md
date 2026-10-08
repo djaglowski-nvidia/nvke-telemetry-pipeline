@@ -4,9 +4,9 @@ Plan-driven testing of NKTP correctness and capacity under telemetry load.
 The harness runs no-op components without a cluster, or finite binary workloads
 through the Kubernetes Job generator. The Kubernetes emulator creates temporary
 KWOK nodes with configured capacity. Measurements support no-op observations and
-Prometheus queries. Query reports collect data without performance pass/fail
-verdicts. Successful Job execution alone does not verify backend delivery or NKTP
-performance.
+Prometheus queries and failure checks. Queries collect data without performance
+verdicts, while checks stop the test when a failure condition holds. Successful Job
+execution alone does not verify backend delivery or NKTP performance.
 
 For the mixed 100M Avalanche workload with node-local and large-target scraping,
 see the [Avalanche 100M guide](avalanche-100m.md).
@@ -266,8 +266,8 @@ literal text `{{ .Args.name }}`, write `{{ "{{ .Args.name }}" }}`.
 
 ## Prometheus measurements
 
-Prometheus measurements collect metrics through PromQL queries during a load test
-and summarize the results without performance pass/fail thresholds.
+Prometheus measurements collect metrics during a load test. Queries summarize
+observations, while checks stop the test when a failure condition persists.
 
 ```yaml
 measurement:
@@ -287,26 +287,40 @@ measurement:
       - name: queue
         units: bytes
         query: otelcol_exporter_queue_size{job="nktp-gateway-metrics",data_type="metrics"}
+      - name: gateway_unavailable
+        check:
+          expr: up{job="nktp-gateway-metrics"} == 0
+          for: 1m
 ```
 
 The [telemetrygen plan](plans/telemetrygen.yaml) measures series from the current
 run, plus pipeline throughput, queues, and memory across all traffic.
 
-An `endpoint`, a positive `duration`, and at least one named query are required.
-`interval` defaults to `15s` and `query_timeout` to `10s`. Each entry in the
-`measurements` list contains a unique `name`, a required `query`, and optional
-`units` for display, with automatic scaling for `bytes` and `bytes/s`. Multiline
-queries can use YAML block scalars. No-op measurements accept the same entries
-as unevaluated examples.
+An `endpoint`, a positive `duration`, and at least one named measurement are
+required. `interval` defaults to `15s` and `query_timeout` to `10s`. Each entry has
+a unique `name` and exactly one of `query` or `check`. Optional `units` control
+query display, with automatic scaling for `bytes` and `bytes/s`. Multiline
+expressions can use YAML block scalars. No-op measurements accept query examples
+but reject checks.
+
+A check requires an `expr` returning an instant vector. Every returned series is
+a violation, including a sample with value zero. Use filtering comparisons such
+as `up == 0`, without `bool`. Omit `for`, or set it to `0s`, to fail on the first
+match. Otherwise the same series must remain present at every evaluation for
+that duration. `for` must be shorter than the collection `duration`. A missing
+series resets its timer. Empty results do not fail the test. Use an explicit
+absence expression if missing telemetry should fail.
+
+The example fails if a gateway remains down for one minute.
 
 `task scale:install` makes Prometheus available at the example endpoint. For
 another environment, use an endpoint reachable from the test host.
 
-Collection starts with the stage, querying at `interval`, and ends normally after
-`duration`. Query failures before that deadline fail the run and preserve results
-collected so far. The stage waits for both collection and load generation to
-finish. The test report shows statistics and histograms for each query and label
-set, with missing data and errors shown separately.
+Collection starts with the stage and polls queries and checks at `interval` for
+`duration`. A fired check or query error fails the plan and preserves collected
+results. Query reports show statistics and histograms per label set, with missing
+data and errors shown separately. Check findings identify the check, firing time
+and affected series.
 
 ## Execution and extension
 

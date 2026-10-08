@@ -154,7 +154,7 @@ func TestJobGeneratorRun(t *testing.T) {
 	}{
 		{name: "partial then complete", condition: batchv1.JobComplete, wantDelete: true},
 		{name: "failed", condition: batchv1.JobFailed, wantErr: "export failed", wantDelete: true},
-		{name: "replaced", replaced: true, wantErr: "Job was replaced"},
+		{name: "replaced", replaced: true, wantErr: "job was replaced"},
 		{name: "foreign owner", condition: batchv1.JobComplete, foreignOwner: true, wantErr: "refuse to delete unowned"},
 		{name: "get failed", readErr: readErr, wantErr: "read failed", wantDelete: true},
 		{name: "canceled", cancel: true, wantErr: "context canceled", wantDelete: true},

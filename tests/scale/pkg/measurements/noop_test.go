@@ -41,6 +41,7 @@ func TestNoopRejectsInvalidSpecs(t *testing.T) {
 		"[]",
 		"rate: 1",
 		"queries: {example: query}",
+		"measurements:\n  - name: unavailable\n    check: {expr: up == 0}",
 		"measurements: null",
 		"measurements: {}",
 		"measurements: []\nextra: true",

@@ -4,16 +4,21 @@
 package runner
 
 import (
+	"context"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/NVIDIA-dev/nktp/tests/scale/pkg/format"
 	"github.com/NVIDIA-dev/nktp/tests/scale/pkg/measurements"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"go.yaml.in/yaml/v3"
 )
 
 // TestExecutePrometheusPlan exercises argument binding, construction and reporting.
@@ -80,4 +85,66 @@ stages:
 	if strings.Contains(queries["series"].Expression, "{{ .Args.") {
 		t.Errorf("report retains an unresolved expression: %s", queries["series"].Expression)
 	}
+}
+
+// TestPrometheusCheckStopsPlan exercises querying, partial reports and peer cancellation.
+func TestPrometheusCheckStopsPlan(t *testing.T) {
+	started := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		<-started
+		assert.NoError(t, r.ParseForm())
+		switch r.Form.Get("query") {
+		case "sum(rate(points_total[1m]))":
+			_, err := fmt.Fprint(w, `{"status":"success","data":{"resultType":"scalar","result":[100,"25"]}}`)
+			assert.NoError(t, err)
+		case "up == 0":
+			_, err := fmt.Fprint(w, `{"status":"success","data":{"resultType":"vector","result":[{"metric":{"instance":"gateway"},"value":[100,"0"]}]}}`)
+			assert.NoError(t, err)
+		default:
+			t.Errorf("unexpected query %q", r.Form.Get("query"))
+		}
+	}))
+	defer server.Close()
+	var spec yaml.Node
+	require.NoError(t, yaml.Unmarshal([]byte(fmt.Sprintf(`endpoint: %q
+duration: 5s
+interval: 10ms
+measurements:
+  - name: throughput
+    query: sum(rate(points_total[1m]))
+  - name: unavailable
+    check:
+      expr: up == 0
+      for: 20ms
+`, server.URL)), &spec))
+	measurement, err := measurements.NewPrometheus(*spec.Content[0])
+	require.NoError(t, err)
+	stages := []preparedStage{
+		{
+			name: "load", measurementType: "prometheus", measurement: measurement,
+			generators: []preparedGenerator{{name: "producer", generator: generatorFunc(func(ctx context.Context) error {
+				close(started)
+				<-ctx.Done()
+				return ctx.Err()
+			})}},
+		},
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+	reports, err := executeStages(ctx, slog.Default(), stages)
+	require.ErrorContains(t, err, `check "unavailable" fired`)
+	require.Len(t, reports, 1)
+	assert.ErrorIs(t, reports[0].Generators[0].Error, context.Canceled)
+	queries := reports[0].Report["queries"].(map[string]measurements.QueryReport)
+	require.NotEmpty(t, queries["throughput"].Observations)
+	check := queries["unavailable"]
+	require.GreaterOrEqual(t, len(check.Observations), 2)
+	require.NotNil(t, check.Check.FiredAt)
+	assert.GreaterOrEqual(t, check.Check.FiredAt.Sub(check.Observations[0].EvaluatedAt), 20*time.Millisecond)
+	assert.Equal(t, []model.Metric{{"instance": "gateway"}}, check.Check.Series)
+	formatted := format.Format(reports[0].Report)
+	assert.Contains(t, formatted, "throughput")
+	assert.Contains(t, formatted, "Check: up == 0")
+	assert.Contains(t, formatted, "FIRED at")
+	assert.Contains(t, formatted, `Series: {instance="gateway"}`)
 }
