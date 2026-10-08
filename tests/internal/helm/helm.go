@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 // Package helm manages chart releases on a test cluster.
 //
 // The helpers here drive the helm binary rather than linking its Go SDK, so a

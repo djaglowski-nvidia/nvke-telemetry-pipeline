@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 //go:build e2e
 
 // Package e2e asserts user-visible NKTP behavior on a Kubernetes cluster.

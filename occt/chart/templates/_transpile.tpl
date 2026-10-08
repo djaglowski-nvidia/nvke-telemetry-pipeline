@@ -1,4 +1,8 @@
 {{/*
+SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+SPDX-License-Identifier: Apache-2.0
+*/}}
+{{/*
 occt.transpile renders a Collector configuration, expanding every
 blueprint/<type>[/<name>] declaration against the blueprint registry and
 emitting native Collector configuration.

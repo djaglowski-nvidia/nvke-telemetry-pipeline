@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 # Run a pull-through cache for each upstream registry, and point the Kind node
 # at them. The caches run outside the cluster and keep their volumes, so images
 # pulled once are served locally after dev:down and dev:up.

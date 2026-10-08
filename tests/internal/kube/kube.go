@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 // Package kube holds the Kubernetes API helpers shared by the test suites.
 //
 // The helpers here report what a cluster is doing and return what they find.

@@ -1,3 +1,7 @@
+{{/*
+SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+SPDX-License-Identifier: Apache-2.0
+*/}}
 {{/* API groups and scope for the built-in KSM resource collectors. */}}
 {{- define "nktp.ksm.resources" -}}
 certificatesigningrequests: {group: "certificates.k8s.io", scope: cluster}

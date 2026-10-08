@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 # Local dev loop: NKTP chart on the local Kind cluster.
 # Start with `task dev:up`.
 # Or from dev/: KUBECONFIG=.kubeconfig tilt up [-- --config <name>]
