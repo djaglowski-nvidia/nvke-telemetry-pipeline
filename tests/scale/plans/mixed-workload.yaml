@@ -1,7 +1,7 @@
 # Mixed workload on 100 real workers. See ../mixed-workload.md.
 # Install ../mixed-workload-values.yaml first. Only runId is a plan argument.
 name: mixed-workload
-timeout: 105m
+timeout: 115m
 stages:
   - name: load
     generators:
@@ -40,6 +40,30 @@ stages:
                     scale.nktp.io/workload: mixed-workload
                     scale.nktp.io/group: small-scraped
                     scale.nktp.io/run-id: '{{ .Args.runId }}'
+            # Keep Parallel rollout. Reach 25%, 50% and 100% load at 0, 5 and 10 minutes.
+            initContainers:
+              - name: ramp-up
+                image: ghcr.io/vectordotdev/vector:0.58.0-debian@sha256:1c1ea358c617ea0b23003d5af87f7a678b30f8f7096437e680380c47fc13d2d9
+                command: [/bin/sh, -ec]
+                args:
+                  - |
+                    ordinal=${POD_NAME##*-}
+                    case "$((ordinal % 4))" in
+                      0) delay=0 ;;
+                      1) delay=300 ;;
+                      *) delay=600 ;;
+                    esac
+                    exec sleep "$delay"
+                env:
+                  - name: POD_NAME
+                    valueFrom: {fieldRef: {fieldPath: metadata.name}}
+                resources:
+                  requests: {cpu: 1m, memory: 4Mi}
+                  limits: {cpu: 100m, memory: 16Mi}
+                securityContext:
+                  allowPrivilegeEscalation: false
+                  readOnlyRootFilesystem: true
+                  capabilities: {drop: [ALL]}
             containers:
               - name: avalanche
                 image: quay.io/prometheuscommunity/avalanche:v0.7.0@sha256:ea02e9599fcbb59a6fc7396656434faf200db7f1c259802e3dbb38cec81bd12a
@@ -125,6 +149,29 @@ stages:
                     scale.nktp.io/workload: mixed-workload
                     scale.nktp.io/group: small-instrumented
                     scale.nktp.io/run-id: '{{ .Args.runId }}'
+            initContainers:
+              - name: ramp-up
+                image: ghcr.io/vectordotdev/vector:0.58.0-debian@sha256:1c1ea358c617ea0b23003d5af87f7a678b30f8f7096437e680380c47fc13d2d9
+                command: [/bin/sh, -ec]
+                args:
+                  - |
+                    ordinal=${POD_NAME##*-}
+                    case "$((ordinal % 4))" in
+                      0) delay=0 ;;
+                      1) delay=300 ;;
+                      *) delay=600 ;;
+                    esac
+                    exec sleep "$delay"
+                env:
+                  - name: POD_NAME
+                    valueFrom: {fieldRef: {fieldPath: metadata.name}}
+                resources:
+                  requests: {cpu: 1m, memory: 4Mi}
+                  limits: {cpu: 100m, memory: 16Mi}
+                securityContext:
+                  allowPrivilegeEscalation: false
+                  readOnlyRootFilesystem: true
+                  capabilities: {drop: [ALL]}
             containers:
               - name: avalanche
                 image: quay.io/prometheuscommunity/avalanche:v0.7.0@sha256:ea02e9599fcbb59a6fc7396656434faf200db7f1c259802e3dbb38cec81bd12a
@@ -174,6 +221,7 @@ stages:
                   httpGet: {port: health, path: /}
                 volumeMounts:
                   - {name: metrics-config, mountPath: /etc/metrics, readOnly: true}
+                  - {name: observation-tls, mountPath: /etc/nktp/internal-tls/client, readOnly: true}
                 resources:
                   requests: {cpu: 25m, memory: 64Mi}
                   limits: {cpu: 500m, memory: 256Mi}
@@ -241,6 +289,8 @@ stages:
                 configMap: {name: nktp-mixed-workload-stdout-small}
               - name: metrics-config
                 configMap: {name: nktp-mixed-workload-otlp-metrics}
+              - name: observation-tls
+                secret: {secretName: nktp-mixed-workload-client-tls}
 
     - name: node-local-targets
       type: statefulset
@@ -275,6 +325,29 @@ stages:
                     scale.nktp.io/workload: mixed-workload
                     scale.nktp.io/group: node-local-targets
                     scale.nktp.io/run-id: '{{ .Args.runId }}'
+            initContainers:
+              - name: ramp-up
+                image: ghcr.io/vectordotdev/vector:0.58.0-debian@sha256:1c1ea358c617ea0b23003d5af87f7a678b30f8f7096437e680380c47fc13d2d9
+                command: [/bin/sh, -ec]
+                args:
+                  - |
+                    ordinal=${POD_NAME##*-}
+                    case "$((ordinal % 4))" in
+                      0) delay=0 ;;
+                      1) delay=300 ;;
+                      *) delay=600 ;;
+                    esac
+                    exec sleep "$delay"
+                env:
+                  - name: POD_NAME
+                    valueFrom: {fieldRef: {fieldPath: metadata.name}}
+                resources:
+                  requests: {cpu: 1m, memory: 4Mi}
+                  limits: {cpu: 100m, memory: 16Mi}
+                securityContext:
+                  allowPrivilegeEscalation: false
+                  readOnlyRootFilesystem: true
+                  capabilities: {drop: [ALL]}
             containers:
               - name: avalanche
                 image: quay.io/prometheuscommunity/avalanche:v0.7.0@sha256:ea02e9599fcbb59a6fc7396656434faf200db7f1c259802e3dbb38cec81bd12a
@@ -296,8 +369,8 @@ stages:
                   tcpSocket: {port: metrics}
                   periodSeconds: 5
                 resources:
-                  requests: {cpu: 10m, memory: 32Mi}
-                  limits: {cpu: 200m, memory: 64Mi}
+                  requests: {cpu: 10m, memory: 64Mi}
+                  limits: {cpu: 200m, memory: 256Mi}
                 securityContext:
                   allowPrivilegeEscalation: false
                   readOnlyRootFilesystem: true
@@ -340,6 +413,29 @@ stages:
                     scale.nktp.io/workload: mixed-workload
                     scale.nktp.io/group: large-logs
                     scale.nktp.io/run-id: '{{ .Args.runId }}'
+            initContainers:
+              - name: ramp-up
+                image: ghcr.io/vectordotdev/vector:0.58.0-debian@sha256:1c1ea358c617ea0b23003d5af87f7a678b30f8f7096437e680380c47fc13d2d9
+                command: [/bin/sh, -ec]
+                args:
+                  - |
+                    ordinal=${POD_NAME##*-}
+                    case "$((ordinal % 4))" in
+                      0) delay=0 ;;
+                      1) delay=300 ;;
+                      *) delay=600 ;;
+                    esac
+                    exec sleep "$delay"
+                env:
+                  - name: POD_NAME
+                    valueFrom: {fieldRef: {fieldPath: metadata.name}}
+                resources:
+                  requests: {cpu: 1m, memory: 4Mi}
+                  limits: {cpu: 100m, memory: 16Mi}
+                securityContext:
+                  allowPrivilegeEscalation: false
+                  readOnlyRootFilesystem: true
+                  capabilities: {drop: [ALL]}
             containers:
               - name: vector-stdout-large
                 image: ghcr.io/vectordotdev/vector:0.58.0-debian@sha256:1c1ea358c617ea0b23003d5af87f7a678b30f8f7096437e680380c47fc13d2d9
@@ -394,6 +490,29 @@ stages:
                     scale.nktp.io/workload: mixed-workload
                     scale.nktp.io/group: large-traces
                     scale.nktp.io/run-id: '{{ .Args.runId }}'
+            initContainers:
+              - name: ramp-up
+                image: ghcr.io/vectordotdev/vector:0.58.0-debian@sha256:1c1ea358c617ea0b23003d5af87f7a678b30f8f7096437e680380c47fc13d2d9
+                command: [/bin/sh, -ec]
+                args:
+                  - |
+                    ordinal=${POD_NAME##*-}
+                    case "$((ordinal % 4))" in
+                      0) delay=0 ;;
+                      1) delay=300 ;;
+                      *) delay=600 ;;
+                    esac
+                    exec sleep "$delay"
+                env:
+                  - name: POD_NAME
+                    valueFrom: {fieldRef: {fieldPath: metadata.name}}
+                resources:
+                  requests: {cpu: 1m, memory: 4Mi}
+                  limits: {cpu: 100m, memory: 16Mi}
+                securityContext:
+                  allowPrivilegeEscalation: false
+                  readOnlyRootFilesystem: true
+                  capabilities: {drop: [ALL]}
             containers:
               - name: traces
                 image: ghcr.io/open-telemetry/opentelemetry-collector-contrib/telemetrygen:v0.159.0@sha256:bad7fde3119476a9177cc4b9f04307c9876fca5b5584e009aebd7123d7557658
@@ -447,7 +566,7 @@ stages:
               scale.nktp.io/run-id: '{{ .Args.runId }}'
           spec:
             restartPolicy: Never
-            activeDeadlineSeconds: 6000
+            activeDeadlineSeconds: 6600
             terminationGracePeriodSeconds: 150
             automountServiceAccountToken: false
             nodeSelector: {nodeGroup: customer-cpu}
@@ -460,6 +579,29 @@ stages:
                     labelSelector:
                       matchLabels:
                         scale.nktp.io/workload: mixed-workload-events
+            initContainers:
+              - name: ramp-up
+                image: ghcr.io/vectordotdev/vector:0.58.0-debian@sha256:1c1ea358c617ea0b23003d5af87f7a678b30f8f7096437e680380c47fc13d2d9
+                command: [/bin/sh, -ec]
+                args:
+                  - |
+                    ordinal=${POD_NAME##*-}
+                    case "$((ordinal % 4))" in
+                      0) delay=0 ;;
+                      1) delay=300 ;;
+                      *) delay=600 ;;
+                    esac
+                    exec sleep "$delay"
+                env:
+                  - name: POD_NAME
+                    valueFrom: {fieldRef: {fieldPath: metadata.name}}
+                resources:
+                  requests: {cpu: 1m, memory: 4Mi}
+                  limits: {cpu: 100m, memory: 16Mi}
+                securityContext:
+                  allowPrivilegeEscalation: false
+                  readOnlyRootFilesystem: true
+                  capabilities: {drop: [ALL]}
             containers:
               - name: k6-events
                 image: grafana/k6:2.3.0@sha256:9c2dee7f8ed74d317e4027c06a10f169b625638189de8d4555d0b3486a5aeb34
@@ -531,6 +673,29 @@ stages:
                     labelSelector:
                       matchLabels:
                         scale.nktp.io/workload: mixed-workload-large
+            initContainers:
+              - name: ramp-up
+                image: ghcr.io/vectordotdev/vector:0.58.0-debian@sha256:1c1ea358c617ea0b23003d5af87f7a678b30f8f7096437e680380c47fc13d2d9
+                command: [/bin/sh, -ec]
+                args:
+                  - |
+                    ordinal=${POD_NAME##*-}
+                    case "$((ordinal % 4))" in
+                      0) delay=0 ;;
+                      1) delay=300 ;;
+                      *) delay=600 ;;
+                    esac
+                    exec sleep "$delay"
+                env:
+                  - name: POD_NAME
+                    valueFrom: {fieldRef: {fieldPath: metadata.name}}
+                resources:
+                  requests: {cpu: 1m, memory: 4Mi}
+                  limits: {cpu: 100m, memory: 16Mi}
+                securityContext:
+                  allowPrivilegeEscalation: false
+                  readOnlyRootFilesystem: true
+                  capabilities: {drop: [ALL]}
             containers:
               - name: avalanche-large
                 image: quay.io/prometheuscommunity/avalanche:v0.7.0@sha256:ea02e9599fcbb59a6fc7396656434faf200db7f1c259802e3dbb38cec81bd12a
@@ -584,6 +749,29 @@ stages:
                     labelSelector:
                       matchLabels:
                         scale.nktp.io/workload: mixed-workload-large
+            initContainers:
+              - name: ramp-up
+                image: ghcr.io/vectordotdev/vector:0.58.0-debian@sha256:1c1ea358c617ea0b23003d5af87f7a678b30f8f7096437e680380c47fc13d2d9
+                command: [/bin/sh, -ec]
+                args:
+                  - |
+                    ordinal=${POD_NAME##*-}
+                    case "$((ordinal % 4))" in
+                      0) delay=0 ;;
+                      1) delay=300 ;;
+                      *) delay=600 ;;
+                    esac
+                    exec sleep "$delay"
+                env:
+                  - name: POD_NAME
+                    valueFrom: {fieldRef: {fieldPath: metadata.name}}
+                resources:
+                  requests: {cpu: 1m, memory: 4Mi}
+                  limits: {cpu: 100m, memory: 16Mi}
+                securityContext:
+                  allowPrivilegeEscalation: false
+                  readOnlyRootFilesystem: true
+                  capabilities: {drop: [ALL]}
             containers:
               - name: avalanche-large
                 image: quay.io/prometheuscommunity/avalanche:v0.7.0@sha256:ea02e9599fcbb59a6fc7396656434faf200db7f1c259802e3dbb38cec81bd12a
@@ -637,6 +825,29 @@ stages:
                     labelSelector:
                       matchLabels:
                         scale.nktp.io/workload: mixed-workload-large
+            initContainers:
+              - name: ramp-up
+                image: ghcr.io/vectordotdev/vector:0.58.0-debian@sha256:1c1ea358c617ea0b23003d5af87f7a678b30f8f7096437e680380c47fc13d2d9
+                command: [/bin/sh, -ec]
+                args:
+                  - |
+                    ordinal=${POD_NAME##*-}
+                    case "$((ordinal % 4))" in
+                      0) delay=0 ;;
+                      1) delay=300 ;;
+                      *) delay=600 ;;
+                    esac
+                    exec sleep "$delay"
+                env:
+                  - name: POD_NAME
+                    valueFrom: {fieldRef: {fieldPath: metadata.name}}
+                resources:
+                  requests: {cpu: 1m, memory: 4Mi}
+                  limits: {cpu: 100m, memory: 16Mi}
+                securityContext:
+                  allowPrivilegeEscalation: false
+                  readOnlyRootFilesystem: true
+                  capabilities: {drop: [ALL]}
             containers:
               - name: avalanche-large
                 image: quay.io/prometheuscommunity/avalanche:v0.7.0@sha256:ea02e9599fcbb59a6fc7396656434faf200db7f1c259802e3dbb38cec81bd12a
@@ -668,9 +879,9 @@ stages:
       type: prometheus
       spec:
         endpoint: http://127.0.0.1:9090
-        duration: 100m
-        interval: 15s
-        query_timeout: 10s
+        duration: 110m
+        interval: 60s
+        query_timeout: 60s
         measurements:
           - name: fresh_targets
             units: targets
@@ -682,20 +893,6 @@ stages:
             units: series
             query: >-
               sum by (scale_node,scale_workload,scale_group,metric_bucket) (
-                scrape_samples_scraped{scale_workload=~"mixed-workload|mixed-workload-large",test_run_id="{{ .Args.runId }}"}
-                and (time() - timestamp(scrape_samples_scraped{scale_workload=~"mixed-workload|mixed-workload-large",test_run_id="{{ .Args.runId }}"}) < 120)
-              )
-          - name: target_min_samples
-            units: series
-            query: >-
-              min by (scale_node,scale_workload,scale_group,metric_bucket) (
-                scrape_samples_scraped{scale_workload=~"mixed-workload|mixed-workload-large",test_run_id="{{ .Args.runId }}"}
-                and (time() - timestamp(scrape_samples_scraped{scale_workload=~"mixed-workload|mixed-workload-large",test_run_id="{{ .Args.runId }}"}) < 120)
-              )
-          - name: target_max_samples
-            units: series
-            query: >-
-              max by (scale_node,scale_workload,scale_group,metric_bucket) (
                 scrape_samples_scraped{scale_workload=~"mixed-workload|mixed-workload-large",test_run_id="{{ .Args.runId }}"}
                 and (time() - timestamp(scrape_samples_scraped{scale_workload=~"mixed-workload|mixed-workload-large",test_run_id="{{ .Args.runId }}"}) < 120)
               )
@@ -785,14 +982,6 @@ stages:
             units: points/s
             query: >-
               rate(otelcol_deltatocumulative_datapoints_total{job="nktp-daemonset",error!=""}[5m])
-          - name: filelog_open_files
-            units: files
-            query: >-
-              otelcol_fileconsumer_open_files{job="nktp-daemonset"}
-          - name: filelog_reading_files
-            units: files
-            query: >-
-              otelcol_fileconsumer_reading_files{job="nktp-daemonset"}
           - name: otlp_source_series
             units: series
             query: >-
@@ -807,10 +996,13 @@ stages:
                 nktp_scale_otlp_source_up{test_run_id="{{ .Args.runId }}"} == 1
                 and (time() - timestamp(nktp_scale_otlp_source_up{test_run_id="{{ .Args.runId }}"}) < 90)
               )
-          - name: event_receiver_records
+          - name: generated_events_received
             units: records/s
             query: >-
-              rate(otelcol_receiver_accepted_log_records_total{job="nktp-cluster-events",receiver="k8s_events"}[5m])
+              sum by (scale_node) (
+                rate(nktp_scale_events_accepted_total{test_run_id="{{ .Args.runId }}"}[5m])
+                and (time() - timestamp(nktp_scale_events_accepted_total{test_run_id="{{ .Args.runId }}"}) < 90)
+              )
           - name: event_patches_succeeded
             units: requests/s
             query: >-
@@ -832,21 +1024,6 @@ stages:
                 k6_dropped_iterations_total{test_run_id="{{ .Args.runId }}"}
                 and (time() - timestamp(k6_dropped_iterations_total{test_run_id="{{ .Args.runId }}"}) < 90)
               )
-          - name: event_patch_latency_p95
-            units: seconds
-            query: >-
-              max by (scale_node) (
-                k6_http_req_duration_p95{test_run_id="{{ .Args.runId }}",name="event-patch"}
-                and (time() - timestamp(k6_http_req_duration_p95{test_run_id="{{ .Args.runId }}",name="event-patch"}) < 90)
-              )
-          - name: event_running_producers
-            units: pods
-            query: >-
-              sum by (node) (
-                kube_pod_container_status_running{namespace="nktp",container="k6-events"}
-                * on (namespace,pod) group_left(node) kube_pod_info{namespace="nktp"}
-                and on (namespace,pod) kube_pod_labels{namespace="nktp",label_scale_nktp_io_run_id="{{ .Args.runId }}"}
-              )
           # Shared selectors preserve each component, Pod and container in result labels.
           - name: component_cpu
             units: cores
@@ -860,10 +1037,6 @@ stages:
             units: bytes
             query: >-
               container_memory_working_set_bytes{namespace="nktp",job="kubelet-cadvisor",pod=~"nktp-(daemonset|gateway-(metrics|logs|traces)|large-target-metrics|cluster-events|watchdog|mixed-workload-blackhole)-collector-.+",container=~"otc-container|otc-sidecar"}
-          - name: component_memory_usage
-            units: bytes
-            query: >-
-              container_memory_usage_bytes{namespace="nktp",job="kubelet-cadvisor",pod=~"nktp-(daemonset|gateway-(metrics|logs|traces)|large-target-metrics|cluster-events|watchdog|mixed-workload-blackhole)-collector-.+",container=~"otc-container|otc-sidecar"}
           - name: component_throttling
             units: ratio
             query: >-
@@ -873,10 +1046,6 @@ stages:
             units: bytes
             query: >-
               otelcol_process_runtime_heap_alloc_bytes{job=~"nktp-(daemonset|gateway-(metrics|logs|traces)|large-target-metrics|cluster-events|watchdog|mixed-workload-blackhole)(-sidecar)?|nktp-mixed-workload-metrics-adapter"}
-          - name: component_rss
-            units: bytes
-            query: >-
-              otelcol_process_memory_rss_bytes{job=~"nktp-(daemonset|gateway-(metrics|logs|traces)|large-target-metrics|cluster-events|watchdog|mixed-workload-blackhole)(-sidecar)?|nktp-mixed-workload-metrics-adapter"}
           - name: self_metric_age
             units: seconds
             query: >-
@@ -889,11 +1058,6 @@ stages:
             units: bytes
             query: >-
               otelcol_exporter_queue_capacity{job=~"nktp-(daemonset|gateway-(metrics|logs|traces)|large-target-metrics|cluster-events|watchdog|mixed-workload-blackhole)(-sidecar)?|nktp-mixed-workload-metrics-adapter"}
-          - name: queue_occupancy
-            units: ratio
-            query: >-
-              otelcol_exporter_queue_size{job=~"nktp-(daemonset|gateway-(metrics|logs|traces)|large-target-metrics|cluster-events|watchdog|mixed-workload-blackhole)(-sidecar)?|nktp-mixed-workload-metrics-adapter"}
-              / ignoring(data_type) otelcol_exporter_queue_capacity{job=~"nktp-(daemonset|gateway-(metrics|logs|traces)|large-target-metrics|cluster-events|watchdog|mixed-workload-blackhole)(-sidecar)?|nktp-mixed-workload-metrics-adapter"}
           - name: pod_inventory
             units: info
             query: >-
@@ -932,10 +1096,6 @@ stages:
             units: replicas
             query: >-
               kube_horizontalpodautoscaler_status_desired_replicas{namespace="nktp",horizontalpodautoscaler=~"nktp-(daemonset|gateway-(metrics|logs|traces)|large-target-metrics|cluster-events|watchdog|mixed-workload-blackhole)-collector"}
-          - name: hpa_max_replicas
-            units: replicas
-            query: >-
-              kube_horizontalpodautoscaler_spec_max_replicas{namespace="nktp",horizontalpodautoscaler=~"nktp-(daemonset|gateway-(metrics|logs|traces)|large-target-metrics|cluster-events|watchdog|mixed-workload-blackhole)-collector"}
           - name: hpa_conditions
             units: bool
             query: >-

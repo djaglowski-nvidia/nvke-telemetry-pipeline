@@ -8,6 +8,7 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -17,6 +18,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	netutil "k8s.io/apimachinery/pkg/util/net"
 	"k8s.io/apimachinery/pkg/util/wait"
 	appsclient "k8s.io/client-go/kubernetes/typed/apps/v1"
 	coreclient "k8s.io/client-go/kubernetes/typed/core/v1"
@@ -26,6 +28,8 @@ import (
 const (
 	// statefulSetPollInterval spaces readiness and deletion observations.
 	statefulSetPollInterval = time.Second
+	// statefulSetReadAttempts bounds consecutive transient read failures.
+	statefulSetReadAttempts = 3
 	// statefulSetCleanupTimeout bounds cleanup after the run context expires.
 	statefulSetCleanupTimeout = 5 * time.Minute
 )
@@ -93,7 +97,7 @@ func (g *StatefulSetGenerator) Run(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("configure Kubernetes client: %w", err)
 	}
-	config.Timeout = 10 * time.Second
+	config.Timeout = 30 * time.Second
 	config.QPS, config.Burst = -1, -1
 	// apps uses the real typed client for controller operations.
 	apps, err := appsclient.NewForConfig(config)
@@ -177,13 +181,29 @@ func newStatefulSet(cfg statefulSetConfig) *appsv1.StatefulSet {
 func waitForStatefulSet(ctx context.Context, sets appsclient.StatefulSetInterface, owned *appsv1.StatefulSet, duration time.Duration) error {
 	// readyAt records first readiness without resetting on Pod replacement.
 	var readyAt time.Time
+	readFailures := 0
 	// err retains lookup failures and the caller's cancellation cause.
 	err := wait.PollUntilContextCancel(ctx, statefulSetPollInterval, true, func(ctx context.Context) (bool, error) {
 		// current must still be the controller created by this run.
 		current, err := sets.Get(ctx, owned.Name, metav1.GetOptions{})
 		if err != nil {
+			readFailures++
+			// Retry server overload and ordinary connection closure on this read.
+			// API status takes precedence, keeping authentication failures terminal.
+			transient := apierrors.IsTimeout(err) || apierrors.IsServerTimeout(err) ||
+				apierrors.IsTooManyRequests(err) || apierrors.IsServiceUnavailable(err)
+			var status apierrors.APIStatus
+			if !errors.As(err, &status) {
+				transient = netutil.IsProbableEOF(err)
+			}
+			if ctx.Err() == nil && transient && readFailures < statefulSetReadAttempts {
+				slog.WarnContext(ctx, "StatefulSet read delayed", "name", owned.Name,
+					"attempt", readFailures, "error", err)
+				return false, nil
+			}
 			return false, err
 		}
+		readFailures = 0
 		if current.UID != owned.UID || current.DeletionTimestamp != nil {
 			return false, errors.New("StatefulSet was replaced or is being deleted")
 		}

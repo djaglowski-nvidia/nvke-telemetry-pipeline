@@ -3,13 +3,14 @@
 - [Plan](plans/mixed-workload.yaml) · [Profile](mixed-workload-values.yaml)
 - Load: 100k series and about 4 GiB/hour each of logs and spans per worker
 - Paths: node, Events and large-target collectors → gateways → blackhole
-- OTLP uses gRPC. Collector-to-gateway connections retain the chart's mTLS defaults.
-- NKTP: default resources and autoscaling
+- NKTP: chart resource and autoscaling defaults, with mTLS for collector-to-gateway and observation traffic
 
 ## Load
 
 The plan runs nine generators in parallel within one stage, alongside a shared
-Prometheus measurement.
+Prometheus measurement. Init containers stagger each group to approximately
+25%, 50% and 100% load at zero, five and ten minutes. Delays start when each Pod
+is scheduled, so waves can overlap. Small groups round the split.
 
 Each of 100 workers runs 100 local generator Pods:
 
@@ -65,29 +66,30 @@ The combined workload has 24.4M synthetic series.
 Stop other generators. From the repository root, install the adapted profile
 alone, including its `extraObjects`. Installation waits for readiness and forwards
 [Prometheus](http://127.0.0.1:9090) and [Grafana](http://127.0.0.1:3000).
-Bundled NKTP dashboards are available in Grafana.
+Bundled NKTP dashboards are available in Grafana. When using a custom internal
+CA, update the profile's client Certificate issuer to match.
 
 ```sh
 export KUBECONFIG="/absolute/path/to/kubeconfig"
 task scale:install KUBECONFIG="$KUBECONFIG" INSTALL_KWOK=false \
   HELM_VALUES_FILE=tests/scale/mixed-workload-values.yaml
 RUN_ID="mixed-$(date -u +%Y%m%d%H%M%S)"
-task scale:test KUBECONFIG="$KUBECONFIG" TEST_TIMEOUT=115m -- \
+task scale:test KUBECONFIG="$KUBECONFIG" TEST_TIMEOUT=125m -- \
   -plan "$PWD/tests/scale/plans/mixed-workload.yaml" -arg run-id="$RUN_ID"
 ```
 
 ## Results
 
-- Window: at least ten minutes warm-up, then 30 settled minutes with no soak. Verify per-node placement and throughput before selecting the window.
-- Runtime: 90 minutes per StatefulSet after readiness, 100-minute observations, 105-minute plan ceiling. Cancel after saving the selected window.
+- Window: 30 minutes at full load after the ramp. Verify per-node placement and throughput before selecting the window.
+- Runtime: 90 minutes per StatefulSet after readiness and per Event producer after seeding, 110-minute observations, 115-minute plan ceiling. Cancel after saving the selected window.
 - Load: targets, series, stdout records, received logs/spans, payload and serialized OTLP bytes and singleton Event acceptance.
 - Performance: generator, main collector and sidecar CPU/memory, observed peaks, throttling, queues and HPA replicas.
 - Health: readiness, restarts, termination reasons, refusals, export failures and observation freshness.
-- Events: compare successful PATCHes with singleton acceptance, which includes background Events. Require zero failed requests and dropped iterations.
+- Events: require 1,000 run-specific singleton receipts/s across 100 workers, 10 successful PATCHes/s per producer, and zero failed PATCHes or dropped iterations. Exclude seeding and cleanup.
 - Cleanup: automatic generator removal on completion, failure or cancellation. Retain LGTM and the dashboard for review.
 
 ## Limitations
 
-- The harness records observations without performance thresholds. Missing data is not zero.
+- This plan records observations without automated performance checks. Missing or stale data cannot qualify the run.
 - Check 64 KiB log reconstruction and rotation. Source scrape health alone does not establish OTLP delivery.
 - Repetitive payloads compress unusually well. Blackhole cannot verify durable delivery. LGTM storage is temporary.

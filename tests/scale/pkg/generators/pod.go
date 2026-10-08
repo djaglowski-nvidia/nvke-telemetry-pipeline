@@ -84,7 +84,7 @@ func (g *PodGenerator) Run(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("configure Kubernetes client: %w", err)
 	}
-	config.Timeout = 10 * time.Second
+	config.Timeout = 30 * time.Second
 	// Let the scale workload reach the API without client-side throttling.
 	config.QPS, config.Burst = -1, -1
 	// core provides the typed Pod API without a separate client abstraction.

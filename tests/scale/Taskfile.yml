@@ -185,15 +185,15 @@ tasks:
         while read -r name mode allocator; do
           case "$mode" in
             deployment|statefulset|daemonset)
-              kubectl_environment wait --for=create "$mode/$name-collector" --timeout=5m || exit $?
-              kubectl_environment rollout status "$mode/$name-collector" --timeout=5m || exit $?
+              kubectl_environment wait --for=create "$mode/$name-collector" --timeout=20m || exit $?
+              kubectl_environment rollout status "$mode/$name-collector" --timeout=20m || exit $?
               ;;
             sidecar) ;;
             *) echo "Unsupported collector mode: $mode" >&2; exit 1 ;;
           esac
           if test "$allocator" = true; then
-            kubectl_environment wait --for=create "deployment/$name-targetallocator" --timeout=5m || exit $?
-            kubectl_environment rollout status "deployment/$name-targetallocator" --timeout=5m || exit $?
+            kubectl_environment wait --for=create "deployment/$name-targetallocator" --timeout=20m || exit $?
+            kubectl_environment rollout status "deployment/$name-targetallocator" --timeout=20m || exit $?
           fi
         done <<EOF_COLLECTORS
         $collectors

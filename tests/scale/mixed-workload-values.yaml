@@ -80,7 +80,7 @@ daemonset:
                 - set(attributes["scale_bucket"], "small") where resource.attributes["k8s.container.name"] == "vector-stdout-small"
                 - set(attributes["scale_bucket"], "large") where resource.attributes["k8s.container.name"] == "vector-stdout-large"
       service:
-        telemetry:
+        telemetry: &loadTelemetry
           metrics:
             level: detailed
             views:
@@ -102,8 +102,11 @@ daemonset:
       exporters:
         otlp/scale_payload:
           endpoint: nktp-watchdog-collector:4317
-          tls:
-            insecure: true
+          tls: &watchdogClientTLS
+            ca_file: /etc/nktp/internal-tls/client/ca.crt
+            cert_file: /etc/nktp/internal-tls/client/tls.crt
+            key_file: /etc/nktp/internal-tls/client/tls.key
+            reload_interval: 1h
           sending_queue:
             sizer: bytes
             queue_size: 8388608
@@ -122,15 +125,7 @@ gateway_metrics:
   otelcol:
     config:
       service:
-        telemetry:
-          metrics:
-            level: detailed
-            views:
-              - selector: {meter_name: go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc}
-                stream: {aggregation: {drop: {}}}
-              - selector: {meter_name: go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp}
-                stream: {aggregation: {drop: {}}}
-          traces: {level: none}
+        telemetry: *loadTelemetry
       exporters:
         otlp:
           endpoint: nktp-mixed-workload-blackhole-collector:4317
@@ -142,15 +137,7 @@ gateway_logs:
   otelcol:
     config:
       service:
-        telemetry:
-          metrics:
-            level: detailed
-            views:
-              - selector: {meter_name: go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc}
-                stream: {aggregation: {drop: {}}}
-              - selector: {meter_name: go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp}
-                stream: {aggregation: {drop: {}}}
-          traces: {level: none}
+        telemetry: *loadTelemetry
       exporters:
         otlp:
           endpoint: nktp-mixed-workload-blackhole-collector:4317
@@ -162,15 +149,7 @@ gateway_traces:
   otelcol:
     config:
       service:
-        telemetry:
-          metrics:
-            level: detailed
-            views:
-              - selector: {meter_name: go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc}
-                stream: {aggregation: {drop: {}}}
-              - selector: {meter_name: go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp}
-                stream: {aggregation: {drop: {}}}
-          traces: {level: none}
+        telemetry: *loadTelemetry
       exporters:
         otlp:
           endpoint: nktp-mixed-workload-blackhole-collector:4317
@@ -188,15 +167,7 @@ large_target_metrics:
             global:
               extra_scrape_metrics: true
       service:
-        telemetry:
-          metrics:
-            level: detailed
-            views:
-              - selector: {meter_name: go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc}
-                stream: {aggregation: {drop: {}}}
-              - selector: {meter_name: go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp}
-                stream: {aggregation: {drop: {}}}
-          traces: {level: none}
+        telemetry: *loadTelemetry
 
 cluster_events:
   kubernetes:
@@ -207,16 +178,51 @@ cluster_events:
       receivers:
         k8s_events:
           dedup_interval: 0s
+      connectors:
+        count/scale_events:
+          logs:
+            nktp_scale_events_accepted:
+              conditions:
+                - attributes["k8s.event.reason"] == "NKTPScaleTest" and attributes["test_run_id"] != nil
+              attributes: [{key: test_run_id}, {key: scale_node}]
+      processors:
+        transform/scale_events:
+          error_mode: propagate
+          log_statements:
+            - context: log
+              conditions:
+                - attributes["k8s.event.reporting_controller"] == "nktp.nvidia.io/scale-test"
+              statements:
+                - set(attributes["test_run_id"], attributes["k8s.event.reporting_instance"])
+                - set(attributes["scale_node"], resource.attributes["k8s.node.name"])
+        batch/scale_events: {timeout: 1s, send_batch_size: 8192, send_batch_max_size: 8192}
+        transform/scale_events_time:
+          error_mode: propagate
+          metric_statements:
+            - context: datapoint
+              statements:
+                - set(time_unix_nano, UnixNano(Now()))
+                - set(start_time_unix_nano, time_unix_nano)
+        deltatocumulative/scale_events: {max_stale: 5m, max_streams: 1024}
+        interval/scale_events: {interval: 15s}
+      exporters:
+        otlp/scale_events:
+          endpoint: nktp-watchdog-collector:4317
+          tls: *watchdogClientTLS
+          sending_queue:
+            sizer: bytes
+            queue_size: 8388608
+            num_consumers: 1
       service:
-        telemetry:
-          metrics:
-            level: detailed
-            views:
-              - selector: {meter_name: go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc}
-                stream: {aggregation: {drop: {}}}
-              - selector: {meter_name: go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp}
-                stream: {aggregation: {drop: {}}}
-          traces: {level: none}
+        pipelines:
+          logs:
+            processors: [memory_limiter, transform/event_service, transform/scale_events, redaction/basic_v1]
+            exporters: [otlp, count/scale_events]
+          metrics/scale_events:
+            receivers: [count/scale_events]
+            processors: [batch/scale_events, transform/scale_events_time, deltatocumulative/scale_events, interval/scale_events]
+            exporters: [otlp/scale_events]
+        telemetry: *loadTelemetry
 
 kube-state-metrics:
   metricLabelsAllowlist:
@@ -251,6 +257,20 @@ opentelemetry-kube-stack:
     nodeSelector: *systemSelector
     tolerations: *systemTolerations
   extraObjects:
+    # Use the same issuer here if overriding certManager.internalTLS.issuerRef.
+    - apiVersion: cert-manager.io/v1
+      kind: Certificate
+      metadata:
+        name: nktp-mixed-workload-client
+        namespace: '{{ .Release.Namespace }}'
+      spec:
+        secretName: nktp-mixed-workload-client-tls
+        commonName: nktp-mixed-workload
+        duration: 2160h
+        renewBefore: 360h
+        usages: [client auth]
+        privateKey: {rotationPolicy: Always}
+        issuerRef: {name: nktp-internal-ca-issuer, kind: Issuer, group: cert-manager.io}
     - apiVersion: monitoring.coreos.com/v1
       kind: PodMonitor
       metadata:
@@ -312,6 +332,11 @@ opentelemetry-kube-stack:
         image: otel/opentelemetry-collector-k8s:0.159.0
         mode: deployment
         replicas: 8
+        volumes:
+          - name: observation-tls
+            secret: {secretName: nktp-mixed-workload-client-tls}
+        volumeMounts:
+          - {name: observation-tls, mountPath: /etc/nktp/internal-tls/client, readOnly: true}
         nodeSelector: *systemSelector
         tolerations: *systemTolerations
         topologySpreadConstraints:
@@ -392,9 +417,11 @@ opentelemetry-kube-stack:
                   - periodic:
                       exporter:
                         otlp:
-                          # The SDK uses http:// to select plaintext gRPC.
                           protocol: grpc
-                          endpoint: http://nktp-watchdog-collector:4317
+                          endpoint: https://nktp-watchdog-collector:4317
+                          certificate: /etc/nktp/internal-tls/client/ca.crt
+                          client_certificate: /etc/nktp/internal-tls/client/tls.crt
+                          client_key: /etc/nktp/internal-tls/client/tls.key
             pipelines:
               metrics:
                 receivers: [otlp]
@@ -726,7 +753,10 @@ opentelemetry-kube-stack:
             otlp/observations:
               endpoint: nktp-watchdog-collector:4317
               tls:
-                insecure: true
+                ca_file: /etc/nktp/internal-tls/client/ca.crt
+                cert_file: /etc/nktp/internal-tls/client/tls.crt
+                key_file: /etc/nktp/internal-tls/client/tls.key
+                reload_interval: 1h
               sending_queue:
                 enabled: false
           service:
@@ -742,7 +772,10 @@ opentelemetry-kube-stack:
                       exporter:
                         otlp:
                           protocol: grpc
-                          endpoint: http://nktp-watchdog-collector:4317
+                          endpoint: https://nktp-watchdog-collector:4317
+                          certificate: /etc/nktp/internal-tls/client/ca.crt
+                          client_certificate: /etc/nktp/internal-tls/client/tls.crt
+                          client_key: /etc/nktp/internal-tls/client/tls.key
               traces: {level: none}
             pipelines:
               metrics/load:

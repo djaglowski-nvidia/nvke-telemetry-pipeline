@@ -6,6 +6,8 @@ package generators
 import (
 	"context"
 	"errors"
+	"io"
+	"net"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -17,6 +19,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/fake"
 	ktesting "k8s.io/client-go/testing"
@@ -336,6 +339,65 @@ func TestStatefulSetGeneratorCount(t *testing.T) {
 				remaining, err := client.AppsV1().StatefulSets("workloads").List(t.Context(), metav1.ListOptions{})
 				require.NoError(t, err)
 				assert.Empty(t, remaining.Items, "every started StatefulSet is cleaned up")
+			})
+		})
+	}
+}
+
+func TestStatefulSetReadFailures(t *testing.T) {
+	resource := schema.GroupResource{Group: "apps", Resource: "statefulsets"}
+	goaway := errors.New("http2: server sent GOAWAY and closed the connection; LastStreamID=855, ErrCode=NO_ERROR")
+	for _, test := range []struct {
+		name      string
+		failures  []error
+		wantReads int
+		wantErr   bool
+	}{
+		{name: "server timeout recovers", failures: []error{apierrors.NewTimeoutError("busy", 1)}, wantReads: 2},
+		{name: "server timeout response recovers", failures: []error{apierrors.NewServerTimeout(resource, "get", 1)}, wantReads: 2},
+		{name: "overload recovers", failures: []error{apierrors.NewTooManyRequests("busy", 1), apierrors.NewServiceUnavailable("busy")}, wantReads: 3},
+		{name: "bounded failures", failures: []error{apierrors.NewServiceUnavailable("busy"), apierrors.NewServiceUnavailable("busy"), apierrors.NewServiceUnavailable("busy")}, wantReads: 3, wantErr: true},
+		{name: "budget resets after success", failures: []error{apierrors.NewServiceUnavailable("busy"), nil, apierrors.NewServiceUnavailable("busy"), apierrors.NewServiceUnavailable("busy")}, wantReads: 5},
+		{name: "GOAWAY recovers", failures: []error{goaway}, wantReads: 2},
+		{name: "unexpected EOF recovers", failures: []error{io.ErrUnexpectedEOF}, wantReads: 2},
+		{name: "GOAWAY budget exhausted", failures: []error{goaway, goaway, goaway}, wantReads: 3, wantErr: true},
+		{name: "GOAWAY budget resets after success", failures: []error{goaway, nil, goaway, goaway}, wantReads: 5},
+		{name: "unauthorized GOAWAY stops", failures: []error{apierrors.NewUnauthorized(goaway.Error())}, wantReads: 1, wantErr: true},
+		{name: "forbidden GOAWAY stops", failures: []error{apierrors.NewForbidden(resource, "owned", goaway)}, wantReads: 1, wantErr: true},
+		{name: "VPN route failure stops", failures: []error{errors.New("no route to host")}, wantReads: 1, wantErr: true},
+		{name: "unauthorized stops", failures: []error{apierrors.NewUnauthorized("expired")}, wantReads: 1, wantErr: true},
+		{name: "forbidden stops", failures: []error{apierrors.NewForbidden(resource, "owned", errors.New("denied"))}, wantReads: 1, wantErr: true},
+		{name: "transport timeout stops", failures: []error{&net.DNSError{Err: "timeout", IsTimeout: true}}, wantReads: 1, wantErr: true},
+		{name: "missing stops", failures: []error{apierrors.NewNotFound(resource, "owned")}, wantReads: 1, wantErr: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				owned := &appsv1.StatefulSet{ObjectMeta: metav1.ObjectMeta{Name: "owned", Namespace: "nktp", UID: "original"}, Spec: appsv1.StatefulSetSpec{Replicas: new(int32(1))}}
+				client := fake.NewClientset()
+				reads := 0
+				client.PrependReactor("get", "statefulsets", func(ktesting.Action) (bool, runtime.Object, error) {
+					reads++
+					if reads <= len(test.failures) && test.failures[reads-1] != nil {
+						return true, nil, test.failures[reads-1]
+					}
+					current := owned.DeepCopy()
+					if reads > len(test.failures) {
+						current.Status.ReadyReplicas = 1
+					}
+					return true, current, nil
+				})
+				ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+				defer cancel()
+				err := waitForStatefulSet(ctx, client.AppsV1().StatefulSets("nktp"), owned, 0)
+				assert.Equal(t, test.wantReads, reads)
+				if test.wantErr {
+					require.Error(t, err)
+				} else {
+					require.NoError(t, err)
+				}
+				for _, action := range client.Actions() {
+					assert.Equal(t, "get", action.GetVerb())
+				}
 			})
 		})
 	}
