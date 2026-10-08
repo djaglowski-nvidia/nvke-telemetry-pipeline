@@ -15,7 +15,7 @@ For 10,000 real Pods with continuous replacement, see the
 [Pod churn guide](10k-pods.md).
 
 For Kubernetes Event load through the scale harness, see the
-[kube-burner plan and profile](kube-burner-events.md).
+[Kubernetes Events guide](kube-events.md).
 
 For metrics, stdout logs, spans, Events and large-target load together, see the
 [mixed workload guide](mixed-workload.md).

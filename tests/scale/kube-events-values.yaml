@@ -25,7 +25,7 @@ gateway_logs:
     config:
       exporters:
         otlp:
-          endpoint: nktp-kube-burner-events-blackhole-collector:4317
+          endpoint: nktp-kube-events-blackhole-collector:4317
 
 gateway_metrics:
   kubernetes:
@@ -47,6 +47,11 @@ cluster_events:
   kubernetes:
     nodeSelector: *systemSelector
     tolerations: *systemTolerations
+  otelcol:
+    config:
+      receivers:
+        k8s_events:
+          dedup_interval: 0s
 
 kube-state-metrics:
   metricLabelsAllowlist:
@@ -91,7 +96,7 @@ opentelemetry-kube-stack:
     - apiVersion: networking.k8s.io/v1
       kind: NetworkPolicy
       metadata:
-        name: nktp-kube-burner-events-api-access
+        name: nktp-kube-events-api-access
         namespace: '{{ .Release.Namespace }}'
       spec:
         podSelector:
@@ -108,7 +113,7 @@ opentelemetry-kube-stack:
     - apiVersion: networking.k8s.io/v1
       kind: NetworkPolicy
       metadata:
-        name: nktp-kube-burner-events-allocator-api-access
+        name: nktp-kube-events-allocator-api-access
         namespace: '{{ .Release.Namespace }}'
       spec:
         podSelector:
@@ -121,7 +126,7 @@ opentelemetry-kube-stack:
     - apiVersion: opentelemetry.io/v1beta1
       kind: OpenTelemetryCollector
       metadata:
-        name: nktp-kube-burner-events-blackhole
+        name: nktp-kube-events-blackhole
         labels:
           helm.sh/chart: '{{ include "opentelemetry-kube-stack.chart" . }}'
         namespace: '{{ .Release.Namespace }}'
@@ -145,7 +150,7 @@ opentelemetry-kube-stack:
             nodeTaintsPolicy: Honor
             labelSelector:
               matchLabels:
-                app.kubernetes.io/name: nktp-kube-burner-events-blackhole-collector
+                app.kubernetes.io/name: nktp-kube-events-blackhole-collector
         config:
           extensions:
             health_check:
@@ -168,7 +173,7 @@ opentelemetry-kube-stack:
             extensions: [health_check]
             telemetry:
               resource:
-                service.name: nktp-kube-burner-events-blackhole
+                service.name: nktp-kube-events-blackhole
               metrics:
                 readers:
                   - periodic:
@@ -190,119 +195,131 @@ opentelemetry-kube-stack:
                 processors: [memory_limiter]
                 exporters: [nop]
 
-    # Each generator can create Events only in the release namespace.
+    # Generators create, patch and clean up Events in the release namespace.
     - apiVersion: v1
       kind: ServiceAccount
       metadata:
-        name: nktp-kube-burner-events
+        name: nktp-kube-events
         namespace: '{{ .Release.Namespace }}'
     - apiVersion: rbac.authorization.k8s.io/v1
       kind: Role
       metadata:
-        name: nktp-kube-burner-events
+        name: nktp-kube-events
         namespace: '{{ .Release.Namespace }}'
       rules:
         - apiGroups: [""]
           resources: [events]
-          verbs: [create]
+          verbs: [create, patch, delete]
     - apiVersion: rbac.authorization.k8s.io/v1
       kind: RoleBinding
       metadata:
-        name: nktp-kube-burner-events
+        name: nktp-kube-events
         namespace: '{{ .Release.Namespace }}'
       roleRef:
         apiGroup: rbac.authorization.k8s.io
         kind: Role
-        name: nktp-kube-burner-events
+        name: nktp-kube-events
       subjects:
         - kind: ServiceAccount
-          name: nktp-kube-burner-events
-          namespace: '{{ .Release.Namespace }}'
-    # Stock kube-burner verifies each replica's count with a cluster-wide Event LIST.
-    - apiVersion: rbac.authorization.k8s.io/v1
-      kind: ClusterRole
-      metadata:
-        name: '{{ .Release.Name }}-kube-burner-events-verify'
-      rules:
-        - apiGroups: [""]
-          resources: [events]
-          verbs: [list]
-    - apiVersion: rbac.authorization.k8s.io/v1
-      kind: ClusterRoleBinding
-      metadata:
-        name: '{{ .Release.Name }}-kube-burner-events-verify'
-      roleRef:
-        apiGroup: rbac.authorization.k8s.io
-        kind: ClusterRole
-        name: '{{ .Release.Name }}-kube-burner-events-verify'
-      subjects:
-        - kind: ServiceAccount
-          name: nktp-kube-burner-events
+          name: nktp-kube-events
           namespace: '{{ .Release.Namespace }}'
     - apiVersion: v1
       kind: ConfigMap
       metadata:
-        name: nktp-kube-burner-events
+        name: nktp-kube-events
         namespace: '{{ .Release.Namespace }}'
       data:
-        config.yaml: |
-          {{`{{- $count := env "EVENT_COUNT" | default "12000" | atoi -}}`}}
-          {{`{{- $qps := env "EVENT_QPS" | default "100" | atoi -}}`}}
-          {{`{{- $burst := env "EVENT_BURST" | default "1" | atoi -}}`}}
-          {{`{{- $messageBytes := env "EVENT_MESSAGE_BYTES" | default "1024" | atoi -}}`}}
-          {{`{{- if or (lt $count 1) (lt $qps 1) (lt $burst 1) -}}`}}
-          {{`{{- fail "EVENT_COUNT, EVENT_QPS and EVENT_BURST must be positive integers" -}}`}}
-          {{`{{- end -}}`}}
-          {{`{{- if or (lt $messageBytes 1) (gt $messageBytes 1024) -}}`}}
-          {{`{{- fail "EVENT_MESSAGE_BYTES must be between 1 and 1024" -}}`}}
-          {{`{{- end }}`}}
-          {{`{{- $runID := env "EVENT_RUN_ID" | default .UUID }}`}}
-          global:
-            gc: false
-            requestTimeout: 30s
-          jobs:
-            - name: nktp-events-{{`{{ .UUID }}`}}
-              jobType: create
-              namespace: {{ .Release.Namespace }}
-              namespacedIterations: false
-              jobIterations: {{`{{ $count }}`}}
-              qps: {{`{{ $qps }}`}}
-              burst: {{`{{ $burst }}`}}
-              cleanup: false
-              preLoadImages: false
-              podWait: false
-              waitWhenFinished: false
-              verifyObjects: true
-              errorOnVerify: true
-              maxWaitTimeout: 30s
-              objects:
-                - objectTemplate: event.yaml
-                  replicas: 1
-                  wait: false
-                  inputVars:
-                    messageBytes: {{`{{ $messageBytes }}`}}
-                    eventRunID: {{`{{ $runID | quote }}`}}
-        event.yaml: |
-          {{`{{- $timestamp := now | date "2006-01-02T15:04:05.000000000Z07:00" }}`}}
-          apiVersion: v1
-          kind: Event
-          metadata:
-            name: nktp-event-{{`{{ .UUID }}`}}-{{`{{ .Iteration }}`}}-{{`{{ .Replica }}`}}
-            namespace: {{ .Release.Namespace }}
-            labels:
-              scale.nktp.io/workload: kube-burner-events
-              scale.nktp.io/run-id: {{`{{ .eventRunID | quote }}`}}
-          involvedObject:
-            apiVersion: v1
-            kind: Pod
-            namespace: {{ .Release.Namespace }}
-            name: {{`{{ env "POD_NAME" | quote }}`}}
-            uid: {{`{{ env "POD_UID" | quote }}`}}
-          reason: NKTPScaleTest
-          type: Normal
-          message: '{{`{{ repeat (int .messageBytes) "x" }}`}}'
-          source:
-            component: kube-burner
-          firstTimestamp: '{{`{{ $timestamp }}`}}'
-          lastTimestamp: '{{`{{ $timestamp }}`}}'
-          count: 1
+        events.js: |
+          import http from 'k6/http';
+          import exec from 'k6/execution';
+          import { sleep } from 'k6';
+          import { Counter } from 'k6/metrics';
+
+          const count = 100; // 100 Events × 100 producers = 10,000 retained objects.
+          const api = 'https://kubernetes.default.svc/api/v1/namespaces/' + __ENV.POD_NAMESPACE + '/events';
+          const token = open('/var/run/secrets/kubernetes.io/serviceaccount/token').trim();
+          const owner = { apiVersion: 'v1', kind: 'Pod', name: __ENV.POD_NAME, uid: __ENV.POD_UID };
+          const successes = new Counter('event_patch_success');
+          const failures = new Counter('event_patch_failures');
+          // Zero samples keep the built-in dropped-iteration counter observable even without drops.
+          const dropped = new Counter('dropped_iterations');
+
+          export const options = {
+            scenarios: {
+              events: {
+                executor: 'constant-arrival-rate',
+                rate: 100, timeUnit: '1s', // 10,000 updates/s / 100 producers = 100 PATCHes/s.
+                duration: '2m', // 100/s × 120s × 100 producers = 1.2 million updates.
+                preAllocatedVUs: 64, maxVUs: 512, // Allow up to 100/s × 5s concurrent requests.
+                gracefulStop: '10s',
+              },
+            },
+            setupTimeout: '2m', teardownTimeout: '2m',
+            batch: 10, batchPerHost: 10,
+            systemTags: ['method', 'status', 'name'],
+            tags: { test_run_id: __ENV.EVENT_RUN_ID, scale_node: __ENV.NODE_NAME, producer_id: __ENV.POD_UID },
+            thresholds: {
+              http_req_failed: ['rate==0'],
+              dropped_iterations: ['count==0'],
+            },
+          };
+
+          function name(i) { return 'nktp-event-' + __ENV.POD_UID + '-' + i; }
+          function params(operation, statuses) {
+            return {
+              headers: { Authorization: 'Bearer ' + token, 'Content-Type': operation === 'patch' ? 'application/merge-patch+json' : 'application/json' },
+              timeout: '5s', tags: { name: 'event-' + operation },
+              responseType: operation === 'create' ? 'text' : 'none',
+              responseCallback: http.expectedStatuses(...statuses),
+            };
+          }
+
+          const patchParams = params('patch', [200]);
+
+          export function setup() {
+            const created = [];
+            try {
+              for (let i = 0; i < count; i++) {
+                const timestamp = new Date().toISOString();
+                const event = {
+                  apiVersion: 'v1', kind: 'Event',
+                  metadata: {
+                    name: name(i), namespace: __ENV.POD_NAMESPACE, ownerReferences: [owner],
+                    labels: { 'scale.nktp.io/workload': 'kube-events', 'scale.nktp.io/run-id': __ENV.EVENT_RUN_ID, 'scale.nktp.io/producer-id': __ENV.POD_UID },
+                  },
+                  involvedObject: { ...owner, namespace: __ENV.POD_NAMESPACE },
+                  reason: 'NKTPScaleTest', type: 'Normal', action: 'Scale',
+                  reportingComponent: 'nktp.nvidia.io/scale-test', reportingInstance: __ENV.EVENT_RUN_ID,
+                  message: 'x'.repeat(1024), source: { component: 'k6', host: __ENV.NODE_NAME },
+                  firstTimestamp: timestamp, lastTimestamp: timestamp, count: 1,
+                };
+                const response = http.post(api, JSON.stringify(event), params('create', [201]));
+                if (response.status !== 201) throw new Error('Event seed failed: HTTP ' + response.status);
+                created.push({ name: name(i), uid: response.json('metadata.uid') });
+                sleep(0.1); // Seed at no more than 10 creates/s per producer.
+              }
+            } catch (error) {
+              teardown(created); // k6 does not invoke teardown after a failed setup.
+              throw error;
+            }
+            return created;
+          }
+
+          export default function () {
+            const iteration = exec.scenario.iterationInTest;
+            // Cycle through 100 names, advancing each Event count once per second.
+            const patch = { count: Math.floor(iteration / count) + 2, lastTimestamp: new Date().toISOString() };
+            const response = http.patch(api + '/' + name(iteration % count), JSON.stringify(patch), patchParams);
+            successes.add(response.status === 200 ? 1 : 0);
+            failures.add(response.status === 200 ? 0 : 1);
+            dropped.add(0);
+          }
+
+          export function teardown(created) {
+            const requests = created.map(event => {
+              const body = JSON.stringify({ apiVersion: 'v1', kind: 'DeleteOptions', preconditions: { uid: event.uid } });
+              return ['DELETE', api + '/' + event.name, body, params('delete', [200, 202, 404])];
+            });
+            const failed = http.batch(requests).filter(r => ![200, 202, 404].includes(r.status)).length;
+            if (failed) throw new Error(failed + ' Event deletes failed, Pod ownership provides GC fallback');
+          }

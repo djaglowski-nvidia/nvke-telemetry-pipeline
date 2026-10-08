@@ -3,7 +3,7 @@
 - [Plan](plans/mixed-workload.yaml) · [Profile](mixed-workload-values.yaml)
 - Load: 100k series and about 4 GiB/hour each of logs and spans per worker
 - Paths: node, Events and large-target collectors → gateways → blackhole
-- OTLP uses gRPC; Collector-to-gateway connections retain the chart's mTLS defaults.
+- OTLP uses gRPC. Collector-to-gateway connections retain the chart's mTLS defaults.
 - NKTP: default resources and autoscaling
 
 ## Load
@@ -43,8 +43,9 @@ The large-target collector pool handles these additional targets at **60s / 55s*
 | 600,000 | 6 | 3,600,000 |
 | Total | 54 | 14,400,000 |
 
-One kube-burner Pod per worker creates 100 Events with 1 KiB messages, then
+One k6 Pod per worker creates 100 Events with 1 KiB messages, then
 updates them at 10/s for about 90 minutes: **1,000 updates/s** across 10,000 objects.
+See [Kubernetes Events](kube-events.md) for why k6 is used and how Events are cleaned up.
 The combined workload has 24.4M synthetic series.
 
 ## Cluster
@@ -54,7 +55,7 @@ The combined workload has 24.4M synthetic series.
 | Generators | 100 | 16 vCPU / 32 GiB | `nodeGroup=customer-cpu` |
 | NKTP and support | 8 | 64 vCPU / 128 GiB | `nodeGroup=system-cpu` |
 
-- Setup: [shared prerequisites](README.md#setup), existing fleet, healthy Metrics Server for HPA.
+- Setup: [shared prerequisites](README.md#setup), existing fleet, healthy Metrics Server for HPA. Workers must reach LGTM on port 9090 for k6 metrics.
 - Placement: 101 synthetic Pods on 46 workers and 102 on 54 workers, plus platform services. Reserve Pod slots and addresses.
 - Blackhole and bundled LGTM: 72 CPU / 80 GiB requested, plus capacity for NKTP and HPA.
 - Profile: adapt placement and API access settings to your cluster. Keep an untainted node for Helm cleanup. Set `CERT_MANAGER_VALUES_FILE` if needed.
@@ -82,11 +83,11 @@ task scale:test KUBECONFIG="$KUBECONFIG" TEST_TIMEOUT=115m -- \
 - Load: targets, series, stdout records, received logs/spans, payload and serialized OTLP bytes and singleton Event acceptance.
 - Performance: generator, main collector and sidecar CPU/memory, observed peaks, throttling, queues and HPA replicas.
 - Health: readiness, restarts, termination reasons, refusals, export failures and observation freshness.
-- Cleanup: automatic generator removal on completion, failure or cancellation. Generated Events are owned by their producer Pods and garbage-collected on removal. Retain LGTM and the dashboard for review.
+- Events: compare successful PATCHes with singleton acceptance, which includes background Events. Require zero failed requests and dropped iterations.
+- Cleanup: automatic generator removal on completion, failure or cancellation. Retain LGTM and the dashboard for review.
 
 ## Limitations
 
 - The harness records observations without performance thresholds. Missing data is not zero.
-- Kube-burner has no live success counter. Check its logs for patch errors and singleton acceptance for throughput, including background Events.
 - Check 64 KiB log reconstruction and rotation. Source scrape health alone does not establish OTLP delivery.
 - Repetitive payloads compress unusually well. Blackhole cannot verify durable delivery. LGTM storage is temporary.

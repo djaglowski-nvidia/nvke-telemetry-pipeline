@@ -1,0 +1,182 @@
+# One k6 Pod on each of 100 workers offers 10,000 Event updates/s total. See ../kube-events.md.
+# Install ../kube-events-values.yaml before running this plan.
+name: kube-events
+timeout: 20m
+stages:
+- name: events
+  generators:
+  - name: events
+    type: pod
+    spec:
+      count: 100
+      podTemplate:
+        metadata:
+          namespace: nktp
+          labels:
+            scale.nktp.io/workload: kube-events
+            scale.nktp.io/run-id: '{{ .Args.runId }}'
+        spec:
+          restartPolicy: Never
+          activeDeadlineSeconds: 1080
+          terminationGracePeriodSeconds: 150
+          automountServiceAccountToken: false
+          nodeSelector: {nodeGroup: customer-cpu}
+          tolerations:
+            - {key: skyhook.nvidia.com, operator: Equal, value: runtime-required, effect: NoSchedule}
+          affinity:
+            podAntiAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                - topologyKey: kubernetes.io/hostname
+                  labelSelector:
+                    matchLabels:
+                      scale.nktp.io/workload: kube-events
+                      scale.nktp.io/run-id: '{{ .Args.runId }}'
+          containers:
+            - name: k6-events
+              image: grafana/k6:2.3.0@sha256:9c2dee7f8ed74d317e4027c06a10f169b625638189de8d4555d0b3486a5aeb34
+              args: [run, --out, experimental-prometheus-rw, /etc/k6/events.js]
+              env:
+                - {name: GOMEMLIMIT, value: 512MiB}
+                - {name: K6_NO_USAGE_REPORT, value: 'true'}
+                - {name: K6_PROMETHEUS_RW_SERVER_URL, value: 'http://lgtm:9090/api/v1/write'}
+                - {name: K6_PROMETHEUS_RW_TREND_STATS, value: 'p(95)'}
+                - {name: SSL_CERT_FILE, value: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt}
+                - name: POD_NAMESPACE
+                  valueFrom: {fieldRef: {fieldPath: metadata.namespace}}
+                - name: POD_NAME
+                  valueFrom: {fieldRef: {fieldPath: metadata.name}}
+                - name: POD_UID
+                  valueFrom: {fieldRef: {fieldPath: metadata.uid}}
+                - name: NODE_NAME
+                  valueFrom: {fieldRef: {fieldPath: spec.nodeName}}
+                - name: EVENT_RUN_ID
+                  value: '{{ .Args.runId }}'
+              resources:
+                requests: {cpu: 250m, memory: 512Mi}
+                limits: {cpu: '1', memory: 1Gi}
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                runAsNonRoot: true
+                runAsUser: 65532
+                capabilities: {drop: [ALL]}
+              volumeMounts:
+                - {name: events-config, mountPath: /etc/k6, readOnly: true}
+                - {name: api-access, mountPath: /var/run/secrets/kubernetes.io/serviceaccount, readOnly: true}
+          serviceAccountName: nktp-kube-events
+          volumes:
+            - name: events-config
+              configMap: {name: nktp-kube-events}
+            - name: api-access
+              projected:
+                sources:
+                  # The mounted token covers generation and cleanup.
+                  - serviceAccountToken: {path: token, expirationSeconds: 7200}
+                  - configMap:
+                      name: kube-root-ca.crt
+                      items: [{key: ca.crt, path: ca.crt}]
+  measurement:
+    type: prometheus
+    spec:
+      endpoint: http://127.0.0.1:9090
+      duration: 5m
+      interval: 15s
+      query_timeout: 10s
+      measurements:
+        - name: producer_running_pods
+          units: count
+          query: >-
+            sum(
+              max by (namespace,pod) (
+                kube_pod_container_status_running{namespace="nktp",container="k6-events"}
+                and (time() - timestamp(kube_pod_container_status_running{namespace="nktp",container="k6-events"}) < 90)
+              )
+              and on (namespace,pod) (
+                kube_pod_labels{namespace="nktp",label_scale_nktp_io_run_id="{{ .Args.runId }}"}
+                and (time() - timestamp(kube_pod_labels{namespace="nktp",label_scale_nktp_io_run_id="{{ .Args.runId }}"}) < 90)
+              )
+            )
+        - name: producer_cpu_cores
+          units: cores
+          query: >-
+            sum by (pod) (
+              rate(container_cpu_usage_seconds_total{namespace="nktp",container="k6-events"}[2m])
+              and (time() - timestamp(container_cpu_usage_seconds_total{namespace="nktp",container="k6-events"}) < 90)
+              and on (namespace,pod) (
+                kube_pod_labels{namespace="nktp",label_scale_nktp_io_run_id="{{ .Args.runId }}"}
+                and (time() - timestamp(kube_pod_labels{namespace="nktp",label_scale_nktp_io_run_id="{{ .Args.runId }}"}) < 90)
+              )
+            )
+        - name: producer_memory_bytes
+          units: bytes
+          query: >-
+            max by (pod) (
+              container_memory_working_set_bytes{namespace="nktp",container="k6-events"}
+              and (time() - timestamp(container_memory_working_set_bytes{namespace="nktp",container="k6-events"}) < 90)
+              and on (namespace,pod) (
+                kube_pod_labels{namespace="nktp",label_scale_nktp_io_run_id="{{ .Args.runId }}"}
+                and (time() - timestamp(kube_pod_labels{namespace="nktp",label_scale_nktp_io_run_id="{{ .Args.runId }}"}) < 90)
+              )
+            )
+        - name: event_patches_succeeded
+          units: requests/s
+          query: >-
+            sum by (scale_node) (
+              rate(k6_event_patch_success_total{test_run_id="{{ .Args.runId }}"}[1m])
+              and (time() - timestamp(k6_event_patch_success_total{test_run_id="{{ .Args.runId }}"}) < 90)
+            )
+        - name: event_patches_failed
+          units: requests/s
+          query: >-
+            sum by (scale_node) (
+              rate(k6_event_patch_failures_total{test_run_id="{{ .Args.runId }}"}[1m])
+              and (time() - timestamp(k6_event_patch_failures_total{test_run_id="{{ .Args.runId }}"}) < 90)
+            )
+        - name: event_iterations_dropped
+          units: iterations
+          query: >-
+            sum by (scale_node) (
+              k6_dropped_iterations_total{test_run_id="{{ .Args.runId }}"}
+              and (time() - timestamp(k6_dropped_iterations_total{test_run_id="{{ .Args.runId }}"}) < 90)
+            )
+        - name: event_patch_latency_p95
+          units: seconds
+          query: >-
+            max by (scale_node) (
+              k6_http_req_duration_p95{test_run_id="{{ .Args.runId }}",name="event-patch"}
+              and (time() - timestamp(k6_http_req_duration_p95{test_run_id="{{ .Args.runId }}",name="event-patch"}) < 90)
+            )
+        - name: received_records_per_second
+          units: records/s
+          query: sum by (job,instance,receiver) (rate(otelcol_receiver_accepted_log_records_total{job=~"nktp-cluster-events|nktp-gateway-logs|nktp-kube-events-blackhole|nktp-watchdog"}[2m]))
+        - name: sent_records_per_second
+          units: records/s
+          query: sum by (job,instance,exporter) (rate(otelcol_exporter_sent_log_records_total{job=~"nktp-cluster-events|nktp-gateway-logs|nktp-kube-events-blackhole|nktp-watchdog"}[2m]))
+        - name: component_cpu_cores
+          units: cores
+          query: sum by (job,instance) (rate(otelcol_process_cpu_seconds_total{job=~"nktp-cluster-events|nktp-gateway-logs|nktp-kube-events-blackhole|nktp-watchdog"}[2m]))
+        - name: component_memory_bytes
+          units: bytes
+          query: otelcol_process_memory_rss_bytes{job=~"nktp-cluster-events|nktp-gateway-logs|nktp-kube-events-blackhole|nktp-watchdog"}
+        # These exporters use sending_queue.sizer: bytes, so queue size is serialized bytes.
+        - name: queue_bytes
+          units: bytes
+          query: otelcol_exporter_queue_size{job=~"nktp-cluster-events|nktp-gateway-logs|nktp-kube-events-blackhole|nktp-watchdog"}
+        - name: queue_utilization_ratio
+          units: ratio
+          query: otelcol_exporter_queue_size{job=~"nktp-cluster-events|nktp-gateway-logs|nktp-kube-events-blackhole|nktp-watchdog"} / otelcol_exporter_queue_capacity{job=~"nktp-cluster-events|nktp-gateway-logs|nktp-kube-events-blackhole|nktp-watchdog"}
+        - name: receiver_refused_records_per_second
+          units: records/s
+          query: sum by (job,instance,receiver) (rate(otelcol_receiver_refused_log_records_total{job=~"nktp-cluster-events|nktp-gateway-logs|nktp-kube-events-blackhole|nktp-watchdog"}[2m]))
+        - name: exporter_enqueue_failed_records_per_second
+          units: records/s
+          query: sum by (job,instance,exporter) (rate(otelcol_exporter_enqueue_failed_log_records_total{job=~"nktp-cluster-events|nktp-gateway-logs|nktp-kube-events-blackhole|nktp-watchdog"}[2m]))
+        - name: exporter_send_failed_records_per_second
+          units: records/s
+          query: sum by (job,instance,exporter) (rate(otelcol_exporter_send_failed_log_records_total{job=~"nktp-cluster-events|nktp-gateway-logs|nktp-kube-events-blackhole|nktp-watchdog"}[2m]))
+        - name: self_metrics_age_seconds
+          units: s
+          query: max by (job,instance) (time() - timestamp(otelcol_process_memory_rss_bytes{job=~"nktp-cluster-events|nktp-gateway-logs|nktp-kube-events-blackhole|nktp-watchdog"}))
+        - name: container_restarts
+          units: count
+          query: max by (pod,container) (increase(kube_pod_container_status_restarts_total{namespace="nktp",pod=~"nktp-cluster-events-.*|nktp-gateway-logs-.*|nktp-kube-events-blackhole-.*|nktp-watchdog-.*|lgtm-.*|scale-.*"}[2m]))
