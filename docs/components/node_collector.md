@@ -37,7 +37,9 @@ and `/etc/machine-id`, with journals in `/var/log/journal`. The Collector uses
 selective read-only host mounts and
 the `SYS_CHROOT` capability to run the host executable. The `/lib64` host volume
 is also mounted at `/hostfs/usr/lib64` for Red Hat library paths. Collection
-starts with new entries. Journal cursors are not persisted across Collector restarts.
+starts with new entries. Journal cursors are not persisted across Collector
+restarts by default. See
+[Enable log checkpoints for the node Collector](../guides/enable_daemonset_log_checkpoints.md).
 
 Override `root_path`, `journalctl_path`, and `directory` under
 `daemonset.otelcol.config.receivers.journald` for a different host layout.
@@ -82,7 +84,9 @@ Operator manager container logs go to watchdog through `logs/operator`.
 Use `daemonset.otelcol.config` for Collector configuration and
 `daemonset.kubernetes` for Kubernetes workload configuration. The pod-log mount
 is read-only, but host file permissions require the collector to run as root.
-The file reader follows new records and does not persist offsets across restarts.
+The file reader follows new records and does not persist offsets across restarts
+by default. See
+[Enable log checkpoints for the node Collector](../guides/enable_daemonset_log_checkpoints.md).
 Retain `GOMEMLIMIT` and `GOGC` when replacing its environment list.
 The chart adds `NODE_NAME`, `POD_NAMESPACE`, and `OTEL_K8S_NODE_IP` if the list
 omits them.
