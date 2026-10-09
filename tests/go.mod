@@ -3,7 +3,6 @@ module github.com/NVIDIA-dev/nktp/tests
 go 1.27.0
 
 require (
-	github.com/google/go-cmp v0.7.0
 	github.com/prometheus/client_golang v1.24.1
 	github.com/prometheus/common v0.72.0
 	github.com/stretchr/testify v1.12.1

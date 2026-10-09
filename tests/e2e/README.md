@@ -29,13 +29,12 @@ task e2e:down    # delete the cluster
 | `-chart` | Chart directory | `nktp/` |
 | `-namespace` | Release namespace | `nktp` |
 | `-values` | E2E values file | `tests/e2e/values.yaml` |
+| `-keep-release` | Keep the existing deployed helm release | `false` |
 
-Override the cluster with `task e2e:test KUBECONFIG=/path/to/kubeconfig`.
-For other overrides, run Go directly from `tests/e2e/` and pass suite flags after `-args`:
+**Example**:
 
-```sh
-go test -tags e2e -count=1 -v -timeout 30m . -args \
-  -kubeconfig=.kubeconfig -chart=../../nktp -namespace=nktp -values=values.yaml
+```
+task e2e:test -- -keep-release -chart /path/to/chart
 ```
 
 The suite installs and removes its release; point it only at a disposable cluster.
