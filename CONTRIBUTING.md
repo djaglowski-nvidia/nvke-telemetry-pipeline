@@ -139,11 +139,14 @@ wrote the change, or otherwise have the right to submit it under this project's
 license. It is a statement about where the code came from, not a claim that it
 is correct. There is no separate contributor license agreement to sign.
 
-`git commit -s` adds the line for you from your configured identity:
+`git commit -s` adds the line for you from your configured identity. Edit the
+name and email below before configuring them for this checkout:
 
 ```bash
-git config user.name "Your Name"
-git config user.email "you@example.com"
+GIT_AUTHOR_NAME="Your Name"
+GIT_AUTHOR_EMAIL=you@example.com
+git config --local user.name "$GIT_AUTHOR_NAME"
+git config --local user.email "$GIT_AUTHOR_EMAIL"
 git commit -s
 ```
 

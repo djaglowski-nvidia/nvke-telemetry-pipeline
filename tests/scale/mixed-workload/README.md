@@ -67,8 +67,10 @@ Stop other generators and install the adapted profile, including its `extraObjec
 When using a custom internal CA, update the profile's client Certificate issuer
 to match.
 
+Edit the absolute kubeconfig path below before running these commands.
+
 ```sh
-export KUBECONFIG="/absolute/path/to/kubeconfig"
+export KUBECONFIG=/path/to/kubeconfig
 task scale:install KUBECONFIG="$KUBECONFIG" INSTALL_KWOK=false \
   HELM_VALUES_FILE=tests/scale/mixed-workload/values.yaml
 RUN_ID="mixed-$(date -u +%Y%m%d%H%M%S)"

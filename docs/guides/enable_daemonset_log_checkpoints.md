@@ -16,10 +16,16 @@ contains every setting below.
 
 ## Enable checkpoints
 
-From the repository root, install or upgrade with the values example:
+Configure the Helm repositories as shown in [Getting started](../getting-started.md#install).
+From the repository root, build the chart dependencies, then install or upgrade
+with the values example. Edit the release name and namespace below to match
+your installation:
 
 ```console
-helm upgrade --install nktp ./nktp --namespace <release-namespace> \
+NKTP_RELEASE=nktp
+NKTP_NAMESPACE=nktp
+helm dependency build nktp
+helm upgrade --install "$NKTP_RELEASE" ./nktp --namespace "$NKTP_NAMESPACE" \
   --values docs/examples/daemonset_log_checkpoints.values.yaml
 ```
 
@@ -99,10 +105,12 @@ release when running more than one on the same nodes.
 
 ## Verify
 
-List the checkpoint files on a node:
+Set the node name below to a node running the Collector, then list its
+checkpoint files:
 
 ```console
-kubectl debug node/<node-name> -it --image=docker.io/library/busybox:1.37 \
+NKTP_NODE=your-node-name
+kubectl debug "node/$NKTP_NODE" -it --image=docker.io/library/busybox:1.37 \
   -- ls -la /host/var/lib/nktp/log-checkpoints
 ```
 

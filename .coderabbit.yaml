@@ -125,8 +125,10 @@ reviews:
         - Build tags present and matching the directory's intent, otherwise
           the suite silently never runs.
         - Cluster state cleaned up even on failure (`t.Cleanup`), and no
-          dependence on ambient kubectl context: the tooling only ever uses
-          `dev/.kubeconfig`.
+          use of arbitrary kubeconfigs or contexts. Dev tooling uses only
+          `dev/.kubeconfig`; e2e and scale use their suite-local kubeconfigs
+          or an explicitly supplied kubeconfig. Cluster operations must use
+          the selected file explicitly and leave unrelated contexts untouched.
         - Real timeouts and polling with context cancellation instead of bare
           `time.Sleep`.
         - Assertions should use `testify`: `require` where the test cannot

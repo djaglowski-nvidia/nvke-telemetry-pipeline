@@ -26,7 +26,7 @@
 | `nktp/dashboards/` | Grafana dashboards shipped with the chart | JSON, loaded by templates |
 | `occt/chart/` | OCCT library chart | The transpiler lives in `templates/_transpile.tpl` |
 | `occt/tests/` | Go golden tests for OCCT | `pass/<scenario>/values.yaml` renders to `output.yaml`; `test-chart/` is the fixture chart |
-| `tests/` | Go suites for integration, e2e, scale, and perf | Build-tagged; a suite's `Taskfile.yml` brings up its cluster and fetches dependencies, the Go suite does the rest; only the e2e suite is implemented and run in CI |
+| `tests/` | Go suites for integration, e2e, scale, and perf | Build-tagged; integration runs locally without a Kubernetes cluster; e2e and scale have Taskfiles for cluster setup and execution; only e2e runs in CI |
 | `dev/` | Local Kind and Tilt loop | Uses only `dev/.kubeconfig` and never other kubectl contexts |
 | `docs/` | Getting started, architecture, per-component pages, guides, and design documents | Each component's behavior and values are documented under `docs/components/`; design proposals go under `docs/designs/` |
 | `.github/` | Workflows, composite action, PR template, CODEOWNERS, issue forms | Changes here need explicit instruction |
@@ -44,7 +44,7 @@ Run these commands from the repository root.
 # once
 helm plugin install https://github.com/helm-unittest/helm-unittest.git --version 1.1.2
 
-# NKTP chart: what CI runs on every pull request
+# NKTP chart: unit tests, lint, and render
 task test
 helm lint nktp && helm template nktp nktp
 
@@ -56,7 +56,7 @@ git diff nktp/tests/__snapshot__/
 (cd occt/tests && go test ./...)
 (cd occt/tests && go test ./... -update)
 
-# NKTP chart: end-to-end tests on a Kind cluster, also run by CI
+# NKTP chart: end-to-end tests on a Kind cluster
 task e2e:up
 task e2e:test
 task e2e:down
@@ -68,12 +68,13 @@ task dev:down
 
 - Expected results or limitations: `task test` needs network access to add the
   upstream Helm repositories and build dependencies, then runs in a few
-  seconds. The OCCT tests download Go modules on first run. The OCCT golden
-  suite is not yet wired into CI. `task e2e:up` additionally needs a running
+  seconds. The OCCT tests download Go modules on first run.
+  `task e2e:up` additionally needs a running
   container runtime, Kind, and kubectl; it and the run that follows take
   minutes, because a cluster has to come up and pull every image the chart
-  installs. The cluster is the caller's to delete, with `task e2e:down`. The integration, scale, and
-  perf suites under `tests/` are still empty.
+  installs. The cluster is the caller's to delete, with `task e2e:down`.
+  Integration Collector tests require Docker and the pinned image; scale tests
+  use plans and a selected cluster.
 
 ## Working rules
 
@@ -94,6 +95,15 @@ task dev:down
    nearby code without being asked.
 6. **Stop after three failed attempts** at the same fix. Reassess and explain
    what is blocking instead of trying a fourth variation.
+7. **Keep documentation commands runnable as written.** Check Markdown
+   examples against the code, and ensure every referenced `task` target exists
+   in the relevant Taskfile. State prerequisites and the working directory.
+   Show short, editable assignments such as `NAMESPACE=nktp` or
+   `CA_FILE=/path/to/ca.crt` before commands that use them, and briefly tell
+   readers to edit the values before running. Quote variable references in
+   commands. Use this pattern instead of interactive `read -r` prompts or
+   separate variable-validation lines. Keep example output and pseudocommands
+   separate from runnable shell blocks.
 
 ## Secrets and credentials
 
@@ -180,7 +190,7 @@ Always:
 | Regenerate a snapshot to silence a failure | Find out why the rendered output changed first; the snapshot exists to catch exactly that |
 | Change `nktp/values.yaml` defaults to fix a local setup problem | Put the override in a `dev/configs/<name>/values.yaml` overlay and run `task dev:up -- <name>` |
 | Run `helm dependency update` as part of an unrelated change | Only in a deliberate dependency-bump PR; `task test` uses `helm dependency build`, which honors `Chart.lock` |
-| Point kubectl or Helm at a cluster other than the dev loop's | The dev tooling uses `dev/.kubeconfig` exclusively; do not read or write other contexts |
+| Use an arbitrary kubeconfig or context | Use `dev/.kubeconfig` for dev operations, or the suite-local or explicitly supplied kubeconfig for e2e and scale. Use the intended cluster's kubeconfig explicitly; leave unrelated contexts untouched |
 | Hardcode an image tag or upstream chart version in a template | Versions live in `nktp/Chart.yaml` and `nktp/values.yaml`; templates reference them |
 | Disable a bundled component in defaults to make something else work | Explain the interaction in an issue; default topology changes need discussion first |
 | Skip, delete, or loosen a failing test | Fix the actual issue, or say plainly that it is not fixed |

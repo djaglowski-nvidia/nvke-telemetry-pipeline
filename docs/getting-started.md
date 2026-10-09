@@ -31,7 +31,7 @@ that most often need preparing:
 TODO: installation instructions for the GHCR vended chart
 
 ```bash
-
+# TODO: Add installation commands for the GHCR vended chart.
 ```
 
 To install from a checkout instead, build the chart's dependencies first. Their

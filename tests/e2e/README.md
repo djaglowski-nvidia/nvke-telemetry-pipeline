@@ -29,12 +29,18 @@ task e2e:down    # delete the cluster
 | `-chart` | Chart directory | `nktp/` |
 | `-namespace` | Release namespace | `nktp` |
 | `-values` | E2E values file | `tests/e2e/values.yaml` |
-| `-keep-release` | Keep the existing deployed helm release | `false` |
+| `-keep-release` | Reuse a deployed release if present and keep the release after testing | `false` |
 
-**Example**:
+To test a different chart, edit the absolute chart path below:
 
+```sh
+E2E_CHART=/path/to/chart
+task e2e:test -- -chart "$E2E_CHART"
 ```
-task e2e:test -- -keep-release -chart /path/to/chart
-```
 
-The suite installs and removes its release; point it only at a disposable cluster.
+With `-keep-release`, an existing deployed release is reused and `-chart` is
+ignored. If no deployed release exists, the suite installs the specified chart
+and keeps it after testing.
+
+By default, the suite replaces its existing release and removes it after testing;
+point it only at a disposable cluster.

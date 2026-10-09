@@ -35,10 +35,12 @@ runtime journals from `/run/log/journal`. A dev config is a directory
 under `dev/configs/` holding a `values.yaml` that Tilt layers on top, the same
 as passing `-f` to helm. Use one to try a different configuration locally,
 such as pointing a workload at another backend, without touching
-`nktp/values.yaml`. See `dev/configs/contrib/`.
+`nktp/values.yaml`. Set `CONFIG` below to any directory name under
+`dev/configs/`; `contrib` is an example.
 
 ```sh
-task dev:up -- <name>             # start or reconfigure with dev/configs/<name>/
+CONFIG=contrib
+task dev:up -- "$CONFIG"          # use dev/configs/$CONFIG/values.yaml
 task dev:up                       # chart defaults with Kind host paths
 ```
 

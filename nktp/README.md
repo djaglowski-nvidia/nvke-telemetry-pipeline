@@ -52,21 +52,22 @@ Provide the following before installing NKTP.
 ## Install
 
 From a checkout, build the chart's dependencies first. Their archives aren't
-committed:
+committed. Set `NKTP_VALUES_FILE` below to your overrides file, or keep
+`nktp/values.yaml` to use the chart defaults:
 
 ```bash
+NKTP_VALUES_FILE=nktp/values.yaml
 helm repo add open-telemetry https://open-telemetry.github.io/opentelemetry-helm-charts
 helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
 helm repo add metrics-server https://kubernetes-sigs.github.io/metrics-server/
 helm dependency build nktp
 kubectl create namespace nktp
 kubectl label namespace nktp pod-security.kubernetes.io/enforce=privileged
-helm install nktp ./nktp --namespace nktp --values my-values.yaml --wait
+helm install nktp ./nktp --namespace nktp --values "$NKTP_VALUES_FILE" --wait
 ```
 
-`my-values.yaml` holds your overrides; leave it out to install with the
-defaults. The Operator creates the Collectors after `helm install --wait`
-returns, so check their Pods as well.
+The Operator creates the Collectors after `helm install --wait` returns, so
+check their Pods as well.
 
 ### Upgrading
 

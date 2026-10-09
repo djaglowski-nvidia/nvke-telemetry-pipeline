@@ -29,10 +29,11 @@ Create a local cluster with the [Kind configuration](environment/kind-config.yam
 export KUBECONFIG="$(task --silent scale:up)"
 ```
 
-For an existing cluster, authenticate with its provider and select its kubeconfig:
+For an existing cluster, authenticate with its provider, then edit the absolute
+kubeconfig path below:
 
 ```sh
-export KUBECONFIG=/absolute/path/to/kubeconfig
+export KUBECONFIG=/path/to/kubeconfig
 ```
 
 `scale:up` only provisions the local cluster and writes `tests/scale/.kubeconfig`.
@@ -62,8 +63,8 @@ uninstallation when KWOK is shared or not needed. The
 [KWOK policies](environment/kwok/stages) belong to environment setup.
 
 Tests use the selected kubeconfig's current context. Without an override,
-`scale:test` uses `tests/scale/.kubeconfig`. A Task variable such as
-`KUBECONFIG=/absolute/path/to/kubeconfig` selects another file. Relative Task
+`scale:test` uses `tests/scale/.kubeconfig`. Passing
+`KUBECONFIG="$KUBECONFIG"` as a Task variable selects the file set above. Relative Task
 paths resolve from the repository root, while `-plan` and `-kubeconfig` paths
 passed after `--` resolve from `tests/scale`. Prefer absolute paths.
 
