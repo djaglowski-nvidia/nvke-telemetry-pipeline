@@ -18,7 +18,7 @@ import (
 )
 
 // planPath selects a YAML plan relative to tests/scale or by absolute path.
-var planPath = flag.String("plan", "plans/noop.yaml", "scale test plan file")
+var planPath = flag.String("plan", "", "required scale test plan file")
 
 // kubeconfigPath selects one file for every Kubernetes-backed generator in the plan.
 var kubeconfigPath = flag.String("kubeconfig", os.Getenv("KUBECONFIG"), "kubeconfig file (default: tests/scale/.kubeconfig)")
@@ -35,8 +35,10 @@ func init() {
 }
 
 // TestRun loads a plan and logs consolidated reports after every stage completes.
-// The initial no-op implementations require neither Kubernetes nor a load backend.
 func TestRun(t *testing.T) {
+	if *planPath == "" {
+		t.Fatal("-plan is required; for example: task scale:test -- -plan examples/telemetrygen/plan.yaml")
+	}
 	args, err := runner.ParseArguments(argumentValues)
 	if err != nil {
 		t.Fatalf("Parse arguments: %v", err)

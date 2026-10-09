@@ -1,0 +1,172 @@
+name: telemetrygen
+timeout: 6m
+stages:
+  - name: load
+    generators:
+      - name: metrics
+        type: job
+        spec:
+          podTemplate:
+            metadata:
+              namespace: nktp
+              labels:
+                scale.nktp.io/workload: telemetrygen
+                scale.nktp.io/run-id: '{{ .Args.runId }}'
+            spec:
+              volumes:
+                - name: internal-tls-client
+                  secret:
+                    secretName: nktp-daemonset-client-tls
+              containers:
+                - name: generator
+                  image: ghcr.io/open-telemetry/opentelemetry-collector-contrib/telemetrygen:v0.159.0@sha256:bad7fde3119476a9177cc4b9f04307c9876fca5b5584e009aebd7123d7557658
+                  command:
+                    - /telemetrygen
+                  volumeMounts:
+                    - name: internal-tls-client
+                      mountPath: /etc/nktp/internal-tls/client
+                      readOnly: true
+                  args:
+                    - metrics
+                    - --otlp-endpoint=nktp-gateway-metrics-collector.nktp.svc:4317
+                    - --mtls
+                    - --ca-cert=/etc/nktp/internal-tls/client/ca.crt
+                    - --client-cert=/etc/nktp/internal-tls/client/tls.crt
+                    - --client-key=/etc/nktp/internal-tls/client/tls.key
+                    - --duration=3m
+                    - --rate=10
+                    - --workers=1
+                    - --telemetry-attributes=test_run_id="{{ .Args.runId }}"
+                    - --otlp-attributes=service.instance.id="$(POD_UID)"
+                    - --telemetry-attributes=generator_instance="$(POD_UID)"
+                    - --metric-type=Gauge
+                    - --unique-timeseries
+                    - --unique-timeseries-duration=24h
+                  env:
+                    - name: POD_UID
+                      valueFrom:
+                        fieldRef:
+                          fieldPath: metadata.uid
+                  resources:
+                    requests:
+                      cpu: 25m
+                      memory: 64Mi
+                    limits:
+                      cpu: 500m
+                      memory: 256Mi
+      - name: logs
+        type: job
+        spec:
+          podTemplate:
+            metadata:
+              namespace: nktp
+              labels:
+                scale.nktp.io/workload: telemetrygen
+                scale.nktp.io/run-id: '{{ .Args.runId }}'
+            spec:
+              volumes:
+                - name: internal-tls-client
+                  secret:
+                    secretName: nktp-daemonset-client-tls
+              containers:
+                - name: generator
+                  image: ghcr.io/open-telemetry/opentelemetry-collector-contrib/telemetrygen:v0.159.0@sha256:bad7fde3119476a9177cc4b9f04307c9876fca5b5584e009aebd7123d7557658
+                  command:
+                    - /telemetrygen
+                  volumeMounts:
+                    - name: internal-tls-client
+                      mountPath: /etc/nktp/internal-tls/client
+                      readOnly: true
+                  args:
+                    - logs
+                    - --otlp-endpoint=nktp-gateway-logs-collector.nktp.svc:4317
+                    - --mtls
+                    - --ca-cert=/etc/nktp/internal-tls/client/ca.crt
+                    - --client-cert=/etc/nktp/internal-tls/client/tls.crt
+                    - --client-key=/etc/nktp/internal-tls/client/tls.key
+                    - --duration=3m
+                    - --rate=10
+                    - --workers=1
+                    - --telemetry-attributes=test_run_id="{{ .Args.runId }}"
+                    - --otlp-attributes=service.instance.id="$(POD_UID)"
+                    - --telemetry-attributes=generator_instance="$(POD_UID)"
+                  env:
+                    - name: POD_UID
+                      valueFrom:
+                        fieldRef:
+                          fieldPath: metadata.uid
+                  resources:
+                    requests:
+                      cpu: 25m
+                      memory: 64Mi
+                    limits:
+                      cpu: 500m
+                      memory: 256Mi
+      - name: traces
+        type: job
+        spec:
+          podTemplate:
+            metadata:
+              namespace: nktp
+              labels:
+                scale.nktp.io/workload: telemetrygen
+                scale.nktp.io/run-id: '{{ .Args.runId }}'
+            spec:
+              volumes:
+                - name: internal-tls-client
+                  secret:
+                    secretName: nktp-daemonset-client-tls
+              containers:
+                - name: generator
+                  image: ghcr.io/open-telemetry/opentelemetry-collector-contrib/telemetrygen:v0.159.0@sha256:bad7fde3119476a9177cc4b9f04307c9876fca5b5584e009aebd7123d7557658
+                  command:
+                    - /telemetrygen
+                  volumeMounts:
+                    - name: internal-tls-client
+                      mountPath: /etc/nktp/internal-tls/client
+                      readOnly: true
+                  args:
+                    - traces
+                    - --otlp-endpoint=nktp-gateway-traces-collector.nktp.svc:4317
+                    - --mtls
+                    - --ca-cert=/etc/nktp/internal-tls/client/ca.crt
+                    - --client-cert=/etc/nktp/internal-tls/client/tls.crt
+                    - --client-key=/etc/nktp/internal-tls/client/tls.key
+                    - --duration=3m
+                    - --rate=10
+                    - --workers=1
+                    - --telemetry-attributes=test_run_id="{{ .Args.runId }}"
+                    - --otlp-attributes=service.instance.id="$(POD_UID)"
+                    - --telemetry-attributes=generator_instance="$(POD_UID)"
+                  env:
+                    - name: POD_UID
+                      valueFrom:
+                        fieldRef:
+                          fieldPath: metadata.uid
+                  resources:
+                    requests:
+                      cpu: 25m
+                      memory: 64Mi
+                    limits:
+                      cpu: 500m
+                      memory: 256Mi
+    measurement:
+      type: prometheus
+      spec:
+        endpoint: http://127.0.0.1:9090
+        duration: 4m
+        interval: 15s
+        query_timeout: 10s
+        measurements:
+          - name: active_series
+            units: series
+            query: count({test_run_id="{{ .Args.runId }}"})
+          - name: gateway_received_points_per_second
+            units: points/s
+            query: sum(rate(otelcol_receiver_accepted_metric_points_total{job="nktp-gateway-metrics"}[2m]))
+          - name: gateway_queue_bytes
+            units: bytes
+            query: sum by (instance, exporter) (otelcol_exporter_queue_size{job="nktp-gateway-metrics",data_type="metrics"})
+          - name: gateway_memory_bytes
+            units: bytes
+            query: otelcol_process_memory_rss_bytes{job="nktp-gateway-metrics"}

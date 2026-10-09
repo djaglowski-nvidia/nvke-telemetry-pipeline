@@ -10,8 +10,8 @@ tasks:
     preconditions:
       - sh: test -z {{.CLI_ARGS | shellQuote}} && test -z {{.HELM_VALUES_FILE | default "" | shellQuote}}
         msg: 'Install the environment separately with task scale:install.'
-      - sh: test -f kind-config.yaml
-        msg: 'Kind config file not found: tests/scale/kind-config.yaml'
+      - sh: test -f environment/kind-config.yaml
+        msg: 'Kind config file not found: tests/scale/environment/kind-config.yaml'
     cmds:
       - |
         for tool in docker kind kubectl; do
@@ -22,7 +22,7 @@ tasks:
         if printf '%s\n' "$clusters" | grep -Fxq -- nktp-scale; then
           echo "Cluster nktp-scale already exists." >&2
         else
-          kind create cluster --name nktp-scale --image {{.NODE_IMAGE | shellQuote}} --config kind-config.yaml --kubeconfig {{.TASKFILE_DIR | shellQuote}}/.kubeconfig >&2 || exit $?
+          kind create cluster --name nktp-scale --image {{.NODE_IMAGE | shellQuote}} --config environment/kind-config.yaml --kubeconfig {{.TASKFILE_DIR | shellQuote}}/.kubeconfig >&2 || exit $?
         fi
         kind export kubeconfig --name nktp-scale --kubeconfig {{.TASKFILE_DIR | shellQuote}}/.kubeconfig >&2 || exit $?
         nodes=$(kind get nodes --name nktp-scale) || exit $?
@@ -166,8 +166,8 @@ tasks:
         helm upgrade --install kwok-stage-fast https://github.com/kubernetes-sigs/kwok/releases/download/v0.8.0/kwok-stage-fast-chart-0.3.0.tgz {{.HELM_STAGE_APPLY_FLAGS}} --reset-values
         --namespace kube-system --kubeconfig {{.KUBECONFIG_PATH | shellQuote}} --kube-context {{.CONTEXT | shellQuote}}
         --wait --timeout 5m
-      - kubectl --kubeconfig {{.KUBECONFIG_PATH | shellQuote}} --context {{.CONTEXT | shellQuote}} patch stage pod-complete --type=merge --patch-file {{.ROOT_DIR | shellQuote}}/tests/scale/kwok/stages/pod-complete-selector-patch.yaml
-      - kubectl --kubeconfig {{.KUBECONFIG_PATH | shellQuote}} --context {{.CONTEXT | shellQuote}} apply -f {{.ROOT_DIR | shellQuote}}/tests/scale/kwok/stages/pod-complete-30s.yaml
+      - kubectl --kubeconfig {{.KUBECONFIG_PATH | shellQuote}} --context {{.CONTEXT | shellQuote}} patch stage pod-complete --type=merge --patch-file {{.ROOT_DIR | shellQuote}}/tests/scale/environment/kwok/stages/pod-complete-selector-patch.yaml
+      - kubectl --kubeconfig {{.KUBECONFIG_PATH | shellQuote}} --context {{.CONTEXT | shellQuote}} apply -f {{.ROOT_DIR | shellQuote}}/tests/scale/environment/kwok/stages/pod-complete-30s.yaml
 
   environment:wait:
     internal: true

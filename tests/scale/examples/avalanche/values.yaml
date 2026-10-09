@@ -1,0 +1,50 @@
+opentelemetry-kube-stack:
+  extraObjects:
+    - apiVersion: monitoring.coreos.com/v1
+      kind: PodMonitor
+      metadata:
+        name: nktp-example-avalanche-node-local
+        namespace: '{{ .Release.Namespace }}'
+      spec:
+        selector:
+          matchLabels:
+            scale.nktp.io/workload: avalanche
+            scale.nktp.io/route: node-local
+        podMetricsEndpoints:
+          - port: metrics
+            interval: 15s
+            scrapeTimeout: 10s
+            relabelings:
+              - sourceLabels:
+                  - __meta_kubernetes_pod_name
+                targetLabel: instance
+              - sourceLabels:
+                  - __meta_kubernetes_pod_label_scale_nktp_io_run_id
+                targetLabel: test_run_id
+              - targetLabel: scale_route
+                replacement: node-local
+    - apiVersion: monitoring.coreos.com/v1
+      kind: PodMonitor
+      metadata:
+        name: nktp-example-avalanche-large-target
+        namespace: '{{ .Release.Namespace }}'
+        labels:
+          nktp.nvidia.io/large-target: 'true'
+      spec:
+        selector:
+          matchLabels:
+            scale.nktp.io/workload: avalanche
+            scale.nktp.io/route: large-target
+        podMetricsEndpoints:
+          - port: metrics
+            interval: 15s
+            scrapeTimeout: 10s
+            relabelings:
+              - sourceLabels:
+                  - __meta_kubernetes_pod_name
+                targetLabel: instance
+              - sourceLabels:
+                  - __meta_kubernetes_pod_label_scale_nktp_io_run_id
+                targetLabel: test_run_id
+              - targetLabel: scale_route
+                replacement: large-target

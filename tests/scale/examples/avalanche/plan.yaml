@@ -1,0 +1,116 @@
+name: avalanche
+timeout: 6m
+stages:
+  - name: metrics
+    generators:
+      - name: node-local
+        type: statefulset
+        spec:
+          replicas: 1
+          duration: 3m
+          podTemplate:
+            metadata:
+              namespace: nktp
+              labels:
+                scale.nktp.io/workload: avalanche
+                scale.nktp.io/route: node-local
+                scale.nktp.io/run-id: '{{ .Args.runId }}'
+            spec:
+              containers:
+                - name: avalanche
+                  image: quay.io/prometheuscommunity/avalanche:v0.7.0@sha256:ea02e9599fcbb59a6fc7396656434faf200db7f1c259802e3dbb38cec81bd12a
+                  command:
+                    - /bin/avalanche
+                  args:
+                    - --port=9001
+                    - --gauge-metric-count=10
+                    - --counter-metric-count=0
+                    - --series-count=100
+                    - --series-interval=0
+                    - --metric-interval=0
+                    - --series-operation-mode=disabled
+                    - --const-label=generator_instance=$(POD_NAME)
+                    - --const-label=test_run_id={{ .Args.runId }}
+                  env:
+                    - name: POD_NAME
+                      valueFrom:
+                        fieldRef:
+                          fieldPath: metadata.name
+                  readinessProbe:
+                    httpGet:
+                      path: /metrics
+                      port: 9001
+                  ports:
+                    - name: metrics
+                      containerPort: 9001
+                  resources:
+                    requests:
+                      cpu: 25m
+                      memory: 64Mi
+                    limits:
+                      cpu: 500m
+                      memory: 256Mi
+      - name: large-target
+        type: statefulset
+        spec:
+          replicas: 1
+          duration: 3m
+          podTemplate:
+            metadata:
+              namespace: nktp
+              labels:
+                scale.nktp.io/workload: avalanche
+                scale.nktp.io/route: large-target
+                scale.nktp.io/run-id: '{{ .Args.runId }}'
+            spec:
+              containers:
+                - name: avalanche
+                  image: quay.io/prometheuscommunity/avalanche:v0.7.0@sha256:ea02e9599fcbb59a6fc7396656434faf200db7f1c259802e3dbb38cec81bd12a
+                  command:
+                    - /bin/avalanche
+                  args:
+                    - --port=9001
+                    - --gauge-metric-count=10
+                    - --counter-metric-count=0
+                    - --series-count=100
+                    - --series-interval=0
+                    - --metric-interval=0
+                    - --series-operation-mode=disabled
+                    - --const-label=generator_instance=$(POD_NAME)
+                    - --const-label=test_run_id={{ .Args.runId }}
+                  env:
+                    - name: POD_NAME
+                      valueFrom:
+                        fieldRef:
+                          fieldPath: metadata.name
+                  readinessProbe:
+                    httpGet:
+                      path: /metrics
+                      port: 9001
+                  ports:
+                    - name: metrics
+                      containerPort: 9001
+                  resources:
+                    requests:
+                      cpu: 25m
+                      memory: 64Mi
+                    limits:
+                      cpu: 500m
+                      memory: 256Mi
+    measurement:
+      type: prometheus
+      spec:
+        endpoint: http://127.0.0.1:9090
+        duration: 4m
+        interval: 15s
+        query_timeout: 10s
+        measurements:
+          - name: targets_up
+            units: bool
+            query: up{test_run_id="{{ .Args.runId }}",scale_route=~"node-local|large-target"}
+          - name: scraped_samples
+            units: samples
+            query: scrape_samples_scraped{test_run_id="{{ .Args.runId }}",scale_route=~"node-local|large-target"}
+          - name: scrape_duration
+            units: seconds
+            query: scrape_duration_seconds{test_run_id="{{ .Args.runId }}",scale_route=~"node-local|large-target"}

@@ -13,8 +13,6 @@ import (
 // newGenerator selects a generator constructor that validates its spec.
 func newGenerator(config ComponentSpec, kubeconfig string) (generator, error) {
 	switch config.Type {
-	case "noop":
-		return generators.NewNoop(config.Spec)
 	case "kubernetes":
 		return generators.NewKubernetesGenerator(config.Spec, kubeconfig)
 	case "pod":
@@ -31,8 +29,6 @@ func newGenerator(config ComponentSpec, kubeconfig string) (generator, error) {
 // newMeasurement selects a measurement constructor that validates its spec.
 func newMeasurement(config ComponentSpec) (measurement, error) {
 	switch config.Type {
-	case "noop":
-		return measurements.NewNoop(config.Spec)
 	case "prometheus":
 		return measurements.NewPrometheus(config.Spec)
 	default:

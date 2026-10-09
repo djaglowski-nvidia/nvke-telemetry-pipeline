@@ -1,0 +1,9 @@
+opentelemetry-kube-stack:
+  extraObjects:
+    - apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: nktp-watchdog-load
+        namespace: '{{ .Release.Namespace }}'
+      data:
+        log-body: '{{ repeat 1024 "x" }}'

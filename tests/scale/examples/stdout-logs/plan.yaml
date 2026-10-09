@@ -1,0 +1,115 @@
+name: stdout-logs
+timeout: 6m
+stages:
+  - name: load
+    generators:
+      - name: small
+        type: statefulset
+        spec:
+          count: 1
+          replicas: 1
+          duration: 3m
+          podTemplate:
+            metadata:
+              namespace: nktp
+              labels:
+                scale.nktp.io/workload: stdout-logs
+                scale.nktp.io/run-id: '{{ .Args.runId }}'
+                scale.nktp.io/bucket: small
+            spec:
+              automountServiceAccountToken: false
+              containers:
+                - name: vector-stdout
+                  image: ghcr.io/vectordotdev/vector:0.58.0-debian@sha256:1c1ea358c617ea0b23003d5af87f7a678b30f8f7096437e680380c47fc13d2d9
+                  args:
+                    - --threads
+                    - '1'
+                    - --config
+                    - /etc/vector/vector.yaml
+                  ports:
+                    - name: metrics
+                      containerPort: 9598
+                  readinessProbe:
+                    tcpSocket:
+                      port: metrics
+                  resources:
+                    requests:
+                      cpu: 25m
+                      memory: 64Mi
+                    limits:
+                      cpu: 500m
+                      memory: 128Mi
+                  volumeMounts:
+                    - name: config
+                      mountPath: /etc/vector
+              volumes:
+                - name: config
+                  configMap:
+                    name: nktp-stdout-logs-small
+      - name: large
+        type: statefulset
+        spec:
+          count: 1
+          replicas: 1
+          duration: 3m
+          podTemplate:
+            metadata:
+              namespace: nktp
+              labels:
+                scale.nktp.io/workload: stdout-logs
+                scale.nktp.io/run-id: '{{ .Args.runId }}'
+                scale.nktp.io/bucket: large
+            spec:
+              automountServiceAccountToken: false
+              containers:
+                - name: vector-stdout
+                  image: ghcr.io/vectordotdev/vector:0.58.0-debian@sha256:1c1ea358c617ea0b23003d5af87f7a678b30f8f7096437e680380c47fc13d2d9
+                  args:
+                    - --threads
+                    - '1'
+                    - --config
+                    - /etc/vector/vector.yaml
+                  ports:
+                    - name: metrics
+                      containerPort: 9598
+                  readinessProbe:
+                    tcpSocket:
+                      port: metrics
+                  resources:
+                    requests:
+                      cpu: 25m
+                      memory: 64Mi
+                    limits:
+                      cpu: 500m
+                      memory: 128Mi
+                  volumeMounts:
+                    - name: config
+                      mountPath: /etc/vector
+              volumes:
+                - name: config
+                  configMap:
+                    name: nktp-stdout-logs-large
+    measurement:
+      type: prometheus
+      spec:
+        endpoint: http://127.0.0.1:9090
+        duration: 4m
+        interval: 15s
+        query_timeout: 10s
+        measurements:
+          - name: producer_records_per_second
+            units: records/s
+            query: sum by (scale_node,scale_bucket) (rate(vector_component_sent_events_total{component_id="stdout_load",test_run_id="{{ .Args.runId }}"}[1m]))
+          - name: producer_body_bytes_per_second
+            units: bytes/s
+            query: sum by (scale_node,scale_bucket) (rate(vector_component_sent_bytes_total{component_id="stdout_load",test_run_id="{{ .Args.runId }}"}[1m])) - sum by (scale_node,scale_bucket) (rate(vector_component_sent_events_total{component_id="stdout_load",test_run_id="{{ .Args.runId }}"}[1m]))
+          - name: producer_observed_pods
+            units: count
+            query: |-
+              count by (scale_node,scale_bucket) (
+                vector_component_sent_events_total{component_id="stdout_load",test_run_id="{{ .Args.runId }}"}
+                and (time() - timestamp(vector_component_sent_events_total{component_id="stdout_load",test_run_id="{{ .Args.runId }}"}) < 90)
+              )
+          - name: received_records_per_second
+            units: records/s
+            query: sum by (job,instance,receiver) (rate(otelcol_receiver_accepted_log_records_total{job=~"nktp-daemonset|nktp-gateway-logs"}[1m]))

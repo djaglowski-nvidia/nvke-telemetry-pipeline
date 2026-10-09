@@ -1,0 +1,134 @@
+opentelemetry-kube-stack:
+  extraObjects:
+    - apiVersion: v1
+      kind: ServiceAccount
+      metadata:
+        name: nktp-kube-events
+        namespace: '{{ .Release.Namespace }}'
+    - apiVersion: rbac.authorization.k8s.io/v1
+      kind: Role
+      metadata:
+        name: nktp-kube-events
+        namespace: '{{ .Release.Namespace }}'
+      rules:
+        - apiGroups:
+            - ''
+          resources:
+            - events
+          verbs:
+            - create
+            - patch
+            - delete
+    - apiVersion: rbac.authorization.k8s.io/v1
+      kind: RoleBinding
+      metadata:
+        name: nktp-kube-events
+        namespace: '{{ .Release.Namespace }}'
+      roleRef:
+        apiGroup: rbac.authorization.k8s.io
+        kind: Role
+        name: nktp-kube-events
+      subjects:
+        - kind: ServiceAccount
+          name: nktp-kube-events
+          namespace: '{{ .Release.Namespace }}'
+    - apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: nktp-kube-events
+        namespace: '{{ .Release.Namespace }}'
+      data:
+        events.js: |
+          import http from 'k6/http';
+          import exec from 'k6/execution';
+          import { sleep } from 'k6';
+          import { Counter } from 'k6/metrics';
+
+          const count = 100;
+          const api = 'https://kubernetes.default.svc/api/v1/namespaces/' + __ENV.POD_NAMESPACE + '/events';
+          const token = open('/var/run/secrets/kubernetes.io/serviceaccount/token').trim();
+          const owner = { apiVersion: 'v1', kind: 'Pod', name: __ENV.POD_NAME, uid: __ENV.POD_UID };
+          const successes = new Counter('event_patch_success');
+          const failures = new Counter('event_patch_failures');
+          // Zero samples keep the built-in dropped-iteration counter observable even without drops.
+          const dropped = new Counter('dropped_iterations');
+
+          export const options = {
+            scenarios: {
+              events: {
+                executor: 'constant-arrival-rate',
+                rate: 10, timeUnit: '1s',
+                duration: '3m',
+                preAllocatedVUs: 4, maxVUs: 50, // At most 10/s × 5s concurrent requests.
+                gracefulStop: '10s',
+              },
+            },
+            setupTimeout: '1m', teardownTimeout: '1m',
+            batch: 10, batchPerHost: 10,
+            systemTags: ['method', 'status', 'name'],
+            tags: { test_run_id: __ENV.EVENT_RUN_ID, scale_node: __ENV.NODE_NAME, producer_id: __ENV.POD_UID },
+            thresholds: {
+              http_req_failed: ['rate==0'],
+              dropped_iterations: ['count==0'],
+            },
+          };
+
+          function name(i) { return 'nktp-event-' + __ENV.POD_UID + '-' + i; }
+          function params(operation, statuses) {
+            return {
+              headers: { Authorization: 'Bearer ' + token, 'Content-Type': operation === 'patch' ? 'application/merge-patch+json' : 'application/json' },
+              timeout: '5s', tags: { name: 'event-' + operation },
+              responseType: operation === 'create' ? 'text' : 'none',
+              responseCallback: http.expectedStatuses(...statuses),
+            };
+          }
+
+          const patchParams = params('patch', [200]);
+
+          export function setup() {
+            const created = [];
+            try {
+              for (let i = 0; i < count; i++) {
+                const timestamp = new Date().toISOString();
+                const event = {
+                  apiVersion: 'v1', kind: 'Event',
+                  metadata: {
+                    name: name(i), namespace: __ENV.POD_NAMESPACE, ownerReferences: [owner],
+                    labels: { 'scale.nktp.io/workload': 'kube-events', 'scale.nktp.io/run-id': __ENV.EVENT_RUN_ID, 'scale.nktp.io/producer-id': __ENV.POD_UID },
+                  },
+                  involvedObject: { ...owner, namespace: __ENV.POD_NAMESPACE },
+                  reason: 'NKTPScaleTest', type: 'Normal', action: 'Scale',
+                  reportingComponent: 'nktp.nvidia.io/scale-test', reportingInstance: __ENV.EVENT_RUN_ID,
+                  message: 'x'.repeat(1024), source: { component: 'k6', host: __ENV.NODE_NAME },
+                  firstTimestamp: timestamp, lastTimestamp: timestamp, count: 1,
+                };
+                const response = http.post(api, JSON.stringify(event), params('create', [201]));
+                if (response.status !== 201) throw new Error('Event seed failed: HTTP ' + response.status);
+                created.push({ name: name(i), uid: response.json('metadata.uid') });
+                sleep(0.1); // Seed at no more than 10 creates/s per producer.
+              }
+            } catch (error) {
+              teardown(created); // k6 does not invoke teardown after a failed setup.
+              throw error;
+            }
+            return created;
+          }
+
+          export default function () {
+            const iteration = exec.scenario.iterationInTest;
+            // Cycle through the bounded Event set, increasing each count every 10 seconds.
+            const patch = { count: Math.floor(iteration / count) + 2, lastTimestamp: new Date().toISOString() };
+            const response = http.patch(api + '/' + name(iteration % count), JSON.stringify(patch), patchParams);
+            successes.add(response.status === 200 ? 1 : 0);
+            failures.add(response.status === 200 ? 0 : 1);
+            dropped.add(0);
+          }
+
+          export function teardown(created) {
+            const requests = created.map(event => {
+              const body = JSON.stringify({ apiVersion: 'v1', kind: 'DeleteOptions', preconditions: { uid: event.uid } });
+              return ['DELETE', api + '/' + event.name, body, params('delete', [200, 202, 404])];
+            });
+            const failed = http.batch(requests).filter(r => ![200, 202, 404].includes(r.status)).length;
+            if (failed) throw new Error(failed + ' Event deletes failed, Pod ownership provides GC fallback');
+          }

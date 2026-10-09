@@ -37,7 +37,7 @@ timeout: 5s
 stages:
   - name: metrics
     generators:
-      - {name: load, type: noop}
+      - {name: load, type: pod, spec: {count: 0}}
     measurement:
       type: prometheus
       spec:
@@ -71,7 +71,7 @@ stages:
 	queries := stage.Report["queries"].(map[string]measurements.QueryReport)
 	observations := queries["series"].Observations
 	if len(observations) < 2 || observations[0].Value.(model.Vector)[0].Value != 3 {
-		t.Errorf("observations = %+v, want continued polling after the no-op generator finishes", observations)
+		t.Errorf("observations = %+v, want continued polling after the empty Pod batch finishes", observations)
 	}
 	formatted := format.Format(stage.Report)
 	for _, want := range []string{"series [series]", "Min: 3", "Mean: 3", "Max: 3", "Last: 3", "No data: 0", "Range ", "Observations"} {

@@ -1,0 +1,96 @@
+opentelemetry-kube-stack:
+  extraObjects:
+    - apiVersion: monitoring.coreos.com/v1
+      kind: PodMonitor
+      metadata:
+        name: nktp-stdout-logs
+        namespace: '{{ .Release.Namespace }}'
+      spec:
+        selector:
+          matchLabels:
+            scale.nktp.io/workload: stdout-logs
+        podMetricsEndpoints:
+          - port: metrics
+            interval: 15s
+            scrapeTimeout: 10s
+            relabelings:
+              - sourceLabels:
+                  - __meta_kubernetes_pod_name
+                targetLabel: instance
+              - sourceLabels:
+                  - __meta_kubernetes_pod_node_name
+                targetLabel: scale_node
+              - sourceLabels:
+                  - __meta_kubernetes_pod_label_scale_nktp_io_run_id
+                targetLabel: test_run_id
+              - sourceLabels:
+                  - __meta_kubernetes_pod_label_scale_nktp_io_bucket
+                targetLabel: scale_bucket
+    - apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: nktp-stdout-logs-small
+        namespace: '{{ .Release.Namespace }}'
+      data:
+        vector.yaml: |
+          sources:
+            load:
+              type: demo_logs
+              format: shuffle
+              sequence: false
+              interval: 0.0625
+              lines: ['{{ repeat 100 "x" }}']
+            self:
+              type: internal_metrics
+              scrape_interval_secs: 15
+          transforms:
+            measured:
+              type: filter
+              inputs: [self]
+              condition: >-
+                .tags.component_id == "stdout_load" &&
+                includes(["component_sent_events_total", "component_sent_bytes_total"], .name)
+          sinks:
+            stdout_load:
+              type: console
+              inputs: [load]
+              target: stdout
+              encoding: {codec: text}
+            metrics:
+              type: prometheus_exporter
+              inputs: [measured]
+              address: 0.0.0.0:9598
+    - apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: nktp-stdout-logs-large
+        namespace: '{{ .Release.Namespace }}'
+      data:
+        vector.yaml: |
+          sources:
+            load:
+              type: demo_logs
+              format: shuffle
+              sequence: false
+              interval: 0.25
+              lines: ['{{ repeat 65536 "x" }}']
+            self:
+              type: internal_metrics
+              scrape_interval_secs: 15
+          transforms:
+            measured:
+              type: filter
+              inputs: [self]
+              condition: >-
+                .tags.component_id == "stdout_load" &&
+                includes(["component_sent_events_total", "component_sent_bytes_total"], .name)
+          sinks:
+            stdout_load:
+              type: console
+              inputs: [load]
+              target: stdout
+              encoding: {codec: text}
+            metrics:
+              type: prometheus_exporter
+              inputs: [measured]
+              address: 0.0.0.0:9598

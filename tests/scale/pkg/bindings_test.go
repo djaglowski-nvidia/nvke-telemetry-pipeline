@@ -95,7 +95,6 @@ stages:
           - '{{ .Args.rate }}'
           - '{{ .Args.runId }}'
           - '{{ .Args.gateway }}'
-    measurement: {type: noop}
 `
 	args := map[string]string{"unrelated": "kept"}
 	_, err := Parse([]byte(data), args)
@@ -146,7 +145,7 @@ func TestExecuteRejectsInvalidComponentYAML(t *testing.T) {
 		{name: "merge", spec: "{<<: {value: literal}}"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			data := strings.Replace(planYAML, "spec: {}", "spec: "+tc.spec, 1)
+			data := strings.Replace(planYAML, "spec: {count: 0}", "spec: "+tc.spec, 1)
 			plan, err := Parse([]byte(data), map[string]string{"name": "provided"})
 			if err != nil {
 				t.Fatalf("Parse() error = %v", err)
@@ -160,7 +159,7 @@ func TestExecuteRejectsInvalidComponentYAML(t *testing.T) {
 
 // TestParseSubstitutesBeforeYAMLDecoding checks that values follow the surrounding YAML syntax.
 func TestParseSubstitutesBeforeYAMLDecoding(t *testing.T) {
-	data := strings.Replace(planYAML, "spec: {}", "spec: { '{{ .Args.key }}': {{ .Args.value }} }", 1)
+	data := strings.Replace(planYAML, "spec: {count: 0}", "spec: { '{{ .Args.key }}': {{ .Args.value }} }", 1)
 	plan, err := Parse([]byte(data), map[string]string{"key": "count", "value": "100"})
 	if err != nil {
 		t.Fatalf("Parse() error = %v", err)
@@ -192,7 +191,7 @@ func TestParsePreservesStrictDecoding(t *testing.T) {
 	if _, err := Parse([]byte(data+"unknown: true\n"), map[string]string{"name": "resolved"}); err == nil || !strings.Contains(err.Error(), "field unknown") {
 		t.Errorf("Parse() error = %v, want unknown envelope field error after substitution", err)
 	}
-	data = strings.Replace(planYAML, "spec: {}", "spec: {count: '{{ .Args.count }}', enabled: '{{ .Args.enabled }}'}", 1)
+	data = strings.Replace(planYAML, "spec: {count: 0}", "spec: {count: '{{ .Args.count }}', enabled: '{{ .Args.enabled }}'}", 1)
 	plan, err := Parse([]byte(data), map[string]string{"count": "100", "enabled": "true"})
 	if err != nil {
 		t.Fatalf("Parse() error = %v", err)
@@ -214,7 +213,7 @@ func TestParsePreservesStrictDecoding(t *testing.T) {
 
 // TestParseConcurrentSharedInputs checks independent plans parsed from shared inputs.
 func TestParseConcurrentSharedInputs(t *testing.T) {
-	data := []byte(strings.Replace(planYAML, "spec: {}", "spec: {value: '{{ .Args.runId }}'}", 1))
+	data := []byte(strings.Replace(planYAML, "spec: {count: 0}", "spec: {value: '{{ .Args.runId }}'}", 1))
 	args := map[string]string{runIDArgument: "shared-input", "unused": "unchanged"}
 	originalData, originalArgs := bytes.Clone(data), maps.Clone(args)
 	var wg sync.WaitGroup
@@ -297,7 +296,6 @@ stages:
                   - '--telemetry-attributes=test_run_id="{{ .Args.runId }}"'
                   - '{{ .Args.message }}'
                   - '${OTHER} $RUN_ID $(echo untouched)'
-    measurement: {type: noop}
 `)
 	flags := []string{"namespace=load", "message={{ .Args.keep-literal }}"}
 	originalData, originalFlags := bytes.Clone(data), slices.Clone(flags)

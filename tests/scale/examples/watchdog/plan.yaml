@@ -1,0 +1,142 @@
+name: watchdog
+timeout: 6m
+stages:
+  - name: node-collectors
+    generators:
+      - name: node-collectors
+        type: statefulset
+        spec:
+          count: 1
+          replicas: 3
+          duration: 3m
+          podTemplate:
+            metadata:
+              namespace: nktp
+              labels:
+                scale.nktp.io/workload: watchdog-example
+                scale.nktp.io/run-id: '{{ .Args.runId }}'
+            spec:
+              restartPolicy: Always
+              automountServiceAccountToken: false
+              containers:
+                - name: watchdog-node-metrics
+                  image: ghcr.io/open-telemetry/opentelemetry-collector-contrib/telemetrygen:v0.159.0@sha256:bad7fde3119476a9177cc4b9f04307c9876fca5b5584e009aebd7123d7557658
+                  command:
+                    - /telemetrygen
+                  args:
+                    - metrics
+                    - --otlp-endpoint=nktp-watchdog-collector.nktp.svc:4317
+                    - --workers=1
+                    - --rate=1.6666666666666667
+                    - --batch
+                    - --batch-size=100
+                    - --metric-type=Gauge
+                    - --unique-timeseries=false
+                    - --otlp-metric-name=nktp_watchdog_load
+                    - --service=nktp-watchdog-load-node
+                    - --otlp-attributes=service.instance.id="$(POD_UID)"
+                    - --telemetry-attributes=test_run_id="{{ .Args.runId }}"
+                    - --telemetry-attributes=generator_instance="$(POD_NAME)"
+                    - --duration=inf
+                    - --mtls
+                    - --ca-cert=/etc/nktp/internal-tls/client/ca.crt
+                    - --client-cert=/etc/nktp/internal-tls/client/tls.crt
+                    - --client-key=/etc/nktp/internal-tls/client/tls.key
+                  env:
+                    - name: POD_NAME
+                      valueFrom:
+                        fieldRef:
+                          fieldPath: metadata.name
+                    - name: POD_UID
+                      valueFrom:
+                        fieldRef:
+                          fieldPath: metadata.uid
+                  resources:
+                    requests:
+                      cpu: 25m
+                      memory: 64Mi
+                    limits:
+                      cpu: 500m
+                      memory: 256Mi
+                  volumeMounts:
+                    - name: internal-tls-client
+                      mountPath: /etc/nktp/internal-tls/client
+                      readOnly: true
+                - name: watchdog-node-logs
+                  image: ghcr.io/open-telemetry/opentelemetry-collector-contrib/telemetrygen:v0.159.0@sha256:bad7fde3119476a9177cc4b9f04307c9876fca5b5584e009aebd7123d7557658
+                  command:
+                    - /telemetrygen
+                  args:
+                    - logs
+                    - --otlp-endpoint=nktp-watchdog-collector.nktp.svc:4317
+                    - --workers=1
+                    - --rate=1.6666666666666667
+                    - --batch
+                    - --batch-size=10
+                    - --body=$(LOG_BODY)
+                    - --service=nktp-watchdog-load-node
+                    - --otlp-attributes=service.instance.id="$(POD_UID)"
+                    - --telemetry-attributes=test_run_id="{{ .Args.runId }}"
+                    - --telemetry-attributes=generator_instance="$(POD_NAME)"
+                    - --duration=inf
+                    - --mtls
+                    - --ca-cert=/etc/nktp/internal-tls/client/ca.crt
+                    - --client-cert=/etc/nktp/internal-tls/client/tls.crt
+                    - --client-key=/etc/nktp/internal-tls/client/tls.key
+                  env:
+                    - name: POD_NAME
+                      valueFrom:
+                        fieldRef:
+                          fieldPath: metadata.name
+                    - name: POD_UID
+                      valueFrom:
+                        fieldRef:
+                          fieldPath: metadata.uid
+                    - name: OTEL_EXPORTER_OTLP_LOGS_COMPRESSION
+                      value: gzip
+                    - name: LOG_BODY
+                      valueFrom:
+                        configMapKeyRef:
+                          name: nktp-watchdog-load
+                          key: log-body
+                  resources:
+                    requests:
+                      cpu: 25m
+                      memory: 64Mi
+                    limits:
+                      cpu: 500m
+                      memory: 256Mi
+                  volumeMounts:
+                    - name: internal-tls-client
+                      mountPath: /etc/nktp/internal-tls/client
+                      readOnly: true
+              volumes:
+                - name: internal-tls-client
+                  secret:
+                    secretName: nktp-daemonset-client-tls
+    measurement:
+      type: prometheus
+      spec:
+        endpoint: http://127.0.0.1:9090
+        duration: 4m
+        interval: 15s
+        query_timeout: 10s
+        measurements:
+          - name: fresh_sources
+            units: sources
+            query: count (nktp_watchdog_load{test_run_id="{{ .Args.runId }}"} and (time() - timestamp(nktp_watchdog_load{test_run_id="{{ .Args.runId }}"}) < 120))
+          - name: delivered_metric_age
+            units: seconds
+            query: max (time() - timestamp(nktp_watchdog_load{test_run_id="{{ .Args.runId }}"}))
+          - name: watchdog_cpu
+            units: cores
+            query: rate(otelcol_process_cpu_seconds_total{job="nktp-watchdog"}[1m])
+          - name: watchdog_rss
+            units: bytes
+            query: otelcol_process_memory_rss_bytes{job="nktp-watchdog"}
+          - name: watchdog_queue
+            units: bytes
+            query: otelcol_exporter_queue_size{job="nktp-watchdog"}
+          - name: accepted_logs
+            units: records/s
+            query: sum by (instance) (rate(otelcol_receiver_accepted_log_records_total{job="nktp-watchdog"}[1m]))

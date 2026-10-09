@@ -16,16 +16,26 @@ import (
 
 // TestExamplePlans checks examples without contacting a cluster or reading credentials.
 func TestExamplePlans(t *testing.T) {
-	paths, err := filepath.Glob("../plans/*.yaml")
-	require.NoError(t, err, "find example plans")
-	require.NotEmpty(t, paths, "find example plans")
+	entries, err := os.ReadDir("../examples")
+	require.NoError(t, err, "find examples")
+	names := make([]string, len(entries))
+	for i, entry := range entries {
+		names[i] = entry.Name()
+	}
+	require.Equal(t, []string{"avalanche", "kube-events", "kwok", "pod-churn", "stdout-logs", "telemetrygen", "watchdog"}, names)
+	paths := []string{"../mixed-workload/plan.yaml"}
+	for _, name := range names {
+		dir := filepath.Join("../examples", name)
+		require.FileExists(t, filepath.Join(dir, "README.md"))
+		paths = append(paths, filepath.Join(dir, "plan.yaml"))
+	}
 	for _, path := range paths {
-		t.Run(filepath.Base(path), func(t *testing.T) {
+		t.Run(filepath.Base(filepath.Dir(path)), func(t *testing.T) {
 			data, err := os.ReadFile(path)
 			require.NoError(t, err)
 			plan, err := Parse(data, map[string]string{runIDArgument: "example-run"})
 			require.NoError(t, err, "Parse()")
-			if filepath.Base(path) == "telemetrygen.yaml" {
+			if filepath.Base(filepath.Dir(path)) == "telemetrygen" {
 				require.Len(t, plan.Stages, 1)
 				stage := plan.Stages[0]
 				require.Len(t, stage.Generators, 3)

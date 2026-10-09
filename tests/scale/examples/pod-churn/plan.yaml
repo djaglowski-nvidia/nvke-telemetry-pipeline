@@ -1,0 +1,83 @@
+name: pod-churn
+timeout: 6m
+stages:
+  - name: churn
+    generators:
+      - name: churn
+        type: job
+        spec:
+          count: 2
+          parallelism: 2
+          completions: 6
+          podTemplate:
+            metadata:
+              namespace: nktp
+              labels:
+                scale.nktp.io/workload: pod-churn
+                scale.nktp.io/run-id: '{{ .Args.runId }}'
+            spec:
+              restartPolicy: Never
+              automountServiceAccountToken: false
+              terminationGracePeriodSeconds: 5
+              securityContext:
+                runAsNonRoot: true
+                runAsUser: 65534
+                seccompProfile:
+                  type: RuntimeDefault
+              containers:
+                - name: sleeper
+                  image: public.ecr.aws/docker/library/busybox:1.37.0@sha256:66a6306db78bf2dbf3487f293aa8d6990d8e506fdffab9cc43fe422becf886e4
+                  imagePullPolicy: IfNotPresent
+                  command:
+                    - /bin/sleep
+                    - '30'
+                  resources:
+                    requests:
+                      cpu: 10m
+                      memory: 32Mi
+                    limits:
+                      cpu: 100m
+                      memory: 64Mi
+                  securityContext:
+                    allowPrivilegeEscalation: false
+                    readOnlyRootFilesystem: true
+                    capabilities:
+                      drop:
+                        - ALL
+    measurement:
+      type: prometheus
+      spec:
+        endpoint: http://127.0.0.1:9090
+        duration: 3m
+        interval: 15s
+        query_timeout: 10s
+        measurements:
+          - name: churn_phases
+            units: pods
+            query: |-
+              sum by (phase) (
+                max by (namespace,pod,phase) (
+                  kube_pod_status_phase{namespace="nktp"}
+                  and (time() - timestamp(kube_pod_status_phase{namespace="nktp"}) < 90)
+                )
+                and on (namespace,pod) max by (namespace,pod) (
+                  kube_pod_labels{namespace="nktp",label_scale_nktp_io_run_id="{{ .Args.runId }}"}
+                  and (time() - timestamp(kube_pod_labels{namespace="nktp",label_scale_nktp_io_run_id="{{ .Args.runId }}"}) < 90)
+                )
+              )
+          - name: churn_ksm_inventory_by_node
+            units: pods
+            query: |-
+              count by (node) (
+                max by (namespace,pod,node) (
+                  kube_pod_info{namespace="nktp"}
+                  and (time() - timestamp(kube_pod_info{namespace="nktp"}) < 90)
+                )
+                and on (namespace,pod) max by (namespace,pod) (
+                  kube_pod_labels{namespace="nktp",label_scale_nktp_io_run_id="{{ .Args.runId }}"}
+                  and (time() - timestamp(kube_pod_labels{namespace="nktp",label_scale_nktp_io_run_id="{{ .Args.runId }}"}) < 90)
+                )
+              )
+          - name: ksm_up
+            units: ratio
+            query: up{job=~"nktp/nktp-ksm-.*"} and (time() - timestamp(up{job=~"nktp/nktp-ksm-.*"}) < 90)

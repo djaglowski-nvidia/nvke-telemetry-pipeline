@@ -7,6 +7,7 @@ package scale
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -53,5 +54,19 @@ func TestResolveKubeconfig(t *testing.T) {
 				t.Errorf("resolveKubeconfig() = %q, want %q", got, want)
 			}
 		})
+	}
+}
+
+// TestRunRequiresPlan checks that invoking the runner without a plan fails early.
+func TestRunRequiresPlan(t *testing.T) {
+	binary, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("KUBECONFIG", filepath.Join(t.TempDir(), "missing-kubeconfig"))
+	cmd := exec.CommandContext(t.Context(), binary, "-test.run=^TestRun$", "-test.timeout=5s")
+	output, err := cmd.CombinedOutput()
+	if err == nil || !strings.Contains(string(output), "-plan is required") {
+		t.Fatalf("runner without a plan: error = %v, output = %s", err, output)
 	}
 }

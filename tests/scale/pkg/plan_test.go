@@ -5,6 +5,9 @@ package runner
 
 import (
 	"context"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -14,18 +17,18 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// planYAML describes two sequential stages with named no-op generators.
+// planYAML describes two sequential stages with empty Pod batches and queries.
 const planYAML = `name: smoke
 timeout: 1m
 stages:
   - name: first
     generators:
-      - {name: load, type: noop, spec: {}}
-    measurement: {type: noop, spec: {}}
+      - {name: load, type: pod, spec: {count: 0}}
+    measurement: {type: prometheus, spec: {endpoint: http://127.0.0.1:1, duration: 100ms, interval: 5ms, measurements: [{name: available, query: up}]}}
   - name: second
     generators:
-      - {name: load, type: noop, spec: {}}
-    measurement: {type: noop, spec: {}}
+      - {name: load, type: pod, spec: {count: 0}}
+    measurement: {type: prometheus, spec: {endpoint: http://127.0.0.1:1, duration: 100ms, interval: 5ms, measurements: [{name: available, query: up}]}}
 `
 
 // TestParse checks named components and stage declaration order.
@@ -36,7 +39,7 @@ func TestParse(t *testing.T) {
 	require.Len(t, plan.Stages, 2)
 	require.Len(t, plan.Stages[0].Generators, 1)
 	assert.Equal(t, "load", plan.Stages[0].Generators[0].Name)
-	assert.Equal(t, "noop", plan.Stages[0].Generators[0].Type)
+	assert.Equal(t, "pod", plan.Stages[0].Generators[0].Type)
 	assert.Equal(t, "second", plan.Stages[1].Name)
 }
 
@@ -62,9 +65,9 @@ func TestParseRejectsInvalidDocuments(t *testing.T) {
 		{name: "missing stage name", data: strings.Replace(planYAML, "name: first", "name: ''", 1), want: "stages[0].name"},
 		{name: "duplicate stage name", data: strings.Replace(planYAML, "name: second", "name: first", 1), want: "duplicate stage"},
 		{name: "missing generator name", data: strings.Replace(planYAML, "name: load", "name: ''", 1), want: "generators[0].name"},
-		{name: "duplicate generator name", data: strings.Replace(planYAML, "generators:", "generators:\n      - {name: load, type: noop}", 1), want: "duplicate generator name"},
-		{name: "missing generator type", data: strings.Replace(planYAML, "type: noop", "type: ''", 1), want: "requires type"},
-		{name: "missing measurement type", data: strings.Replace(planYAML, "measurement: {type: noop, spec: {}}", "measurement: {}", 1), want: "measurement.type"},
+		{name: "duplicate generator name", data: strings.Replace(planYAML, "generators:", "generators:\n      - {name: load, type: pod}", 1), want: "duplicate generator name"},
+		{name: "missing generator type", data: strings.Replace(planYAML, "type: pod", "type: ''", 1), want: "requires type"},
+		{name: "missing measurement type", data: strings.Replace(planYAML, "measurement: {type: prometheus, spec: {endpoint: http://127.0.0.1:1, duration: 100ms, interval: 5ms, measurements: [{name: available, query: up}]}}", "measurement: {}", 1), want: "measurement.type"},
 		{name: "empty stage", data: "name: empty\ntimeout: 1m\nstages: [{name: empty}]\n", want: "requires generators or a measurement"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -81,12 +84,12 @@ func TestExecuteValidatesComponents(t *testing.T) {
 		data string
 		want string
 	}{
-		{name: "generator type", data: strings.Replace(planYAML, "name: load, type: noop", "name: load, type: missing", 1), want: `generator "load": unknown type "missing"`},
+		{name: "generator type", data: strings.Replace(planYAML, "name: load, type: pod", "name: load, type: missing", 1), want: `generator "load": unknown type "missing"`},
 		{name: "later stage", data: planYAML + "  - name: invalid\n    measurement: {type: missing}\n", want: `stage "invalid" measurement: unknown type "missing"`},
-		{name: "extra option", data: strings.Replace(planYAML, "spec: {}", "spec: {rate: 2}", 1), want: "noop spec must be an empty mapping"},
-		{name: "scalar spec", data: strings.Replace(planYAML, "spec: {}", "spec: 3", 1), want: "noop spec must be an empty mapping"},
-		{name: "null spec", data: strings.Replace(planYAML, "spec: {}", "spec: null", 1), want: "noop spec must be an empty mapping"},
-		{name: "measurement extra option", data: strings.Replace(planYAML, "measurement: {type: noop, spec: {}}", "measurement: {type: noop, spec: {rate: 2}}", 1), want: "measurement: noop spec only supports a measurements sequence"},
+		{name: "extra option", data: strings.Replace(planYAML, "spec: {count: 0}", "spec: {rate: 2}", 1), want: "decode pod spec"},
+		{name: "scalar spec", data: strings.Replace(planYAML, "spec: {count: 0}", "spec: 3", 1), want: "decode pod spec"},
+		{name: "null measurement spec", data: strings.Replace(planYAML, "spec: {endpoint: http://127.0.0.1:1, duration: 100ms, interval: 5ms, measurements: [{name: available, query: up}]}", "spec: null", 1), want: "prometheus spec must be a mapping"},
+		{name: "measurement extra option", data: strings.Replace(planYAML, "measurement: {type: prometheus, spec: {endpoint: http://127.0.0.1:1, duration: 100ms, interval: 5ms, measurements: [{name: available, query: up}]}}", "measurement: {type: prometheus, spec: {rate: '2'}}", 1), want: "field rate"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			plan, err := Parse([]byte(tc.data), nil)
@@ -98,9 +101,20 @@ func TestExecuteValidatesComponents(t *testing.T) {
 	}
 }
 
-// TestExecuteNoopPlan checks report identity and reuse of a parsed plan.
-func TestExecuteNoopPlan(t *testing.T) {
-	plan, err := Parse([]byte(planYAML), nil)
+// executionPlanYAML serves real Prometheus observations for executor tests.
+func executionPlanYAML(t *testing.T) string {
+	t.Helper()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, err := fmt.Fprint(w, `{"status":"success","data":{"resultType":"vector","result":[{"metric":{},"value":[100,"1"]}]}}`)
+		assert.NoError(t, err)
+	}))
+	t.Cleanup(server.Close)
+	return strings.ReplaceAll(planYAML, "http://127.0.0.1:1", server.URL)
+}
+
+// TestExecutePlan checks report identity and reuse of a parsed plan.
+func TestExecutePlan(t *testing.T) {
+	plan, err := Parse([]byte(executionPlanYAML(t)), nil)
 	require.NoError(t, err)
 	var previousID string
 	for range 2 {
@@ -112,30 +126,30 @@ func TestExecuteNoopPlan(t *testing.T) {
 		assert.NotEqual(t, previousID, report.RunID)
 		assert.Equal(t, "smoke", report.Plan)
 		previousID = report.RunID
-		assert.Equal(t, []StageReport{
-			{Name: "first", Generators: []GeneratorReport{{Name: "load"}}, Measurement: "noop", Report: measurements.Report{}},
-			{Name: "second", Generators: []GeneratorReport{{Name: "load"}}, Measurement: "noop", Report: measurements.Report{}},
-		}, report.Stages)
+		require.Len(t, report.Stages, 2)
+		for i, name := range []string{"first", "second"} {
+			stage := report.Stages[i]
+			assert.Equal(t, name, stage.Name)
+			assert.Equal(t, []GeneratorReport{{Name: "load"}}, stage.Generators)
+			assert.Equal(t, "prometheus", stage.Measurement)
+			assert.NoError(t, stage.MeasurementError)
+			queries := stage.Report["queries"].(map[string]measurements.QueryReport)
+			assert.NotEmpty(t, queries["available"].Observations)
+		}
 	}
 }
 
 // TestOptionalComponents checks observation-only and load-only stages.
 func TestOptionalComponents(t *testing.T) {
-	plan, err := Parse([]byte(`name: optional
-timeout: 1m
-stages:
-  - name: baseline
-    measurement: {type: noop}
-  - name: load
-    generators:
-      - {name: load, type: noop}
-`), nil)
+	plan, err := Parse([]byte(executionPlanYAML(t)), nil)
 	require.NoError(t, err)
+	plan.Stages[0].Generators = nil
+	plan.Stages[1].Measurement = nil
 	report, err := (Executor{}).Execute(t.Context(), plan, "test-run")
 	require.NoError(t, err)
 	require.Len(t, report.Stages, 2)
 	assert.Empty(t, report.Stages[0].Generators)
-	assert.Equal(t, "noop", report.Stages[0].Measurement)
+	assert.Equal(t, "prometheus", report.Stages[0].Measurement)
 	assert.Equal(t, []GeneratorReport{{Name: "load"}}, report.Stages[1].Generators)
 	assert.Empty(t, report.Stages[1].Measurement)
 }
@@ -152,9 +166,10 @@ func TestExecuteRejectsInvalidInput(t *testing.T) {
 
 // TestExecuteUsesSuppliedRunID checks that reports retain the ID supplied during parsing.
 func TestExecuteUsesSuppliedRunID(t *testing.T) {
+	data := executionPlanYAML(t)
 	args, err := ParseArguments([]string{"run-id=ci-123"})
 	require.NoError(t, err)
-	plan, err := Parse([]byte(planYAML), args)
+	plan, err := Parse([]byte(data), args)
 	require.NoError(t, err)
 	for range 2 {
 		report, err := (Executor{}).Execute(t.Context(), plan, args[runIDArgument])
@@ -185,8 +200,9 @@ func TestParseRejectsInvalidRunID(t *testing.T) {
 
 // TestExecuteRejectsMismatchedRunID checks parsing binds a snapshot of the run ID.
 func TestExecuteRejectsMismatchedRunID(t *testing.T) {
+	data := executionPlanYAML(t)
 	args := map[string]string{runIDArgument: "run-a"}
-	plan, err := Parse([]byte(planYAML), args)
+	plan, err := Parse([]byte(data), args)
 	require.NoError(t, err)
 	args[runIDArgument] = "run-b"
 	report, err := (Executor{}).Execute(t.Context(), plan, args[runIDArgument])

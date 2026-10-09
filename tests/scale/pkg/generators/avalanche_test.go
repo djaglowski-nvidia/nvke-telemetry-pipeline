@@ -17,7 +17,7 @@ import (
 
 // TestAvalanchePlan preserves workload settings in the shipped plan.
 func TestAvalanchePlan(t *testing.T) {
-	data, err := os.ReadFile("../../plans/avalanche.yaml")
+	data, err := os.ReadFile("../../examples/avalanche/plan.yaml")
 	require.NoError(t, err)
 	var plan struct {
 		Stages []struct {
@@ -29,17 +29,19 @@ func TestAvalanchePlan(t *testing.T) {
 	}
 	require.NoError(t, yaml.Unmarshal(data, &plan))
 	require.NotEmpty(t, plan.Stages)
-	require.Len(t, plan.Stages[0].Generators, 1)
-	assert.Equal(t, "statefulset", plan.Stages[0].Generators[0].Type)
-	g, err := NewStatefulSetGenerator(plan.Stages[0].Generators[0].Spec, "/does/not/exist")
-	require.NoError(t, err)
-	assert.Equal(t, "avalanche", g.config.PodTemplate.Labels["scale.nktp.io/workload"])
-	require.NotEmpty(t, g.config.PodTemplate.Spec.Containers)
-	container := g.config.PodTemplate.Spec.Containers[0]
-	// The generator controls lifetime and Pod names provide stable replica identity.
-	assert.Equal(t, []string{"/bin/avalanche"}, container.Command)
-	assert.Contains(t, container.Args, "--const-label=generator_instance=$(POD_NAME)")
-	assert.Contains(t, container.Env, corev1.EnvVar{Name: "POD_NAME", ValueFrom: &corev1.EnvVarSource{
-		FieldRef: &corev1.ObjectFieldSelector{FieldPath: "metadata.name"},
-	}})
+	require.Len(t, plan.Stages[0].Generators, 2)
+	for _, generator := range plan.Stages[0].Generators {
+		assert.Equal(t, "statefulset", generator.Type)
+		g, err := NewStatefulSetGenerator(generator.Spec, "/does/not/exist")
+		require.NoError(t, err)
+		assert.Equal(t, "avalanche", g.config.PodTemplate.Labels["scale.nktp.io/workload"])
+		require.NotEmpty(t, g.config.PodTemplate.Spec.Containers)
+		container := g.config.PodTemplate.Spec.Containers[0]
+		// The generator controls lifetime and Pod names provide stable replica identity.
+		assert.Equal(t, []string{"/bin/avalanche"}, container.Command)
+		assert.Contains(t, container.Args, "--const-label=generator_instance=$(POD_NAME)")
+		assert.Contains(t, container.Env, corev1.EnvVar{Name: "POD_NAME", ValueFrom: &corev1.EnvVarSource{
+			FieldRef: &corev1.ObjectFieldSelector{FieldPath: "metadata.name"},
+		}})
+	}
 }

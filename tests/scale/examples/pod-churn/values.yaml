@@ -1,0 +1,3 @@
+kube-state-metrics:
+  metricLabelsAllowlist:
+    - pods=[scale.nktp.io/run-id]
