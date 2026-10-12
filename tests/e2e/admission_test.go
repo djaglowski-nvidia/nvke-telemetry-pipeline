@@ -20,12 +20,9 @@ import (
 
 const collectorValidationWebhook = "vopentelemetrycollectorcreateupdatebeta.kb.io"
 
-// TestAdmissionWebhook submits a disposable OpenTelemetryCollector to the
-// suite's release that is structurally valid but combines deployment
-// mode with a target allocator, and requires the Operator's validating webhook
-// to deny it. Matching the webhook's name in the denial proves that the API
-// server reached the webhook, rather than rejecting the object through CRD
-// schema validation or failing to connect.
+// TestAdmissionWebhook checks that the Operator webhook rejects a deployment
+// Collector with a Target Allocator. The denial must identify the webhook.
+// Cleanup removes the probe if it was unexpectedly accepted.
 func TestAdmissionWebhook(t *testing.T) {
 	const name = "nktp-e2e-invalid-webhook-probe"
 	invalid := &unstructured.Unstructured{Object: map[string]any{
@@ -67,17 +64,16 @@ func TestAdmissionWebhook(t *testing.T) {
 			requestCtx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 			defer cancel()
 			resources := c.Client().Resources(c.Namespace())
+			t.Cleanup(func() {
+				cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Minute+30*time.Second)
+				defer cancel()
+				if err := resources.Delete(cleanupCtx, invalid); !apierrors.IsNotFound(err) {
+					assert.NoError(t, err, "deleting invalid Collector %s", invalid.GetName())
+				}
+			})
 			createErr := resources.Create(requestCtx, invalid)
 			require.Error(t, createErr, "an invalid Collector should be denied")
 			assert.ErrorContains(t, createErr, `admission webhook "`+collectorValidationWebhook+`" denied the request`)
-			return ctx
-		}).
-		Teardown(func(ctx context.Context, t *testing.T, c *envconf.Config) context.Context {
-			cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Minute+30*time.Second)
-			defer cancel()
-			if err := c.Client().Resources(c.Namespace()).Delete(cleanupCtx, invalid); !apierrors.IsNotFound(err) {
-				assert.NoError(t, err, "deleting invalid Collector %s", invalid.GetName())
-			}
 			return ctx
 		}).
 		Feature()

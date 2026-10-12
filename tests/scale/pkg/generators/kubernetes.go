@@ -5,11 +5,9 @@ package generators
 
 import (
 	"context"
-	"crypto/rand"
 	"errors"
 	"fmt"
 	"slices"
-	"strings"
 	"sync"
 	"time"
 
@@ -21,6 +19,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	coreclient "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/tools/clientcmd"
+	"sigs.k8s.io/e2e-framework/pkg/envconf"
 )
 
 const (
@@ -125,7 +124,7 @@ func (g *KubernetesGenerator) Run(ctx context.Context) error {
 // run requires the cancellation check performed by Run.
 func (g *KubernetesGenerator) run(ctx context.Context, nodes coreclient.NodeInterface) (err error) {
 	// owner isolates repeated runs that use the same templates and labels.
-	owner := "scale-" + strings.ToLower(rand.Text())
+	owner := envconf.RandomName("scale", 32)
 	// owned includes attempted creates so cleanup can recover lost responses.
 	var owned []*corev1.Node
 	defer func() {

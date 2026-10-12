@@ -13,14 +13,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
-	"sync"
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
+	"github.com/NVIDIA-dev/nktp/tests/internal/funcs"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	coreclient "k8s.io/client-go/kubernetes/typed/core/v1"
 	"sigs.k8s.io/e2e-framework/klient/k8s/resources"
@@ -29,10 +27,9 @@ import (
 	"sigs.k8s.io/e2e-framework/pkg/features"
 )
 
-// TestTraces sends a fresh, uniquely identified span from a disposable pod to
-// an installed node Collector's OTLP/HTTP receiver. The normal pipeline must
-// forward it through the trace gateway to LGTM's Tempo, preserving its service,
-// span identity and timestamps and adding the Collector's node attribute.
+// TestTraces sends a unique span through a node Collector and the trace gateway
+// to Tempo, checking its identity, timestamps, service, and node metadata.
+// Cleanup removes the disposable generator pod.
 func TestTraces(t *testing.T) {
 	const service = "nktp-e2e-traces"
 	namespace := testenv.EnvConf().Namespace()
@@ -45,7 +42,6 @@ func TestTraces(t *testing.T) {
 	var start, end int64
 	var collector *corev1.Pod
 	var proxyClient coreclient.CoreV1Interface
-	var cleanup func()
 
 	f := features.New("Trace delivery").
 		Setup(func(ctx context.Context, t *testing.T, c *envconf.Config) context.Context {
@@ -55,7 +51,7 @@ func TestTraces(t *testing.T) {
 			r := client.Resources(namespace)
 			var err error
 			proxyClient, err = coreclient.NewForConfig(client.RESTConfig())
-			require.NoError(t, err, "creating the proxy and pod-log client")
+			require.NoError(t, err, "creating the Service proxy client")
 
 			var collectors corev1.PodList
 			require.NoError(t, r.List(setupCtx, &collectors,
@@ -106,38 +102,7 @@ done
 `}
 			pod.Labels = template.Labels
 			pod.Spec = template.Spec
-			require.NoError(t, r.Create(setupCtx, pod), "creating trace generator")
-			cleanup = sync.OnceFunc(func() {
-				cleanupCtx, cleanupCancel := context.WithTimeout(context.WithoutCancel(ctx), 15*time.Minute)
-				defer cleanupCancel()
-				if t.Failed() {
-					var current corev1.Pod
-					if err := r.Get(cleanupCtx, pod.Name, namespace, &current); err == nil {
-						t.Logf("trace generator %s: %+v", pod.Name, current.Status)
-					}
-					logs, err := proxyClient.Pods(namespace).GetLogs(pod.Name, &corev1.PodLogOptions{
-						LimitBytes: new(int64(16 << 10)),
-					}).DoRaw(cleanupCtx)
-					t.Logf("trace generator logs: error=%v\n%s", err, logs)
-				}
-				err := r.Delete(cleanupCtx, pod, func(opts *metav1.DeleteOptions) {
-					opts.Preconditions = &metav1.Preconditions{UID: &pod.UID}
-				})
-				if !apierrors.IsNotFound(err) {
-					assert.NoError(t, err, "deleting trace generator")
-				}
-				assert.NoError(t, wait.For(func(ctx context.Context) (bool, error) {
-					var current corev1.Pod
-					err := r.Get(ctx, pod.Name, namespace, &current)
-					if apierrors.IsNotFound(err) {
-						return true, nil
-					}
-					return false, err
-				}, wait.WithContext(cleanupCtx), wait.WithTimeout(0), wait.WithInterval(time.Second), wait.WithImmediate()),
-					"waiting for trace generator removal")
-			})
-			// Keep cleanup on fatal failures even if framework fail-fast skips teardown.
-			t.Cleanup(cleanup)
+			pod, _ = funcs.CreateFixturePod(setupCtx, t, client, namespace, pod)
 			return ctx
 		}).
 		Assess("Trace reaches Tempo with its span and resource attributes preserved", func(ctx context.Context, t *testing.T, c *envconf.Config) context.Context {
@@ -157,9 +122,7 @@ done
 				if current.Status.Phase != corev1.PodSucceeded {
 					return false, nil
 				}
-				// Grafana proxies Tempo without another LGTM Service port.
-				// Tempo returns base64 IDs; the generator sends hex OTLP/JSON IDs.
-				// https://grafana.com/docs/tempo/latest/api_docs/pushing-spans-with-http/
+				// Tempo returns base64 IDs for the hex OTLP/JSON IDs sent above.
 				body, queryErr := proxyClient.Services(namespace).ProxyGet("http", "lgtm", "3000",
 					"/api/datasources/proxy/uid/tempo/api/v2/traces/"+traceID, nil).DoRaw(ctx)
 				lastErr = queryErr
@@ -214,12 +177,6 @@ done
 				return false, nil
 			}, wait.WithContext(waitCtx), wait.WithTimeout(0), wait.WithInterval(5*time.Second), wait.WithImmediate())
 			require.NoError(t, err, "waiting for trace %s in Tempo; last query error: %v", traceID, lastErr)
-			return ctx
-		}).
-		Teardown(func(ctx context.Context, t *testing.T, c *envconf.Config) context.Context {
-			if cleanup != nil {
-				cleanup()
-			}
 			return ctx
 		}).
 		Feature()

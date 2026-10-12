@@ -26,11 +26,8 @@ import (
 	"sigs.k8s.io/e2e-framework/pkg/features"
 )
 
-// TestTargetAllocatorMTLS verifies the cert-manager path for every
-// Collector/Target Allocator pair: CR settings, certificates, HTTPS service,
-// and a new request to the Collector target endpoint. The request-duration
-// count is recorded inside the HTTPS handler, so an increase proves traffic
-// reached the application over mTLS rather than merely finding a ready certificate.
+// TestTargetAllocatorMTLS checks certificates and HTTPS configuration for every
+// Collector/Target Allocator pair. New target requests must reach the mTLS handler.
 func TestTargetAllocatorMTLS(t *testing.T) {
 	f := features.New("Target Allocator mTLS")
 	for _, collectorName := range []string{"nktp-daemonset", "nktp-large-target-metrics", "nktp-watchdog"} {

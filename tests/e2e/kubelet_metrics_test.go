@@ -13,14 +13,12 @@ import (
 	"testing"
 	"time"
 
-	workload "github.com/NVIDIA-dev/nktp/tests/internal/funcs"
+	"github.com/NVIDIA-dev/nktp/tests/internal/funcs"
 	"github.com/stretchr/testify/require"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	coreclient "k8s.io/client-go/kubernetes/typed/core/v1"
-	"sigs.k8s.io/e2e-framework/klient/k8s/resources"
 	"sigs.k8s.io/e2e-framework/klient/wait"
 	"sigs.k8s.io/e2e-framework/pkg/envconf"
 	"sigs.k8s.io/e2e-framework/pkg/features"
@@ -31,57 +29,14 @@ import (
 // gives cAdvisor a real workload whose memory metric must be non-zero.
 func TestKubeletMetrics(t *testing.T) {
 	const name = "nktp-e2e-kubelet-metrics"
-	const image = "ghcr.io/nvidia/topograph:v0.4.0@sha256:f227bf161464da4a23273a535914c98b33d26e5bf24bdf7f50159ab4b875b717"
 	namespace := testenv.EnvConf().Namespace()
 	labels := map[string]string{"app.kubernetes.io/name": name}
-	fixture := &appsv1.DaemonSet{
+	daemonSet := &appsv1.DaemonSet{
 		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: namespace},
 		Spec: appsv1.DaemonSetSpec{
 			Selector: &metav1.LabelSelector{MatchLabels: labels},
-			Template: corev1.PodTemplateSpec{
-				ObjectMeta: metav1.ObjectMeta{Labels: labels},
-				Spec: corev1.PodSpec{
-					AutomountServiceAccountToken:  new(false),
-					TerminationGracePeriodSeconds: new(int64(1)),
-					Tolerations:                   []corev1.Toleration{{Operator: corev1.TolerationOpExists}},
-					SecurityContext: &corev1.PodSecurityContext{
-						RunAsNonRoot:   new(true),
-						SeccompProfile: &corev1.SeccompProfile{Type: corev1.SeccompProfileTypeRuntimeDefault},
-					},
-					Containers: []corev1.Container{{
-						Name:            "memory",
-						Image:           image,
-						ImagePullPolicy: corev1.PullIfNotPresent,
-						Command:         []string{"/bin/sleep", "3600"},
-						SecurityContext: &corev1.SecurityContext{
-							RunAsUser:                new(int64(65532)),
-							AllowPrivilegeEscalation: new(false),
-							ReadOnlyRootFilesystem:   new(true),
-							Capabilities:             &corev1.Capabilities{Drop: []corev1.Capability{"ALL"}},
-						},
-					}},
-				},
-			},
+			Template: passiveFixturePodTemplate(name),
 		},
-	}
-
-	cleanup := func(ctx context.Context, c *envconf.Config) error {
-		r := c.Client().Resources(namespace)
-		if err := r.Delete(ctx, fixture); err != nil && !apierrors.IsNotFound(err) {
-			return fmt.Errorf("deleting DaemonSet %s: %w", name, err)
-		}
-		return wait.For(func(ctx context.Context) (bool, error) {
-			var current appsv1.DaemonSet
-			err := r.Get(ctx, name, namespace, &current)
-			if err != nil && !apierrors.IsNotFound(err) {
-				return false, err
-			}
-			var pods corev1.PodList
-			if listErr := r.List(ctx, &pods, resources.WithLabelSelector("app.kubernetes.io/name="+name)); listErr != nil {
-				return false, listErr
-			}
-			return apierrors.IsNotFound(err) && len(pods.Items) == 0, nil
-		}, wait.WithContext(ctx), wait.WithTimeout(0), wait.WithInterval(2*time.Second), wait.WithImmediate())
 	}
 
 	var want []string
@@ -97,15 +52,15 @@ func TestKubeletMetrics(t *testing.T) {
 				want = append(want, node.Name)
 			}
 			slices.Sort(want)
-			require.NoError(t, cleanup(setupCtx, c), "removing any previous kubelet metrics fixture")
-			require.NoError(t, client.Resources(namespace).Create(setupCtx, fixture), "creating the kubelet metrics fixture")
+			require.NoError(t, funcs.DeleteDaemonSet(setupCtx, client, daemonSet), "removing any previous kubelet metrics DaemonSet")
+			daemonSet = funcs.CreateDaemonSet(setupCtx, t, client, daemonSet)
 			return ctx
 		}).
 		Assess("Fixture is ready on every node", func(ctx context.Context, t *testing.T, c *envconf.Config) context.Context {
 			waitCtx, cancel := context.WithTimeout(ctx, 15*time.Minute)
 			defer cancel()
 			nodes := int32(len(want))
-			require.NoError(t, workload.WaitForDaemonSet(waitCtx, workload.DaemonSetWaitOptions{
+			require.NoError(t, funcs.WaitForDaemonSet(waitCtx, funcs.DaemonSetWaitOptions{
 				Name: name, Namespace: namespace, Client: c.Client(), NodeCount: &nodes,
 			}), "waiting for DaemonSet %s/%s to be ready on all %d nodes", namespace, name, nodes)
 			return ctx
@@ -138,12 +93,6 @@ func TestKubeletMetrics(t *testing.T) {
 			require.NoError(t, err,
 				"want nodes %v; kubelet_active_pods nodes %v; container_memory_working_set_bytes nodes %v; last query error: %v",
 				want, gotKubelet, gotCadvisor, lastErr)
-			return ctx
-		}).
-		Teardown(func(ctx context.Context, t *testing.T, c *envconf.Config) context.Context {
-			cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Minute)
-			defer cancel()
-			require.NoError(t, cleanup(cleanupCtx, c), "removing the kubelet metrics fixture and its pods")
 			return ctx
 		}).
 		Feature()

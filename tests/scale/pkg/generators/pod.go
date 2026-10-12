@@ -5,11 +5,9 @@ package generators
 
 import (
 	"context"
-	"crypto/rand"
 	"errors"
 	"fmt"
 	"net"
-	"strings"
 	"time"
 
 	"github.com/NVIDIA-dev/nktp/tests/scale/pkg/internal/lifecycle"
@@ -22,6 +20,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	coreclient "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/tools/clientcmd"
+	"sigs.k8s.io/e2e-framework/pkg/envconf"
 )
 
 const (
@@ -98,7 +97,7 @@ func (g *PodGenerator) Run(ctx context.Context) error {
 // run requires the cancellation and count checks performed by Run.
 func (g *PodGenerator) run(ctx context.Context, core coreclient.CoreV1Interface) (err error) {
 	// owner separates concurrent invocations, including those sharing run_id.
-	owner := "scale-" + strings.ToLower(rand.Text())
+	owner := envconf.RandomName("scale", 32)
 	template := preparePodTemplate(g.config.PodTemplate, owner)
 	pods := core.Pods(template.Namespace)
 	// owned records attempted creates so cleanup can recover a lost response.

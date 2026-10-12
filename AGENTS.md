@@ -164,6 +164,14 @@ Do not change unless explicitly instructed:
 
 Always:
 
+- Keep `tests/e2e/README.md` focused on suite setup, execution, and shared
+  infrastructure. Do not document individual tests or add test-specific run
+  commands there. Put each test's purpose, prerequisites, assertions, and
+  cleanup in comments beside the test code. Omit routine run commands and
+  suite instructions from test comments; the README already covers them. Follow
+  [Google's Go commentary guidance](https://google.github.io/styleguide/go/decisions#commentary):
+  doc comments begin with the declaration's name, use complete sentences, and
+  wrap for readability consistently with the file.
 - Keep Collector configurations monolithic. Write each one as complete, native
   Collector YAML in `values.yaml`, and render it unchanged. Templates must not
   add, merge, or change anything inside a configuration, and no other value may

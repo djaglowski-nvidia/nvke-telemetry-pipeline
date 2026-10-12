@@ -1,16 +1,28 @@
+// SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 package funcs
 
 import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
+	"sync"
+	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	coreclient "k8s.io/client-go/kubernetes/typed/core/v1"
 	"sigs.k8s.io/e2e-framework/klient"
+	"sigs.k8s.io/e2e-framework/klient/k8s/resources"
 	"sigs.k8s.io/e2e-framework/klient/wait"
+	"sigs.k8s.io/e2e-framework/klient/wait/conditions"
 )
 
 const workloadWaitTimeout = 15 * time.Minute
@@ -22,9 +34,8 @@ type DeploymentWaitOptions struct {
 	ReplicaCount    *int32
 }
 
-// WaitForDeployment waits for availability, or full rollout completion when
-// Rollout is set. ReplicaCount optionally requires spec.replicas to match that
-// count. The wait is capped at 15 minutes or the caller's earlier deadline.
+// WaitForDeployment waits for availability or a full rollout when Rollout is
+// set, optionally checking ReplicaCount. The wait is capped at 15 minutes.
 func WaitForDeployment(ctx context.Context, opts DeploymentWaitOptions) error {
 	if opts.Name == "" {
 		return errors.New("deployment wait: name is required")
@@ -95,10 +106,8 @@ type DaemonSetWaitOptions struct {
 	NodeCount       *int32
 }
 
-// WaitForDaemonSet waits for the current generation to be observed and all
-// scheduled replicas to be updated, ready, and available. A non-nil NodeCount
-// also requires that many scheduled replicas. The wait is capped at 15 minutes
-// or the caller's earlier deadline.
+// WaitForDaemonSet waits for all scheduled replicas to be updated, ready, and
+// available, optionally checking NodeCount. The wait is capped at 15 minutes.
 func WaitForDaemonSet(ctx context.Context, opts DaemonSetWaitOptions) error {
 	if opts.Name == "" {
 		return errors.New("daemonset wait: name is required")
@@ -153,9 +162,8 @@ type StatefulSetWaitOptions struct {
 	Client          klient.Client
 }
 
-// WaitForStatefulSet waits for the current generation to be observed and the
-// desired replicas to be ready. It does not verify upgrade rollout completion.
-// The wait is capped at 15 minutes or the caller's earlier deadline.
+// WaitForStatefulSet waits up to 15 minutes for the current generation's desired
+// replicas to be ready; it does not check upgrade rollout completion.
 func WaitForStatefulSet(ctx context.Context, opts StatefulSetWaitOptions) error {
 	if opts.Name == "" {
 		return errors.New("statefulset wait: name is required")
@@ -191,4 +199,156 @@ func WaitForStatefulSet(ctx context.Context, opts StatefulSetWaitOptions) error 
 			opts.Namespace, opts.Name, last, err)
 	}
 	return nil
+}
+
+// Workload describes one Deployment, DaemonSet, or StatefulSet.
+type Workload struct {
+	Kind string
+	Name string
+
+	// Generation changes when the workload spec changes.
+	Generation int64
+
+	// HasOwner reports whether the workload has owner references.
+	HasOwner bool
+}
+
+func (w Workload) String() string { return w.Kind + "/" + w.Name }
+
+// ListWorkloads describes every Deployment, DaemonSet, and StatefulSet in a
+// namespace, ordered by kind and name.
+func ListWorkloads(ctx context.Context, client klient.Client, namespace string) ([]Workload, error) {
+	var workloads []Workload
+
+	var deployments appsv1.DeploymentList
+	err := client.Resources(namespace).List(ctx, &deployments)
+	if err != nil {
+		return nil, fmt.Errorf("listing Deployments in %s: %w", namespace, err)
+	}
+	for _, d := range deployments.Items {
+		workloads = append(workloads, Workload{
+			Kind: "Deployment", Name: d.Name, Generation: d.Generation,
+			HasOwner: len(d.OwnerReferences) > 0,
+		})
+	}
+
+	var daemonsets appsv1.DaemonSetList
+	err = client.Resources(namespace).List(ctx, &daemonsets)
+	if err != nil {
+		return nil, fmt.Errorf("listing DaemonSets in %s: %w", namespace, err)
+	}
+	for _, ds := range daemonsets.Items {
+		workloads = append(workloads, Workload{
+			Kind: "DaemonSet", Name: ds.Name, Generation: ds.Generation,
+			HasOwner: len(ds.OwnerReferences) > 0,
+		})
+	}
+
+	var statefulsets appsv1.StatefulSetList
+	err = client.Resources(namespace).List(ctx, &statefulsets)
+	if err != nil {
+		return nil, fmt.Errorf("listing StatefulSets in %s: %w", namespace, err)
+	}
+	for _, ss := range statefulsets.Items {
+		workloads = append(workloads, Workload{
+			Kind: "StatefulSet", Name: ss.Name, Generation: ss.Generation,
+			HasOwner: len(ss.OwnerReferences) > 0,
+		})
+	}
+
+	sort.Slice(workloads, func(i, j int) bool { return workloads[i].String() < workloads[j].String() })
+	return workloads, nil
+}
+
+// CreateDaemonSet creates a DaemonSet and registers deletion with t.Cleanup.
+func CreateDaemonSet(ctx context.Context, t *testing.T, client klient.Client, daemonSet *appsv1.DaemonSet) *appsv1.DaemonSet {
+	t.Helper()
+	created := daemonSet.DeepCopy()
+	require.NoError(t, client.Resources(created.Namespace).Create(ctx, created),
+		"creating DaemonSet %s/%s", created.Namespace, created.Name)
+	t.Cleanup(func() {
+		cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Minute)
+		defer cancel()
+		require.NoError(t, DeleteDaemonSet(cleanupCtx, client, created),
+			"deleting DaemonSet %s/%s and its pods", created.Namespace, created.Name)
+	})
+	return created
+}
+
+// DeleteDaemonSet deletes a DaemonSet and waits for it and its selected pods
+// to disappear. An absent DaemonSet is allowed; the context bounds the wait.
+func DeleteDaemonSet(ctx context.Context, client klient.Client, daemonSet *appsv1.DaemonSet) error {
+	selector, err := metav1.LabelSelectorAsSelector(daemonSet.Spec.Selector)
+	if err != nil {
+		return fmt.Errorf("reading DaemonSet %s/%s selector: %w", daemonSet.Namespace, daemonSet.Name, err)
+	}
+	r := client.Resources(daemonSet.Namespace)
+	if err := r.Delete(ctx, daemonSet); err != nil && !apierrors.IsNotFound(err) {
+		return fmt.Errorf("deleting DaemonSet %s/%s: %w", daemonSet.Namespace, daemonSet.Name, err)
+	}
+	return wait.For(func(ctx context.Context) (bool, error) {
+		var current appsv1.DaemonSet
+		err := r.Get(ctx, daemonSet.Name, daemonSet.Namespace, &current)
+		if err != nil && !apierrors.IsNotFound(err) {
+			return false, err
+		}
+		var pods corev1.PodList
+		if listErr := r.List(ctx, &pods, resources.WithLabelSelector(selector.String())); listErr != nil {
+			return false, listErr
+		}
+		return apierrors.IsNotFound(err) && len(pods.Items) == 0, nil
+	}, wait.WithContext(ctx), wait.WithTimeout(0), wait.WithInterval(2*time.Second), wait.WithImmediate())
+}
+
+// CreateFixturePod creates a pod with cleanup and failure diagnostics.
+func CreateFixturePod(ctx context.Context, t *testing.T, client klient.Client, ns string, pod *corev1.Pod) (*corev1.Pod, func()) {
+	t.Helper()
+	created := pod.DeepCopy()
+	created.Namespace = ns
+	r := client.Resources(ns)
+	require.NoError(t, r.Create(ctx, created), "creating fixture pod in %s", ns)
+	cleanup := sync.OnceFunc(func() {
+		cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 15*time.Minute+30*time.Second)
+		defer cancel()
+		if t.Failed() {
+			logFixturePodDiagnostics(cleanupCtx, t, client, created)
+		}
+		err := r.Delete(cleanupCtx, created, func(opts *metav1.DeleteOptions) {
+			opts.Preconditions = &metav1.Preconditions{UID: &created.UID}
+		})
+		if !apierrors.IsNotFound(err) {
+			assert.NoError(t, err, "deleting fixture pod %s/%s", ns, created.Name)
+		}
+		assert.NoError(t, wait.For(conditions.New(r).ResourcesDeleted(&corev1.PodList{Items: []corev1.Pod{*created}}),
+			wait.WithContext(cleanupCtx), wait.WithTimeout(0), wait.WithInterval(time.Second), wait.WithImmediate()),
+			"waiting for fixture pod %s/%s removal", ns, created.Name)
+	})
+	t.Cleanup(cleanup)
+	return created, cleanup
+}
+
+// logFixturePodDiagnostics logs status, recent logs, and events for a failed fixture.
+func logFixturePodDiagnostics(ctx context.Context, t *testing.T, client klient.Client, pod *corev1.Pod) {
+	t.Helper()
+	ns := pod.Namespace
+	r := client.Resources(ns)
+	var current corev1.Pod
+	err := r.Get(ctx, pod.Name, ns, &current)
+	if err == nil {
+		t.Logf("fixture %s/%s: %+v", ns, pod.Name, current.Status)
+	}
+	proxyClient, err := coreclient.NewForConfig(client.RESTConfig())
+	if err != nil {
+		t.Logf("fixture %s/%s log client: %v", ns, pod.Name, err)
+	} else {
+		logs, err := proxyClient.Pods(ns).GetLogs(pod.Name, &corev1.PodLogOptions{LimitBytes: new(int64(16 << 10))}).DoRaw(ctx)
+		t.Logf("fixture %s/%s logs: error=%v\n%s", ns, pod.Name, err, logs)
+	}
+	var events corev1.EventList
+	err = r.List(ctx, &events, resources.WithFieldSelector("involvedObject.uid="+string(pod.UID)))
+	if err == nil {
+		for _, event := range events.Items {
+			t.Logf("fixture %s/%s event: %s: %s", ns, pod.Name, event.Reason, event.Message)
+		}
+	}
 }

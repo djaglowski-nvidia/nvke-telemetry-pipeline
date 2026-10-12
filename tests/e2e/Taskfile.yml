@@ -47,6 +47,23 @@ tasks:
     cmds:
       - go test -tags 'e2e' -count=1 -v -timeout 30m . -args {{.SUITE_FLAGS}} {{.CLI_ARGS}}
 
+  install:
+    desc: Install or update the suite's release for manual inspection
+    deps: [dependencies]
+    preconditions:
+      - sh: "test -r {{.KUBECONFIG_PATH | shellQuote}}"
+        msg: "No kubeconfig at {{.KUBECONFIG_PATH}}. Create a cluster with 'task e2e:up', or pass KUBECONFIG=<path>."
+    cmds:
+      - task: :install
+        vars:
+          KUBECONFIG_FILE: "{{.KUBECONFIG_PATH}}"
+          RELEASE: "nktp-e2e"
+          NAMESPACE: "{{.NAMESPACE}}"
+          CHART_PATH: "{{.CHART}}"
+          BASE_HELM_VALUES_FILE: "{{.VALUES}}"
+          HELM_VALUES_DIR: "{{.TASKFILE_DIR}}"
+          HELM_TIMEOUT: '{{.READY_TIMEOUT | default "15m"}}'
+
   down:
     desc: Delete the cluster e2e:up created, and the kubeconfig it wrote
     cmds:

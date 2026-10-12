@@ -5,11 +5,9 @@ package generators
 
 import (
 	"context"
-	"crypto/rand"
 	"errors"
 	"fmt"
 	"log/slog"
-	"strings"
 	"time"
 
 	"github.com/NVIDIA-dev/nktp/tests/scale/pkg/internal/lifecycle"
@@ -23,6 +21,7 @@ import (
 	appsclient "k8s.io/client-go/kubernetes/typed/apps/v1"
 	coreclient "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/tools/clientcmd"
+	"sigs.k8s.io/e2e-framework/pkg/envconf"
 )
 
 const (
@@ -160,7 +159,7 @@ func (g *StatefulSetGenerator) runStatefulSet(ctx context.Context, apps appsclie
 // Parallel management lets replicas start independently as resources permit.
 func newStatefulSet(cfg statefulSetConfig) *appsv1.StatefulSet {
 	// name separates concurrent runs, even when their user labels match.
-	name := "scale-" + strings.ToLower(rand.Text())
+	name := envconf.RandomName("scale", 32)
 	template := preparePodTemplate(cfg.PodTemplate, name)
 	return &appsv1.StatefulSet{
 		ObjectMeta: metav1.ObjectMeta{

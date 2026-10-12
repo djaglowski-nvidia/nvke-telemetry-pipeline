@@ -5,7 +5,6 @@ package generators
 
 import (
 	"context"
-	"crypto/rand"
 	"errors"
 	"fmt"
 	"path/filepath"
@@ -22,6 +21,7 @@ import (
 	batchclient "k8s.io/client-go/kubernetes/typed/batch/v1"
 	coreclient "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/tools/clientcmd"
+	"sigs.k8s.io/e2e-framework/pkg/envconf"
 )
 
 const (
@@ -177,7 +177,7 @@ func (g *JobGenerator) runJob(ctx context.Context, batch batchclient.BatchV1Inte
 // manifest builds a uniquely named Job without contacting Kubernetes. Its deadline
 // and TTL let the controllers stop and remove the Job if the harness crashes.
 func (g *JobGenerator) manifest(deadline time.Time) *batchv1.Job {
-	name := "scale-" + strings.ToLower(rand.Text())
+	name := envconf.RandomName("scale", 32)
 	template := preparePodTemplate(g.config.PodTemplate, name)
 	if template.Spec.RestartPolicy == "" {
 		template.Spec.RestartPolicy = corev1.RestartPolicyNever

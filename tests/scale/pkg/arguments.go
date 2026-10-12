@@ -4,11 +4,12 @@
 package runner
 
 import (
-	"crypto/rand"
 	"errors"
 	"fmt"
 	"regexp"
 	"strings"
+
+	"sigs.k8s.io/e2e-framework/pkg/envconf"
 )
 
 const runIDArgument = "runId"
@@ -34,7 +35,7 @@ func ParseArguments(values []string) (map[string]string, error) {
 		args[key] = value
 	}
 	if _, supplied := args[runIDArgument]; !supplied {
-		args[runIDArgument] = rand.Text()
+		args[runIDArgument] = envconf.RandomName("", 32)
 	}
 	if err := validateRunID(args[runIDArgument]); err != nil {
 		return nil, err

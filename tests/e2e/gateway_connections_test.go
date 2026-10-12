@@ -42,28 +42,11 @@ import (
 	"sigs.k8s.io/yaml"
 )
 
-// TestGatewayConnections verifies that existing Collectors use new gateway
-// replicas after scale-out. A Kubernetes Service selects a backend for a new TCP
-// connection; adding replicas does not redistribute established connections.
-// Connection reuse can therefore keep traffic concentrated on the original
-// gateways while new replicas receive none. gRPC max_connection_age periodically
-// sends GOAWAY so clients reconnect and can reach the new replicas:
-// https://github.com/grpc/proposal/blob/master/A9-server-side-conn-mgt.md
-//
-// The test launches its own pods in an isolated namespace: clients based on the
-// chart's daemonset Collector and gateways based on its logs gateway. This lets
-// it control replica counts, shorten rotation intervals, and observe client IDs
-// through a debug exporter without modifying the Helm installation or disrupting
-// its workloads. Traffic goes through the fixture's own Service and gateway pods.
-// Synthetic inputs and simplified pipelines intentionally isolate the effect of
-// max_connection_age, retaining the chart's client exporter and gateway receiver
-// settings. The test does not model production traffic or backend backpressure.
-//
-// After adding a gateway, each signal (logs, metrics and traces) must reach it
-// while all clients keep delivering. The gRPC controls without rotation
-// must continue delivering only to the original gateway for one minute. This
-// finite observation cannot prove clients never reconnect; reconnects to the
-// original gateway are undetected.
+// TestGatewayConnections checks that gRPC connection rotation lets existing
+// Collectors reach new gateway replicas while all clients keep delivering.
+// Isolated fixtures use the chart's connection settings with shorter intervals.
+// A control without rotation must use only the original gateway for one minute.
+// Cleanup removes the fixture namespace and its resources.
 func TestGatewayConnections(t *testing.T) {
 	collectors := map[string]*collectorSpec{}
 	var k kubernetes.Interface

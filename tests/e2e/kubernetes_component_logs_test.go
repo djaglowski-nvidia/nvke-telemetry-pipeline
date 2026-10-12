@@ -12,7 +12,6 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -34,34 +33,17 @@ import (
 
 const componentLogsFixtureName = "nktp-e2e-component-logs"
 
-// TestKubernetesComponentLogs checks that API audit events and control plane
-// pod logs reach LGTM with their expected classifications, and that CoreDNS and
-// kube-proxy pod logs retain their Kubernetes attributes. A one-replica
-// Deployment drives scheduler and controller activity and repeatedly resolves
-// a temporary Service. Cleanup removes the Service, Deployment, ReplicaSet and
-// pods. Namespace reads generate API audit events and API-server request logs.
-//
-// The cluster must enable API audit logging at the chart's configured path.
-// API-server verbosity 3 emits HTTP request logs; scheduler verbosity 2 emits
-// "Successfully bound pod to node"; controller-manager verbosity 4 emits
-// "Controller created pod". Kube-proxy verbosity 4 emits "Service updated ports"
-// when the temporary Service is created or its port changes. CoreDNS's log
-// plugin logs the fixture's DNS queries. The test temporarily points the CoreDNS
-// Deployment at a copy of its ConfigMap with query logging enabled, restores
-// the original reference, then deletes the copy. The e2e Kind config supplies
-// the verbosity levels; other clusters need equivalent settings. Existing
-// Kind clusters must be recreated to pick up verbosity changes.
-//
-// A plaintext HTTP request to etcd's TLS client port produces a rejection log
-// without credentials or data operations. This requires pods/proxy access and
-// an etcd pod labeled component=etcd with a TLS listener reachable on port 2379.
+// TestKubernetesComponentLogs generates component activity and checks that its
+// logs and API audit events reach Loki with the expected Kubernetes metadata.
+// It requires audit logging and component verbosity from the e2e Kind config,
+// plus pods/proxy access to etcd's TLS port. CoreDNS query logging is temporarily
+// enabled. Cleanup restores CoreDNS and removes the Service and workload fixtures.
 func TestKubernetesComponentLogs(t *testing.T) {
 	namespace := testenv.EnvConf().Namespace()
 	var client klient.Client
 	var proxyClient coreclient.CoreV1Interface
 	var etcdPods corev1.PodList
 	var started time.Time
-	var restoreCoreDNS, removeFixture func()
 
 	f := features.New("Kubernetes component logs").
 		Setup(func(ctx context.Context, t *testing.T, c *envconf.Config) context.Context {
@@ -77,8 +59,8 @@ func TestKubernetesComponentLogs(t *testing.T) {
 			require.NoError(t, client.Resources("kube-system").List(setupCtx, &etcdPods,
 				resources.WithLabelSelector("component=etcd")), "listing etcd pods for the TLS rejection probe")
 			require.NotEmpty(t, etcdPods.Items, "the cluster must have an etcd pod to test")
-			restoreCoreDNS = createCoreDNSLogsFixture(setupCtx, t, client)
-			removeFixture = createComponentLogsFixture(setupCtx, t, client, namespace)
+			createCoreDNSLogsFixture(setupCtx, t, client)
+			createComponentLogsFixture(setupCtx, t, client, namespace)
 			return ctx
 		})
 
@@ -195,21 +177,10 @@ func TestKubernetesComponentLogs(t *testing.T) {
 			return ctx
 		})
 	}
-	f.Teardown(func(ctx context.Context, t *testing.T, c *envconf.Config) context.Context {
-		if removeFixture != nil {
-			removeFixture()
-		}
-		if restoreCoreDNS != nil {
-			restoreCoreDNS()
-		}
-		return ctx
-	})
 	testenv.Test(t, f.Feature())
 }
 
-// Diagnostics use their own deadline after polling times out. Summaries avoid
-// application log bodies and unrelated healthy pods. All counters are cumulative
-// since process startup; sent records prove delivery to the next hop, not to Loki.
+// logComponentLogsDiagnostics summarizes source activity and ingestion failures.
 func logComponentLogsDiagnostics(ctx context.Context, t *testing.T, client klient.Client, proxyClient coreclient.CoreV1Interface, namespace, name, expression string, started time.Time) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(ctx, 45*time.Second)
@@ -395,10 +366,7 @@ func logComponentLogsDiagnostics(ctx context.Context, t *testing.T, client klien
 	t.Logf("log diagnostics: matching messages in Kubernetes pod logs since test start=%v (not Loki; last 200 lines/64KiB per pod)", sources)
 }
 
-// Loki and its collector run as processes in the single lgtm container. The
-// e2e values enable their process logs; no telemetry payload exporter is enabled.
-// Keep only the most recent operational warnings/errors, including the previous
-// container when it restarted, rather than dumping every backend's startup logs.
+// logLGTMIngestionDiagnostics reports backend health and recent operational errors.
 func logLGTMIngestionDiagnostics(ctx context.Context, t *testing.T, client coreclient.CoreV1Interface, pod corev1.Pod) {
 	t.Helper()
 	restarted := false
@@ -452,7 +420,7 @@ func logLGTMIngestionDiagnostics(ctx context.Context, t *testing.T, client corec
 // createCoreDNSLogsFixture preserves the cluster's DNS configuration and only
 // adds query logging. A separate ConfigMap lets cleanup delete everything this
 // test creates without deleting or overwriting the cluster-owned ConfigMap.
-func createCoreDNSLogsFixture(ctx context.Context, t *testing.T, client klient.Client) func() {
+func createCoreDNSLogsFixture(ctx context.Context, t *testing.T, client klient.Client) {
 	t.Helper()
 	r := client.Resources("kube-system")
 	var deployment appsv1.Deployment
@@ -496,7 +464,7 @@ func createCoreDNSLogsFixture(ctx context.Context, t *testing.T, client klient.C
 	rolloutOpts := workload.DeploymentWaitOptions{
 		Name: "coredns", Namespace: "kube-system", Client: client, Rollout: true,
 	}
-	cleanup := sync.OnceFunc(func() {
+	t.Cleanup(func() {
 		cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 15*time.Minute+30*time.Second)
 		defer cancel()
 		if !assert.NoError(t, setCoreDNSConfigMap(cleanupCtx, client, volumeName, fixture.Name, original.Name), "restoring CoreDNS configuration") {
@@ -514,12 +482,8 @@ func createCoreDNSLogsFixture(ctx context.Context, t *testing.T, client klient.C
 			assert.NoError(t, err, "deleting the CoreDNS logs ConfigMap")
 		}
 	})
-	// Teardown calls this normally; t.Cleanup covers setup failure or framework
-	// fail-fast skipping teardown. OnceFunc prevents a duplicate restoration.
-	t.Cleanup(cleanup)
 	require.NoError(t, setCoreDNSConfigMap(ctx, client, volumeName, original.Name, fixture.Name), "enabling CoreDNS query logs")
 	require.NoError(t, workload.WaitForDeployment(ctx, rolloutOpts), "waiting for CoreDNS query logging")
-	return cleanup
 }
 
 func setCoreDNSConfigMap(ctx context.Context, client klient.Client, volumeName, from, to string) error {
@@ -547,7 +511,7 @@ func setCoreDNSConfigMap(ctx context.Context, client klient.Client, volumeName, 
 	})
 }
 
-func createComponentLogsFixture(ctx context.Context, t *testing.T, client klient.Client, namespace string) func() {
+func createComponentLogsFixture(ctx context.Context, t *testing.T, client klient.Client, namespace string) {
 	t.Helper()
 	r := client.Resources(namespace)
 	fixture := &appsv1.Deployment{
@@ -576,25 +540,21 @@ func createComponentLogsFixture(ctx context.Context, t *testing.T, client klient
 		},
 	}
 	require.NoError(t, r.Create(ctx, fixture), "creating the component logs fixture")
-	serviceCreated := false
-	cleanup := sync.OnceFunc(func() {
+	t.Cleanup(func() {
 		cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 15*time.Minute+30*time.Second)
 		defer cancel()
-		// A failed Service Create must not delete an existing name collision.
-		if serviceCreated {
-			assert.NoError(t, deleteComponentLogsService(cleanupCtx, client, service), "removing the component logs Service")
-		}
 		assert.NoError(t, deleteComponentLogsDeployment(cleanupCtx, client, fixture), "removing the component logs Deployment")
 	})
-	// Register ownership before creating more resources or waiting for rollout.
-	t.Cleanup(cleanup)
 	require.NoError(t, r.Create(ctx, service), "creating the component logs Service")
-	serviceCreated = true
+	t.Cleanup(func() {
+		cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+		defer cancel()
+		assert.NoError(t, deleteComponentLogsService(cleanupCtx, client, service), "removing the component logs Service")
+	})
 	require.NoError(t, workload.WaitForDeployment(ctx, workload.DeploymentWaitOptions{
 		Name: fixture.Name, Namespace: namespace, Client: client,
 		Rollout: true, ReplicaCount: new(int32(1)),
 	}), "waiting for the component logs fixture")
-	return cleanup
 }
 
 func deleteComponentLogsService(ctx context.Context, client klient.Client, service *corev1.Service) error {
@@ -674,35 +634,4 @@ func lokiHasLogsSince(ctx context.Context, services coreclient.ServiceInterface,
 		}
 	}
 	return false, nil
-}
-
-// Topograph is an NVIDIA-owned, public, multi-platform Alpine image. Keep
-// the release tag for provenance and pin the registry index digest.
-const passiveFixtureImage = "ghcr.io/nvidia/topograph:v0.4.0@sha256:f227bf161464da4a23273a535914c98b33d26e5bf24bdf7f50159ab4b875b717"
-
-func passiveFixturePodTemplate(name string) corev1.PodTemplateSpec {
-	return corev1.PodTemplateSpec{
-		ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{"app.kubernetes.io/name": name}},
-		Spec: corev1.PodSpec{
-			AutomountServiceAccountToken:  new(false),
-			TerminationGracePeriodSeconds: new(int64(1)),
-			Tolerations:                   []corev1.Toleration{{Operator: corev1.TolerationOpExists}},
-			SecurityContext: &corev1.PodSecurityContext{
-				RunAsNonRoot:   new(true),
-				SeccompProfile: &corev1.SeccompProfile{Type: corev1.SeccompProfileTypeRuntimeDefault},
-			},
-			Containers: []corev1.Container{{
-				Name:            "memory",
-				Image:           passiveFixtureImage,
-				ImagePullPolicy: corev1.PullIfNotPresent,
-				Command:         []string{"/bin/sleep", "3600"},
-				SecurityContext: &corev1.SecurityContext{
-					RunAsUser:                new(int64(65532)),
-					AllowPrivilegeEscalation: new(false),
-					ReadOnlyRootFilesystem:   new(true),
-					Capabilities:             &corev1.Capabilities{Drop: []corev1.Capability{"ALL"}},
-				},
-			}},
-		},
-	}
 }

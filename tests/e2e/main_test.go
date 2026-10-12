@@ -14,10 +14,18 @@ import (
 
 	"github.com/NVIDIA-dev/nktp/tests/internal/config"
 	"github.com/NVIDIA-dev/nktp/tests/internal/funcs"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"helm.sh/helm/v4/pkg/action"
+	"helm.sh/helm/v4/pkg/chart/common"
+	"helm.sh/helm/v4/pkg/chart/loader"
+	"helm.sh/helm/v4/pkg/kube"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/cli-runtime/pkg/genericclioptions"
 	"sigs.k8s.io/e2e-framework/pkg/env"
 	"sigs.k8s.io/e2e-framework/pkg/envconf"
+	"sigs.k8s.io/e2e-framework/pkg/features"
 )
 
 var testenv = config.NewEnvironmentFromFlags()
@@ -29,6 +37,13 @@ func TestMain(t *testing.M) {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error while creating env config: %v\n", err)
 		os.Exit(1)
+	}
+	if cfg.KubeconfigFile() == "" {
+		fmt.Fprintln(os.Stderr, "pass -kubeconfig explicitly, or run task e2e:test")
+		os.Exit(1)
+	}
+	if cfg.Namespace() != "" {
+		testenv.ReleaseNamespace = cfg.Namespace()
 	}
 	testenv.SetEnvironment(env.NewWithConfig(cfg))
 	testenv.Install()
@@ -97,4 +112,68 @@ func waitForCollectors(ctx context.Context, cfg *envconf.Config) (context.Contex
 		return ctx, fmt.Errorf("no Collectors have a Target Allocator enabled")
 	}
 	return ctx, nil
+}
+
+// TestStableReapply checks that identical Helm inputs preserve workload
+// generations, reports changes to owned workloads, and waits for Collectors
+// to settle. It runs serially because it upgrades the shared release.
+func TestStableReapply(t *testing.T) {
+	settled := false
+	f := features.New("Stable Helm reapply").WithLabel("execution", "serial").
+		Assess("Identical inputs preserve Helm-managed generations", func(ctx context.Context, t *testing.T, c *envconf.Config) context.Context {
+			waitCtx, cancel := context.WithTimeout(ctx, 15*time.Minute)
+			defer cancel()
+			before, err := funcs.ListWorkloads(waitCtx, c.Client(), c.Namespace())
+			require.NoError(t, err)
+			generations := func(workloads []funcs.Workload, hasOwner bool) map[string]int64 {
+				result := map[string]int64{}
+				for _, workload := range workloads {
+					if workload.HasOwner == hasOwner {
+						result[workload.String()] = workload.Generation
+					}
+				}
+				return result
+			}
+			wasHelm := generations(before, false)
+			require.NotEmpty(t, wasHelm, "the release must contain Helm-managed workloads")
+			chart, err := loader.Load(testenv.ChartPath)
+			require.NoError(t, err)
+			values, err := common.ReadValuesFile(testenv.ValuesPath)
+			require.NoError(t, err)
+			getter := &genericclioptions.ConfigFlags{
+				KubeConfig: new(c.KubeconfigFile()),
+				Context:    new(c.KubeContext()),
+				Namespace:  new(c.Namespace()),
+			}
+			helmcfg := action.NewConfiguration()
+			require.NoError(t, helmcfg.Init(getter, c.Namespace(), "secret"), "creating Helm upgrade config")
+			upgrade := action.NewUpgrade(helmcfg)
+			upgrade.Namespace = c.Namespace()
+			upgrade.ResetValues = true
+			upgrade.WaitStrategy = kube.StatusWatcherStrategy
+			upgrade.WaitForJobs = true
+			upgrade.Timeout = 15 * time.Minute
+			_, err = upgrade.RunWithContext(waitCtx, testenv.ReleaseName, chart, values)
+			require.NoError(t, err, "reapplying identical chart inputs")
+			_, err = waitForCollectors(waitCtx, c)
+			require.NoError(t, err, "waiting for Collector workloads after reapply")
+			settled = true
+			after, err := funcs.ListWorkloads(waitCtx, c.Client(), c.Namespace())
+			require.NoError(t, err)
+			assert.Equal(t, wasHelm, generations(after, false), "identical inputs changed a Helm-managed workload")
+			if !assert.ObjectsAreEqual(generations(before, true), generations(after, true)) {
+				t.Log("the Operator changed workloads derived from unchanged Collector resources")
+			}
+			return ctx
+		}).
+		Teardown(func(ctx context.Context, t *testing.T, c *envconf.Config) context.Context {
+			if !settled {
+				cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 15*time.Minute+30*time.Second)
+				defer cancel()
+				_, err := waitForCollectors(cleanupCtx, c)
+				require.NoError(t, err, "settling Collector workloads after reapply")
+			}
+			return ctx
+		}).Feature()
+	testenv.Test(t, f)
 }
