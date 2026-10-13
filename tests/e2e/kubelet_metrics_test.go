@@ -15,10 +15,9 @@ import (
 
 	"github.com/NVIDIA-dev/nktp/tests/internal/funcs"
 	"github.com/stretchr/testify/require"
-	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	coreclient "k8s.io/client-go/kubernetes/typed/core/v1"
+	"sigs.k8s.io/e2e-framework/klient/decoder"
 	"sigs.k8s.io/e2e-framework/klient/wait"
 	"sigs.k8s.io/e2e-framework/pkg/envconf"
 	"sigs.k8s.io/e2e-framework/pkg/features"
@@ -28,78 +27,72 @@ import (
 // metrics to Prometheus. A passive, digest-pinned NVIDIA container on each node
 // gives cAdvisor a real workload whose memory metric must be non-zero.
 func TestKubeletMetrics(t *testing.T) {
-	const name = "nktp-e2e-kubelet-metrics"
+	name := "nktp-e2e-kubelet-metrics"
 	namespace := testenv.EnvConf().Namespace()
-	labels := map[string]string{"app.kubernetes.io/name": name}
-	daemonSet := &appsv1.DaemonSet{
-		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: namespace},
-		Spec: appsv1.DaemonSetSpec{
-			Selector: &metav1.LabelSelector{MatchLabels: labels},
-			Template: passiveFixturePodTemplate(name),
-		},
-	}
-
-	var want []string
+	var desiredNodes []string
 	f := features.New("Kubelet and cAdvisor metrics").
+		Setup(funcs.ApplyResources(FieldManager, "manifests/kubelet-metrics", "*.yaml", decoder.MutateNamespace(namespace))).
 		Setup(func(ctx context.Context, t *testing.T, c *envconf.Config) context.Context {
-			setupCtx, cancel := context.WithTimeout(ctx, 5*time.Minute)
-			defer cancel()
-			client := c.Client()
 			var nodes corev1.NodeList
-			require.NoError(t, client.Resources().List(setupCtx, &nodes), "listing nodes for the kubelet metrics fixture")
-			require.NotEmpty(t, nodes.Items, "the cluster must have a node to test")
-			for _, node := range nodes.Items {
-				want = append(want, node.Name)
+			err := c.Client().Resources().List(ctx, &nodes)
+			require.NoError(t, err, "listing cluster nodes")
+			for _, n := range nodes.Items {
+				desiredNodes = append(desiredNodes, n.Name)
 			}
-			slices.Sort(want)
-			require.NoError(t, funcs.DeleteDaemonSet(setupCtx, client, daemonSet), "removing any previous kubelet metrics DaemonSet")
-			daemonSet = funcs.CreateDaemonSet(setupCtx, t, client, daemonSet)
+			slices.Sort(desiredNodes)
+			require.NotEmpty(t, desiredNodes, "cluster has no nodes")
 			return ctx
 		}).
-		Assess("Fixture is ready on every node", func(ctx context.Context, t *testing.T, c *envconf.Config) context.Context {
+		Assess("Daemonset readiness", funcs.DaemonsetReady(name)).
+		Assess("Every node exports kubelet metrics", func(ctx context.Context, t *testing.T, c *envconf.Config) context.Context {
 			waitCtx, cancel := context.WithTimeout(ctx, 15*time.Minute)
 			defer cancel()
-			nodes := int32(len(want))
-			require.NoError(t, funcs.WaitForDaemonSet(waitCtx, funcs.DaemonSetWaitOptions{
-				Name: name, Namespace: namespace, Client: c.Client(), NodeCount: &nodes,
-			}), "waiting for DaemonSet %s/%s to be ready on all %d nodes", namespace, name, nodes)
-			return ctx
-		}).
-		Assess("Every node exports kubelet and cAdvisor metrics", func(ctx context.Context, t *testing.T, c *envconf.Config) context.Context {
-			waitCtx, cancel := context.WithTimeout(ctx, 15*time.Minute)
-			defer cancel()
-			// The framework's CRUD client has no Service proxy operation.
 			client, err := coreclient.NewForConfig(c.Client().RESTConfig())
 			require.NoError(t, err, "creating the Service proxy client")
 			services := client.Services(namespace)
-			kubeletQuery := "count by (node) (kubelet_active_pods > 0)"
-			cadvisorQuery := fmt.Sprintf(
-				`max by (node) (container_memory_working_set_bytes{namespace=%q,pod=~%q,container="memory"}) > 0`,
-				namespace, name+"-.+")
-
-			var gotKubelet, gotCadvisor []string
+			query := "count by (node) (kubelet_active_pods > 0)"
+			var got []string
 			var lastErr error
 			err = wait.For(func(ctx context.Context) (bool, error) {
-				gotKubelet, lastErr = prometheusMetricLabelValues(ctx, services, kubeletQuery, "node")
+				got, lastErr = prometheusMetricLabelValues(ctx, services, query, "node")
 				if lastErr != nil {
 					return false, nil
 				}
-				gotCadvisor, lastErr = prometheusMetricLabelValues(ctx, services, cadvisorQuery, "node")
-				if lastErr != nil {
-					return false, nil
-				}
-				return coversValues(gotKubelet, want) && coversValues(gotCadvisor, want), nil
+				return coversValues(got, desiredNodes), nil
 			}, wait.WithContext(waitCtx), wait.WithTimeout(0), wait.WithInterval(5*time.Second), wait.WithImmediate())
 			require.NoError(t, err,
-				"want nodes %v; kubelet_active_pods nodes %v; container_memory_working_set_bytes nodes %v; last query error: %v",
-				want, gotKubelet, gotCadvisor, lastErr)
+				"want nodes %v; kubelet_active_pods nodes %v; last query error: %v",
+				desiredNodes, got, lastErr)
 			return ctx
 		}).
+		Assess("Every node exports cAdvisor metrics", func(ctx context.Context, t *testing.T, c *envconf.Config) context.Context {
+			waitCtx, cancel := context.WithTimeout(ctx, 15*time.Minute)
+			defer cancel()
+			client, err := coreclient.NewForConfig(c.Client().RESTConfig())
+			require.NoError(t, err, "creating the Service proxy client")
+			services := client.Services(namespace)
+			query := fmt.Sprintf(
+				`max by (node) (container_memory_working_set_bytes{namespace=%q,pod=~%q,container="memory"}) > 0`,
+				namespace, name+"-.+")
+			var got []string
+			var lastErr error
+			err = wait.For(func(ctx context.Context) (bool, error) {
+				got, lastErr = prometheusMetricLabelValues(ctx, services, query, "node")
+				if lastErr != nil {
+					return false, nil
+				}
+				return coversValues(got, desiredNodes), nil
+			}, wait.WithContext(waitCtx), wait.WithTimeout(0), wait.WithInterval(5*time.Second), wait.WithImmediate())
+			require.NoError(t, err,
+				"want nodes %v; container_memory_working_set_bytes nodes %v; last query error: %v",
+				desiredNodes, got, lastErr)
+			return ctx
+		}).
+		Teardown(funcs.DeleteResources(FieldManager, "manifests/kubelet-metrics", "*.yaml", decoder.MutateNamespace(namespace))).
 		Feature()
 	testenv.Test(t, f)
 }
 
-// coversValues permits extra series while requiring every expected label value.
 func coversValues(got, want []string) bool {
 	for _, expected := range want {
 		if !slices.Contains(got, expected) {

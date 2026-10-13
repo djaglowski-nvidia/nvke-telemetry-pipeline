@@ -30,7 +30,8 @@ import (
 
 var testenv = config.NewEnvironmentFromFlags()
 
-const releaseName = "nktp-e2e"
+const ReleaseName = "nktp-e2e"
+const FieldManager = "nktp-e2e"
 
 func TestMain(t *testing.M) {
 	cfg, err := envconf.NewFromFlags()

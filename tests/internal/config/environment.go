@@ -105,7 +105,7 @@ func (e *Environment) Install() {
 
 func (e *Environment) Uninstall() {
 	if e.KeepRelease {
-		slog.Info("keeping the deployed helm release, skipping uninstall", "release", e.ReleaseName, "namespace", e.ReleaseNamespace)
+		slog.Info("helm chart won't be uninstalled upon completion", "release", e.ReleaseName, "namespace", e.ReleaseNamespace)
 		return
 	}
 	e.Finish(func(ctx context.Context, c *envconf.Config) (context.Context, error) {
