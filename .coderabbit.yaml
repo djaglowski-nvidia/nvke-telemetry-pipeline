@@ -9,9 +9,9 @@ reviews:
 
   auto_review:
     enabled: true
-    # Pull requests stay in draft while they are still being reshaped
-    # (CONTRIBUTING.md), so drafts must stay off.
-    drafts: false
+    # Review draft pull requests too, so feedback arrives while the change
+    # is still being shaped.
+    drafts: true
     base_branches:
       - "^main$"
     ignore_usernames:
@@ -25,11 +25,11 @@ reviews:
   collapse_walkthrough: true
   request_changes_workflow: false
 
-  # Suppresses "review skipped" notices, including the draft-PR one that tells
-  # the reader to set `auto_review.drafts: true`. That advice is aimed at
-  # maintainers, not the contributor who opened the draft, and there is no way
-  # to keep the notice while dropping the advice: this flag is all-or-nothing.
-  # Contributors get silence until they mark the PR ready, then a review.
+  # Suppresses "review skipped" notices, such as the one for a base branch that
+  # is not listed under `auto_review.base_branches`. That advice is aimed at
+  # maintainers, not the contributor who opened the pull request, and there is
+  # no way to keep the notice while dropping the advice: this flag is
+  # all-or-nothing. Draft pull requests are reviewed, so they get no skip notice.
   review_status: false
 
   path_filters:
