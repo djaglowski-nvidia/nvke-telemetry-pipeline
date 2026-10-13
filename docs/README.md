@@ -15,6 +15,7 @@ each part in depth.
 - [Secure gateway export](guides/secure_gateway_export.md)
 - [Configure kubelet metrics](guides/configure_kubelet_metrics.md)
 - [Enable host process metrics](guides/enable_host_process_metrics.md)
+- [Configure a persistent exporter queue](guides/configure_persistent_queue.md)
 - [Enable log checkpoints for the node Collector](guides/enable_daemonset_log_checkpoints.md)
 
 ## Send telemetry to NKTP
