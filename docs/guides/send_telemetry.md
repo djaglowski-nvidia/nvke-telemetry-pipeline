@@ -85,6 +85,30 @@ and
 [OTLP exporter](https://opentelemetry.io/docs/languages/sdk-configuration/otlp-exporter/)
 pages for all options.
 
+## Use auto-instrumentation
+
+Java, Node.js, Python, and .NET services can use an agent instead of an SDK.
+The OpenTelemetry Operator that NKTP installs injects the agent when a Pod is
+created. An `Instrumentation` resource configures the agent, including where it
+sends telemetry.
+
+Add the annotation for your language to the Pod template of your workload. Its
+value names the `Instrumentation` to use, such as a shared `nktp/default` that
+your cluster provides, or your own. Existing Pods need a rollout.
+
+```yaml
+spec:
+  template:
+    metadata:
+      annotations:
+        instrumentation.opentelemetry.io/inject-java: "nktp/default"
+```
+
+See
+[Injecting auto-instrumentation](https://opentelemetry.io/docs/platforms/kubernetes/operator/automatic/)
+for the annotation for each language, Pods with more than one container, and
+creating your own `Instrumentation`.
+
 ## Add a sidecar
 
 A sidecar is a Collector that runs as an extra container in your Pod. The SDK
