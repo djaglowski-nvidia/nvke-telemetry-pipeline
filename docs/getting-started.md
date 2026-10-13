@@ -154,18 +154,9 @@ global:
 The gateways, the watchdog and the watchdog sidecar add the attribute to
 telemetry that does not already have one.
 
-## Scraping your services
+## Service owners
 
-NKTP collects every Pod's logs and state, and the nodes' metrics, without
-being asked. A service's own metrics are scraped only when it has a
-`ServiceMonitor` or `PodMonitor`, which can live in any namespace and needs no
-NKTP-specific label. If a NetworkPolicy guards the metrics port, admit the
-release namespace. A monitor that needs credentials references a Secret, which
-the node Target Allocator reads only in the namespaces listed in
-`daemonset.kubernetes.targetAllocator.prometheusCR.secretNamespaces`; see
-[Node collector](components/node_collector.md#monitor-credentials).
-[Send telemetry to NKTP](guides/send_telemetry.md) is the guide to share
-with service owners.
+See [Send telemetry to NKTP](guides/send_telemetry.md).
 
 ## Upgrading
 

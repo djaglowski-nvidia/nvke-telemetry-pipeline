@@ -1,10 +1,14 @@
 # Documentation
 
+## Send telemetry to NKTP
+
+- [Send telemetry to NKTP](guides/send_telemetry.md)
+
+## Install and operate NKTP
+
 The [chart README](../nktp/README.md) summarizes the chart: prerequisites,
 installation, components, and the configuration model. The pages here cover
 each part in depth.
-
-## Run NKTP
 
 - [Getting started](getting-started.md)
 - [Topology](architecture/topology.md)
@@ -17,12 +21,9 @@ each part in depth.
 - [Enable host process metrics](guides/enable_host_process_metrics.md)
 - [Configure a persistent exporter queue](guides/configure_persistent_queue.md)
 - [Enable log checkpoints for the node Collector](guides/enable_daemonset_log_checkpoints.md)
+- [Dashboards](../nktp/dashboards/README.md)
 
-## Send telemetry to NKTP
-
-- [Send telemetry to NKTP](guides/send_telemetry.md)
-
-## Components
+### Components
 
 Each page covers one top-level key in `nktp/values.yaml`.
 
@@ -42,7 +43,6 @@ Each page covers one top-level key in `nktp/values.yaml`.
 - [Local development loop](../dev/README.md)
 - [Chart unit tests](../nktp/tests/README.md)
 - [End-to-end tests](../tests/e2e/README.md)
-- [Dashboards](../nktp/dashboards/README.md)
 - [OCCT](../occt/README.md)
 - [Releasing](../RELEASING.md)
 
