@@ -7,6 +7,8 @@ Apply this label to monitoring resources for endpoints with large scrape
 responses, such as kube-state-metrics.
 
 A Target Allocator distributes scrapes across the pool's replicas.
+Collectors refresh their assigned targets every 10 seconds. Configure this with
+`large_target_metrics.kubernetes.targetAllocator.collectorTargetReloadInterval`.
 The Target Allocator rejects ServiceMonitor and PodMonitor endpoints that reference
 local bearer-token or TLS files in the Collector container.
 Setting `large_target_metrics.kubernetes.targetAllocator.enabled` to `false`
@@ -23,8 +25,9 @@ Use `large_target_metrics.otelcol.config` for Collector internal configuration a
 
 ## Sizing large scrapes
 
-This pool reserves more memory than the node DaemonSet for large scrape
-responses. Autoscaling requires the Kubernetes resource metrics API and
+A batch processor splits scrapes before queue admission. The memory limiter
+starts refusing above 7.8 GiB of Go heap, below the 12 GiB container limit.
+Autoscaling requires the Kubernetes resource metrics API and
 distributes whole targets. An individual endpoint must still fit in one
 Collector. Scrape defaults limit each response to 1,000,000 samples and 1 GiB.
 Split endpoints that exceed these limits into smaller scrape targets where

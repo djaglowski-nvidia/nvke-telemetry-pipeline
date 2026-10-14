@@ -23,17 +23,16 @@ loopback HTTP receivers are unchanged.
 Node Collectors send logs, metrics and traces to their gateways over OTLP/gRPC
 with mutual TLS.
 The large-target pool sends metrics over gRPC, and the cluster-events reader
-sends logs over gRPC. All three gateways send GOAWAY at a connection age of five
-minutes, with +/-10% jitter, so clients reconnect through the Service and can
+sends logs over gRPC. All three gateways send GOAWAY at a connection age of one
+minute, with +/-10% jitter, so clients reconnect through the Service and can
 reach newly added replicas. In-flight exports get another 30 seconds to finish
 before forced closure. See
 [gRPC connection management](https://github.com/grpc/proposal/blob/master/A9-server-side-conn-mgt.md).
 
-Five minutes limits routine connection churn while periodically redistributing
-telemetry. Tune `max_connection_age` under
+Tune `max_connection_age` under
 `<gateway>.otelcol.config.receivers.otlp.protocols.grpc.keepalive.server_parameters`
 based on gateway headroom and acceptable delay after scale-up. Lower it for
-faster relief; raise it to reduce TCP setup and TLS handshakes.
+faster relief. Raise it to reduce TCP setup and TLS handshakes.
 Reconnects can select the same gateway, so redistribution can take multiple
 rotations. Increase `max_connection_age_grace` if in-flight exports need longer
 to finish. Explicitly configured HTTP receivers do not use these gRPC age settings.
@@ -47,8 +46,8 @@ Use `<gateway>.otelcol.config` for Collector configuration and
 requires the Kubernetes resource metrics API. Retain `GOMEMLIMIT` and `GOGC` when
 replacing `<gateway>.kubernetes.env`.
 
-Each gateway's sending queue holds approximately 0.96 GiB of serialized
-telemetry, 12% of its default 8 GiB container limit. Processing and incoming
+Each gateway's sending queue holds approximately 0.48 GiB of serialized
+telemetry, 12% of its default 4 GiB container limit. Processing and incoming
 requests also consume heap; validate headroom with representative telemetry.
 Set `exporters.otlp.sending_queue.queue_size` in the gateway's configuration
 explicitly when changing its memory limit.

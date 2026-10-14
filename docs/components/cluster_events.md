@@ -47,3 +47,5 @@ reader's Lease permissions to that name. Set `extensions.k8s_leader_elector.leas
 in the Collector configuration to change the name. Use a literal name so Helm can
 create the matching Lease. If using another Lease namespace, provision the Lease
 and its RBAC there separately.
+
+Size for the active reader rather than averaging active and standby replicas.

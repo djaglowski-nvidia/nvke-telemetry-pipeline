@@ -411,7 +411,7 @@ matches the snapshot with default values:
                     schedule_delay: 1000
       env:
         - name: GOMEMLIMIT
-          value: 896MiB
+          value: 192MiB
         - name: GOGC
           value: "50"
         - name: POD_NAMESPACE
@@ -471,11 +471,11 @@ matches the snapshot with default values:
       replicas: 2
       resources:
         limits:
-          cpu: "4"
-          memory: 1Gi
-        requests:
           cpu: "1"
           memory: 512Mi
+        requests:
+          cpu: 250m
+          memory: 256Mi
       securityContext:
         allowPrivilegeEscalation: false
         capabilities:
@@ -610,7 +610,7 @@ matches the snapshot with default values:
                 sizer: bytes
               block_on_overflow: true
               num_consumers: 32
-              queue_size: 8388608
+              queue_size: 67108864
               sizer: bytes
             tls:
               ca_file: /etc/nktp/internal-tls/client/ca.crt
@@ -629,7 +629,7 @@ matches the snapshot with default values:
                 sizer: bytes
               block_on_overflow: true
               num_consumers: 32
-              queue_size: 33554432
+              queue_size: 67108864
               sizer: bytes
             tls:
               ca_file: /etc/nktp/internal-tls/client/ca.crt
@@ -648,7 +648,7 @@ matches the snapshot with default values:
                 sizer: bytes
               block_on_overflow: true
               num_consumers: 32
-              queue_size: 8388608
+              queue_size: 67108864
               sizer: bytes
             tls:
               ca_file: /etc/nktp/internal-tls/client/ca.crt
@@ -1003,7 +1003,7 @@ matches the snapshot with default values:
                     schedule_delay: 1000
       env:
         - name: GOMEMLIMIT
-          value: 3276MiB
+          value: 768MiB
         - name: GOGC
           value: "50"
         - name: NODE_NAME
@@ -1072,10 +1072,10 @@ matches the snapshot with default values:
       resources:
         limits:
           cpu: "2"
-          memory: 4Gi
-        requests:
-          cpu: "1"
           memory: 2Gi
+        requests:
+          cpu: 500m
+          memory: 1Gi
       securityContext:
         allowPrivilegeEscalation: false
         capabilities:
@@ -1243,9 +1243,20 @@ matches the snapshot with default values:
       namespace: NAMESPACE
     spec:
       autoscaler:
-        maxReplicas: 64
+        behavior:
+          scaleUp:
+            policies:
+              - periodSeconds: 15
+                type: Percent
+                value: 200
+              - periodSeconds: 15
+                type: Pods
+                value: 8
+            selectPolicy: Max
+            stabilizationWindowSeconds: 0
+        maxReplicas: 128
         minReplicas: 2
-        targetCPUUtilization: 75
+        targetCPUUtilization: 60
         targetMemoryUtilization: 100
       config:
         exporters:
@@ -1261,7 +1272,7 @@ matches the snapshot with default values:
                 sizer: bytes
               block_on_overflow: true
               num_consumers: 32
-              queue_size: 1030792151
+              queue_size: 515396076
               sizer: bytes
             tls:
               insecure: true
@@ -1295,7 +1306,7 @@ matches the snapshot with default values:
                 endpoint: 0.0.0.0:4317
                 keepalive:
                   server_parameters:
-                    max_connection_age: 5m
+                    max_connection_age: 1m
                     max_connection_age_grace: 30s
                 tls:
                   cert_file: /etc/nktp/internal-tls/server/tls.crt
@@ -1344,7 +1355,7 @@ matches the snapshot with default values:
                     schedule_delay: 1000
       env:
         - name: GOMEMLIMIT
-          value: 7GiB
+          value: 1536MiB
         - name: GOGC
           value: "50"
       image: otel/opentelemetry-collector-k8s:0.162.0
@@ -1401,9 +1412,9 @@ matches the snapshot with default values:
       resources:
         limits:
           cpu: "4"
-          memory: 8Gi
+          memory: 4Gi
         requests:
-          cpu: 200m
+          cpu: 250m
           memory: 512Mi
       securityContext:
         allowPrivilegeEscalation: false
@@ -1461,9 +1472,20 @@ matches the snapshot with default values:
       namespace: NAMESPACE
     spec:
       autoscaler:
-        maxReplicas: 64
+        behavior:
+          scaleUp:
+            policies:
+              - periodSeconds: 15
+                type: Percent
+                value: 200
+              - periodSeconds: 15
+                type: Pods
+                value: 8
+            selectPolicy: Max
+            stabilizationWindowSeconds: 0
+        maxReplicas: 128
         minReplicas: 2
-        targetCPUUtilization: 75
+        targetCPUUtilization: 60
         targetMemoryUtilization: 100
       config:
         exporters:
@@ -1479,7 +1501,7 @@ matches the snapshot with default values:
                 sizer: bytes
               block_on_overflow: true
               num_consumers: 32
-              queue_size: 1030792151
+              queue_size: 515396076
               sizer: bytes
             tls:
               insecure: true
@@ -1513,7 +1535,7 @@ matches the snapshot with default values:
                 endpoint: 0.0.0.0:4317
                 keepalive:
                   server_parameters:
-                    max_connection_age: 5m
+                    max_connection_age: 1m
                     max_connection_age_grace: 30s
                 tls:
                   cert_file: /etc/nktp/internal-tls/server/tls.crt
@@ -1562,7 +1584,7 @@ matches the snapshot with default values:
                     schedule_delay: 1000
       env:
         - name: GOMEMLIMIT
-          value: 7GiB
+          value: 1536MiB
         - name: GOGC
           value: "50"
       image: otel/opentelemetry-collector-k8s:0.162.0
@@ -1618,10 +1640,10 @@ matches the snapshot with default values:
       replicas: 2
       resources:
         limits:
-          cpu: "4"
-          memory: 8Gi
+          cpu: "6"
+          memory: 4Gi
         requests:
-          cpu: 200m
+          cpu: 250m
           memory: 512Mi
       securityContext:
         allowPrivilegeEscalation: false
@@ -1679,9 +1701,20 @@ matches the snapshot with default values:
       namespace: NAMESPACE
     spec:
       autoscaler:
-        maxReplicas: 64
+        behavior:
+          scaleUp:
+            policies:
+              - periodSeconds: 15
+                type: Percent
+                value: 200
+              - periodSeconds: 15
+                type: Pods
+                value: 8
+            selectPolicy: Max
+            stabilizationWindowSeconds: 0
+        maxReplicas: 128
         minReplicas: 2
-        targetCPUUtilization: 75
+        targetCPUUtilization: 60
         targetMemoryUtilization: 100
       config:
         exporters:
@@ -1697,7 +1730,7 @@ matches the snapshot with default values:
                 sizer: bytes
               block_on_overflow: true
               num_consumers: 32
-              queue_size: 1030792151
+              queue_size: 515396076
               sizer: bytes
             tls:
               insecure: true
@@ -1731,7 +1764,7 @@ matches the snapshot with default values:
                 endpoint: 0.0.0.0:4317
                 keepalive:
                   server_parameters:
-                    max_connection_age: 5m
+                    max_connection_age: 1m
                     max_connection_age_grace: 30s
                 tls:
                   cert_file: /etc/nktp/internal-tls/server/tls.crt
@@ -1780,7 +1813,7 @@ matches the snapshot with default values:
                     schedule_delay: 1000
       env:
         - name: GOMEMLIMIT
-          value: 7GiB
+          value: 1536MiB
         - name: GOGC
           value: "50"
       image: otel/opentelemetry-collector-k8s:0.162.0
@@ -1837,9 +1870,9 @@ matches the snapshot with default values:
       resources:
         limits:
           cpu: "4"
-          memory: 8Gi
+          memory: 4Gi
         requests:
-          cpu: 200m
+          cpu: 250m
           memory: 512Mi
       securityContext:
         allowPrivilegeEscalation: false
@@ -3108,7 +3141,18 @@ matches the snapshot with default values:
       namespace: NAMESPACE
     spec:
       autoscaler:
-        maxReplicas: 16
+        behavior:
+          scaleUp:
+            policies:
+              - periodSeconds: 15
+                type: Percent
+                value: 200
+              - periodSeconds: 15
+                type: Pods
+                value: 8
+            selectPolicy: Max
+            stabilizationWindowSeconds: 0
+        maxReplicas: 32
         minReplicas: 2
         targetCPUUtilization: 75
         targetMemoryUtilization: 100
@@ -3126,7 +3170,7 @@ matches the snapshot with default values:
                 sizer: bytes
               block_on_overflow: true
               num_consumers: 32
-              queue_size: 2147483648
+              queue_size: 134217728
               sizer: bytes
             tls:
               ca_file: /etc/nktp/internal-tls/client/ca.crt
@@ -3137,10 +3181,14 @@ matches the snapshot with default values:
           health_check:
             endpoint: 0.0.0.0:13133
         processors:
+          batch:
+            send_batch_max_size: 8192
+            send_batch_size: 8192
+            timeout: 0s
           memory_limiter:
             check_interval: 500ms
             limit_percentage: 80
-            spike_limit_percentage: 25
+            spike_limit_percentage: 15
           redaction/basic_v1:
             allow_all_keys: true
             blocked_key_patterns:
@@ -3172,6 +3220,7 @@ matches the snapshot with default values:
               processors:
                 - memory_limiter
                 - redaction/basic_v1
+                - batch
               receivers:
                 - prometheus
           telemetry:
@@ -3203,7 +3252,7 @@ matches the snapshot with default values:
                     schedule_delay: 1000
       env:
         - name: GOMEMLIMIT
-          value: 8GiB
+          value: 7168MiB
         - name: GOGC
           value: "50"
       image: otel/opentelemetry-collector-k8s:0.162.0
@@ -3260,10 +3309,10 @@ matches the snapshot with default values:
       resources:
         limits:
           cpu: "4"
-          memory: 16Gi
+          memory: 12Gi
         requests:
-          cpu: "2"
-          memory: 8Gi
+          cpu: 500m
+          memory: 2Gi
       securityContext:
         allowPrivilegeEscalation: false
         capabilities:
@@ -3272,6 +3321,7 @@ matches the snapshot with default values:
         readOnlyRootFilesystem: true
       targetAllocator:
         allocationStrategy: consistent-hashing
+        collectorTargetReloadInterval: 10s
         enabled: true
         env:
           - name: OTEL_SERVICE_NAME
@@ -13256,10 +13306,21 @@ matches the snapshot with default values:
       namespace: NAMESPACE
     spec:
       autoscaler:
+        behavior:
+          scaleUp:
+            policies:
+              - periodSeconds: 15
+                type: Percent
+                value: 200
+              - periodSeconds: 15
+                type: Pods
+                value: 8
+            selectPolicy: Max
+            stabilizationWindowSeconds: 0
         maxReplicas: 16
         minReplicas: 2
         targetCPUUtilization: 75
-        targetMemoryUtilization: 100
+        targetMemoryUtilization: 75
       config:
         exporters:
           otlp:
@@ -13416,7 +13477,7 @@ matches the snapshot with default values:
                     schedule_delay: 1000
       env:
         - name: GOMEMLIMIT
-          value: 768MiB
+          value: 192MiB
         - name: GOGC
           value: "50"
       image: otel/opentelemetry-collector-k8s:0.162.0
@@ -13471,8 +13532,8 @@ matches the snapshot with default values:
           cpu: "4"
           memory: 1Gi
         requests:
-          cpu: 500m
-          memory: 512Mi
+          cpu: 100m
+          memory: 256Mi
       securityContext:
         allowPrivilegeEscalation: false
         capabilities:

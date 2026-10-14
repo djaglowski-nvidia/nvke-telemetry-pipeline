@@ -26,12 +26,25 @@ tests:
         documentIndex: 0
       - equal:
           path: "spec.resources.requests.memory"
-          value: "8Gi"
+          value: "2Gi"
         documentIndex: 0
       - equal:
           path: "spec.resources.limits.memory"
-          value: "16Gi"
+          value: "12Gi"
         documentIndex: 0
+      - equal:
+          path: spec.autoscaler.behavior
+          value:
+            scaleUp:
+              stabilizationWindowSeconds: 0
+              selectPolicy: Max
+              policies:
+                - type: Percent
+                  value: 200
+                  periodSeconds: 15
+                - type: Pods
+                  value: 8
+                  periodSeconds: 15
       - equal:
           path: "spec.targetAllocator.allocationStrategy"
           value: "consistent-hashing"
@@ -59,6 +72,23 @@ tests:
             cert_file: /etc/nktp/internal-tls/client/tls.crt
             key_file: /etc/nktp/internal-tls/client/tls.key
             reload_interval: 1h
+      - equal:
+          path: spec.config.processors.batch
+          value: {timeout: 0s, send_batch_size: 8192, send_batch_max_size: 8192}
+      - equal:
+          path: spec.config.exporters.otlp.sending_queue.queue_size
+          value: 134217728
+      - equal:
+          path: spec.config.exporters.otlp.sending_queue.num_consumers
+          value: 32
+      - contains:
+          path: spec.env
+          content: {name: GOMEMLIMIT, value: 7168MiB}
+      - equal:
+          path: spec.config.processors.memory_limiter
+          value: {check_interval: 500ms, limit_percentage: 80, spike_limit_percentage: 15}
+      - notExists:
+          path: spec.config.exporters.otlp_http
       - equal:
           path: "spec.targetAllocator.prometheusCR.denyFSAccessThroughSMs"
           value: false
@@ -134,7 +164,7 @@ tests:
         documentIndex: 0
       - equal:
           path: "spec.resources.requests.memory"
-          value: "8Gi"
+          value: "2Gi"
         documentIndex: 0
       - notExists:
           path: "spec.config.ignored"
@@ -203,7 +233,7 @@ tests:
           value:
             metrics:
               receivers: [prometheus]
-              processors: [memory_limiter, redaction/basic_v1]
+              processors: [memory_limiter, redaction/basic_v1, batch]
               exporters: [otlp]
       - notExists:
           path: spec.config.exporters["otlp/watchdog"]

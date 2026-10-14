@@ -36,7 +36,18 @@ tests:
             minReplicas: 2
             maxReplicas: 16
             targetCPUUtilization: 75
-            targetMemoryUtilization: 100
+            targetMemoryUtilization: 75
+            behavior:
+              scaleUp:
+                stabilizationWindowSeconds: 0
+                selectPolicy: Max
+                policies:
+                  - type: Percent
+                    value: 200
+                    periodSeconds: 15
+                  - type: Pods
+                    value: 8
+                    periodSeconds: 15
       - equal:
           path: spec.podDisruptionBudget
           value:
@@ -117,13 +128,13 @@ tests:
       - equal:
           path: spec.resources
           value:
-            requests: {cpu: 500m, memory: 512Mi}
+            requests: {cpu: 100m, memory: 256Mi}
             limits: {cpu: "4", memory: 1Gi}
       - equal:
           path: spec.env
           value:
             - name: GOMEMLIMIT
-              value: 768MiB
+              value: 192MiB
             - name: GOGC
               value: "50"
       - equal:
@@ -391,7 +402,7 @@ tests:
       - equal:
           path: spec.resources
           value:
-            requests: {cpu: 500m, memory: 128Mi}
+            requests: {cpu: 100m, memory: 128Mi}
             limits: {cpu: "4", memory: 1Gi}
       - equal:
           path: spec.autoscaler
@@ -399,7 +410,18 @@ tests:
             minReplicas: 2
             maxReplicas: 16
             targetCPUUtilization: 60
-            targetMemoryUtilization: 100
+            targetMemoryUtilization: 75
+            behavior:
+              scaleUp:
+                stabilizationWindowSeconds: 0
+                selectPolicy: Max
+                policies:
+                  - type: Percent
+                    value: 200
+                    periodSeconds: 15
+                  - type: Pods
+                    value: 8
+                    periodSeconds: 15
       - equal:
           path: spec.nodeSelector
           value:

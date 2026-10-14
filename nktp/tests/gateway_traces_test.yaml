@@ -12,6 +12,12 @@ tests:
       - equal:
           path: spec.mode
           value: statefulset
+      - equal:
+          path: spec.resources.limits.memory
+          value: 4Gi
+      - contains:
+          path: spec.env
+          content: {name: GOMEMLIMIT, value: 1536MiB}
       - notExists:
           path: spec.deploymentUpdateStrategy
       - notExists:
@@ -51,7 +57,7 @@ tests:
                     reload_interval: 1h
                   keepalive:
                     server_parameters:
-                      max_connection_age: 5m
+                      max_connection_age: 1m
                       max_connection_age_grace: 30s
       - equal:
           path: spec.config.service.pipelines
@@ -152,12 +158,27 @@ tests:
           value: [{key: telemetry, operator: Exists}]
       - equal:
           path: spec.autoscaler
-          value: {minReplicas: 2, maxReplicas: 32, targetCPUUtilization: 75, targetMemoryUtilization: 100}
+          value:
+            minReplicas: 2
+            maxReplicas: 32
+            targetCPUUtilization: 60
+            targetMemoryUtilization: 100
+            behavior:
+              scaleUp:
+                stabilizationWindowSeconds: 0
+                selectPolicy: Max
+                policies:
+                  - type: Percent
+                    value: 200
+                    periodSeconds: 15
+                  - type: Pods
+                    value: 8
+                    periodSeconds: 15
       - equal:
           path: spec.resources
           value:
             requests: {cpu: 300m, memory: 512Mi}
-            limits: {cpu: "4", memory: 8Gi}
+            limits: {cpu: "4", memory: 4Gi}
       - equal:
           path: spec.env
           value:
@@ -288,5 +309,5 @@ tests:
                 reload_interval: 1h
               keepalive:
                 server_parameters:
-                  max_connection_age: 5m
+                  max_connection_age: 1m
                   max_connection_age_grace: 30s

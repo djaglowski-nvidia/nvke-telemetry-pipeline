@@ -102,9 +102,9 @@ own metrics to watchdog over plaintext OTLP/gRPC on port 4320. Watchdog exports
 received telemetry to the backend without passing through the gateways; its own
 sidecar exports watchdog's telemetry to the backend.
 
-Gateways and watchdog rotate connections about every five minutes so clients
-can reach newly added replicas while limiting connection churn. Configure the
-interval under each receiver's `otelcol.config`.
+Gateways rotate connections about every minute and watchdog every five minutes
+so clients can reach newly added replicas. Configure the interval under each
+receiver's `otelcol.config`.
 
 ## Sending telemetry to NKTP
 
@@ -137,8 +137,8 @@ Each Collector component has the same values structure:
 The chart renders each Collector configuration exactly as written. No other
 value changes it, so to change a pipeline, change its configuration.
 
-Each gateway defaults to an approximately 0.96 GiB sending queue measured in
-serialized bytes, 12% of its 8 GiB container limit. Heap usage is larger than
+Each gateway defaults to an approximately 0.48 GiB sending queue measured in
+serialized bytes, 12% of its 4 GiB container limit. Heap usage is larger than
 serialized size; review queue capacity and processing headroom when changing
 memory limits.
 
@@ -151,6 +151,27 @@ reader also needs `POD_NAMESPACE`.
 The watchdog, node collector, and large-target pool require their Target
 Allocators. Setting `targetAllocator.enabled: false` for any of them fails
 rendering.
+
+### Resource defaults
+
+| Collector | CPU request / limit | Memory request / limit | GOMEMLIMIT |
+| --- | --- | --- | --- |
+| Node | 500m / 2 | 1Gi / 2Gi | 768MiB |
+| Metrics gateway | 250m / 6 | 512Mi / 4Gi | 1536MiB |
+| Logs and traces gateways | 250m / 4 | 512Mi / 4Gi | 1536MiB |
+| Large targets | 500m / 4 | 2Gi / 12Gi | 7168MiB |
+| Events | 250m / 1 | 256Mi / 512Mi | 192MiB |
+| Watchdog | 100m / 4 | 256Mi / 1Gi | 192MiB |
+
+Node queues hold 64 MiB per signal, and the large-target queue
+holds 128 MiB. Each has 32 consumers. Capacity includes in-flight payloads.
+
+Gateways scale from 2 to 128 replicas at 60% CPU or 100% memory of Pod requests.
+The large-target pool scales from 2 to 32 replicas at 75% CPU or 100% memory.
+Watchdog scales from 2 to 16 replicas at 75% CPU or memory.
+Gateways, the large-target pool and watchdog allow scale-up by the larger of
+200% or 8 additional Pods per 15 seconds, with no stabilization window.
+Scale-down uses Kubernetes defaults.
 
 ### Telemetry redaction
 

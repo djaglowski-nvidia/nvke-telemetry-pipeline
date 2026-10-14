@@ -488,8 +488,8 @@ tests:
       - equal:
           path: spec.resources
           value:
-            requests: {cpu: 200m, memory: 2Gi}
-            limits: {cpu: "2", memory: 4Gi}
+            requests: {cpu: 200m, memory: 1Gi}
+            limits: {cpu: "2", memory: 2Gi}
       - notExists:
           path: spec.config.ignored
 
@@ -852,7 +852,7 @@ tests:
           value:
             block_on_overflow: true
             sizer: bytes
-            queue_size: 8388608
+            queue_size: 67108864
             num_consumers: 32
             batch:
               sizer: bytes

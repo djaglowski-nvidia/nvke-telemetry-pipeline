@@ -160,8 +160,8 @@ tests:
       - equal:
           path: spec.resources
           value:
-            requests: {cpu: 300m, memory: 512Mi}
-            limits: {cpu: "4", memory: 1Gi}
+            requests: {cpu: 300m, memory: 256Mi}
+            limits: {cpu: "1", memory: 512Mi}
       - equal:
           path: spec.env
           value:
