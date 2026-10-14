@@ -1261,7 +1261,7 @@ matches the snapshot with default values:
                 sizer: bytes
               block_on_overflow: true
               num_consumers: 32
-              queue_size: 16777216
+              queue_size: 1030792151
               sizer: bytes
             tls:
               insecure: true
@@ -1479,7 +1479,7 @@ matches the snapshot with default values:
                 sizer: bytes
               block_on_overflow: true
               num_consumers: 32
-              queue_size: 16777216
+              queue_size: 1030792151
               sizer: bytes
             tls:
               insecure: true
@@ -1697,7 +1697,7 @@ matches the snapshot with default values:
                 sizer: bytes
               block_on_overflow: true
               num_consumers: 32
-              queue_size: 16777216
+              queue_size: 1030792151
               sizer: bytes
             tls:
               insecure: true

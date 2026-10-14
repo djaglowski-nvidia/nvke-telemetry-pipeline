@@ -589,7 +589,10 @@ gateway_logs:
           sending_queue:
             block_on_overflow: true
             sizer: bytes # Counts serialized bytes. Go heap use can be several times larger.
-            queue_size: 16777216 # One 16MiB logs queue, including in-flight payloads.
+            # Rough sizing: 12% of 8Gi. Assuming ~4x heap use gives ~48%,
+            # leaving a rough allowance for baseline and processing below
+            # the memory_limiter's 55% soft limit.
+            queue_size: 1030792151
             num_consumers: 32 # Export concurrency. Idle worker slots hold no batch payload.
             batch:
               sizer: bytes # Batch sizes use serialized bytes, matching queue accounting.
@@ -891,7 +894,10 @@ gateway_metrics:
           sending_queue:
             block_on_overflow: true
             sizer: bytes # Counts serialized bytes. Go heap use can be several times larger.
-            queue_size: 16777216 # One 16MiB metrics queue, including in-flight payloads.
+            # Rough sizing: 12% of 8Gi. Assuming ~4x heap use gives ~48%,
+            # leaving a rough allowance for baseline and processing below
+            # the memory_limiter's 55% soft limit.
+            queue_size: 1030792151
             num_consumers: 32 # Export concurrency. Idle worker slots hold no batch payload.
             batch:
               sizer: bytes # Batch sizes use serialized bytes, matching queue accounting.
@@ -1193,7 +1199,10 @@ gateway_traces:
           sending_queue:
             block_on_overflow: true
             sizer: bytes # Counts serialized bytes. Go heap use can be several times larger.
-            queue_size: 16777216 # One 16MiB traces queue, including in-flight payloads.
+            # Rough sizing: 12% of 8Gi. Assuming ~4x heap use gives ~48%,
+            # leaving a rough allowance for baseline and processing below
+            # the memory_limiter's 55% soft limit.
+            queue_size: 1030792151
             num_consumers: 32 # Export concurrency. Idle worker slots hold no batch payload.
             batch:
               sizer: bytes # Batch sizes use serialized bytes, matching queue accounting.

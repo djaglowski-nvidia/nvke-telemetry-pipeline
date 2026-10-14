@@ -47,6 +47,15 @@ Use `<gateway>.otelcol.config` for Collector configuration and
 requires the Kubernetes resource metrics API. Retain `GOMEMLIMIT` and `GOGC` when
 replacing `<gateway>.kubernetes.env`.
 
+Each gateway's sending queue holds approximately 0.96 GiB of serialized
+telemetry, 12% of its default 8 GiB container limit. Processing and incoming
+requests also consume heap; validate headroom with representative telemetry.
+Set `exporters.otlp.sending_queue.queue_size` in the gateway's configuration
+explicitly when changing its memory limit.
+See OpenTelemetry's
+[queue-sizing guidance](https://opentelemetry.io/docs/collector/resiliency/#sending-queue-in-memory-buffering)
+and [sending queue configuration](https://github.com/open-telemetry/opentelemetry-collector/blob/v0.162.0/exporter/exporterhelper/README.md#sending-queue).
+
 Each gateway sets `k8s.cluster.name` from `global.clusterName` with its
 `transform/cluster` processor, unless the telemetry already has one. When
 `global.clusterName` is empty, the value is `unknown`. The chart passes the name

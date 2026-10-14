@@ -134,8 +134,13 @@ Each Collector component has the same values structure:
 | `<component>.otelcol.image` | An image override for this component only. |
 | `<component>.kubernetes` | `OpenTelemetryCollector` settings such as replicas, resources, env, volumes, autoscaler, and Target Allocator. |
 
-The chart renders each Collector configuration exactly as written. No other value
-changes it, so to change a pipeline, change its configuration.
+The chart renders each Collector configuration exactly as written. No other
+value changes it, so to change a pipeline, change its configuration.
+
+Each gateway defaults to an approximately 0.96 GiB sending queue measured in
+serialized bytes, 12% of its 8 GiB container limit. Heap usage is larger than
+serialized size; review queue capacity and processing headroom when changing
+memory limits.
 
 Helm replaces lists in your values file as a whole. When overriding a list
 such as `kubernetes.env`, `kubernetes.volumes`, or a receiver's
