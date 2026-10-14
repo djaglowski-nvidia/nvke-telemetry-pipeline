@@ -1,0 +1,34 @@
+# A receiver blueprint can expose multiple signals.
+# The blueprint must be used in one or more pipelines of each corresponding signal
+# All pipeline IDs are automatically scoped.
+blueprints:
+  receivers:
+    my_receiver:
+      template: |
+        receivers:
+          otlp:
+            protocols:
+              grpc:
+                endpoint: 0.0.0.0:4317
+
+        pipelines:
+          logs:
+            receivers: [otlp]
+            exporters: [{{ .forward }}]
+          metrics:
+            receivers: [otlp]
+            exporters: [{{ .forward }}]
+
+config:
+  receivers:
+    blueprint/my_receiver: {}
+  exporters:
+    some_exporter: {}
+  service:
+    pipelines:
+      logs:
+        receivers: [blueprint/my_receiver]
+        exporters: [some_exporter]
+      metrics:
+        receivers: [blueprint/my_receiver]
+        exporters: [some_exporter]

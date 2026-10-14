@@ -1,0 +1,30 @@
+---
+# Source: test-chart/templates/transpile.yaml
+connectors:
+  forward/exp/my_exporter_a: {}
+  forward/exp/my_exporter_b: {}
+exporters:
+  debug/exp/my_exporter_a:
+    verbosity: detailed
+  otlp/exp/my_exporter_b:
+    endpoint: otel-collector:4317
+receivers:
+  some_receiver: {}
+service:
+  pipelines:
+    logs:
+      exporters:
+      - forward/exp/my_exporter_a
+      - forward/exp/my_exporter_b
+      receivers:
+      - some_receiver
+    logs/exp/my_exporter_a:
+      exporters:
+      - debug/exp/my_exporter_a
+      receivers:
+      - forward/exp/my_exporter_a
+    logs/exp/my_exporter_b:
+      exporters:
+      - otlp/exp/my_exporter_b
+      receivers:
+      - forward/exp/my_exporter_b

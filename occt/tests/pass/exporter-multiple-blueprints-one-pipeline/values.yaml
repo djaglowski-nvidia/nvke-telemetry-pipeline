@@ -1,0 +1,37 @@
+# Two different exporter blueprints can be referenced by the same pipeline.
+# Each expands into its own scope and its own boundary connector.
+blueprints:
+  exporters:
+    my_exporter_a:
+      template: |
+        exporters:
+          debug:
+            verbosity: detailed
+
+        pipelines:
+          logs:
+            receivers: [{{ .forward }}]
+            exporters: [debug]
+
+    my_exporter_b:
+      template: |
+        exporters:
+          otlp:
+            endpoint: otel-collector:4317
+
+        pipelines:
+          logs:
+            receivers: [{{ .forward }}]
+            exporters: [otlp]
+
+config:
+  receivers:
+    some_receiver: {}
+  exporters:
+    blueprint/my_exporter_a: {}
+    blueprint/my_exporter_b: {}
+  service:
+    pipelines:
+      logs:
+        receivers: [some_receiver]
+        exporters: [blueprint/my_exporter_a, blueprint/my_exporter_b]

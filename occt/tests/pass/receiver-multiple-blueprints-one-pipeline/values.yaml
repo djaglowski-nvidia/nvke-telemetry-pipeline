@@ -1,0 +1,39 @@
+# Two different receiver blueprints can be referenced by the same pipeline.
+# Each expands into its own scope and its own boundary connector.
+blueprints:
+  receivers:
+    my_receiver_a:
+      template: |
+        receivers:
+          otlp:
+            protocols:
+              grpc:
+                endpoint: 0.0.0.0:4317
+
+        pipelines:
+          logs:
+            receivers: [otlp]
+            exporters: [{{ .forward }}]
+
+    my_receiver_b:
+      template: |
+        receivers:
+          filelog:
+            include: [/var/log/*.log]
+
+        pipelines:
+          logs:
+            receivers: [filelog]
+            exporters: [{{ .forward }}]
+
+config:
+  receivers:
+    blueprint/my_receiver_a: {}
+    blueprint/my_receiver_b: {}
+  exporters:
+    some_exporter: {}
+  service:
+    pipelines:
+      logs:
+        receivers: [blueprint/my_receiver_a, blueprint/my_receiver_b]
+        exporters: [some_exporter]

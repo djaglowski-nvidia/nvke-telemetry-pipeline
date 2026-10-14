@@ -1,0 +1,31 @@
+# The same receiver blueprint can be referenced by more than one pipeline.
+# It expands once, and both references point at the same boundary connector.
+blueprints:
+  receivers:
+    my_receiver:
+      template: |
+        receivers:
+          otlp:
+            protocols:
+              grpc:
+                endpoint: 0.0.0.0:4317
+
+        pipelines:
+          logs:
+            receivers: [otlp]
+            exporters: [{{ .forward }}]
+
+config:
+  receivers:
+    blueprint/my_receiver: {}
+  exporters:
+    some_exporter: {}
+    some_exporter/audit: {}
+  service:
+    pipelines:
+      logs:
+        receivers: [blueprint/my_receiver]
+        exporters: [some_exporter]
+      logs/audit:
+        receivers: [blueprint/my_receiver]
+        exporters: [some_exporter/audit]

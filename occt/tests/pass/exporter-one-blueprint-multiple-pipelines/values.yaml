@@ -1,0 +1,29 @@
+# The same exporter blueprint can be referenced by more than one pipeline.
+# It expands once, and both references point at the same boundary connector.
+blueprints:
+  exporters:
+    my_exporter:
+      template: |
+        exporters:
+          debug:
+            verbosity: detailed
+
+        pipelines:
+          logs:
+            receivers: [{{ .forward }}]
+            exporters: [debug]
+
+config:
+  receivers:
+    some_receiver: {}
+    some_receiver/audit: {}
+  exporters:
+    blueprint/my_exporter: {}
+  service:
+    pipelines:
+      logs:
+        receivers: [some_receiver]
+        exporters: [blueprint/my_exporter]
+      logs/audit:
+        receivers: [some_receiver/audit]
+        exporters: [blueprint/my_exporter]
