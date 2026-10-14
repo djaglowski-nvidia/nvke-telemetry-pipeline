@@ -17,11 +17,11 @@ blueprints:
 config:
   receivers:
     some_receiver: {}
-    blueprint/my_receiver/a: {}
+    blueprint/my_receiver: {}
   exporters:
     some_exporter: {}
   service:
     pipelines:
       logs:
-        receivers: [blueprint/my_receiver/a, some_receiver]
+        receivers: [blueprint/my_receiver, some_receiver]
         exporters: [some_exporter]

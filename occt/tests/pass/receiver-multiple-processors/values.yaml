@@ -1,0 +1,35 @@
+# A receiver blueprint can declare multiple processors in its internal pipeline.
+# The processors are automatically scoped like the exporter component
+# and the processor order is preserved
+blueprints:
+  receivers:
+    my_receiver:
+      template: |
+        receivers:
+          otlp:
+            protocols:
+              grpc:
+                endpoint: 0.0.0.0:4317
+
+        processors:
+          batch: {}
+          memory_limiter:
+            check_interval: 1s
+            limit_mib: 512
+
+        pipelines:
+          logs:
+            receivers: [otlp]
+            processors: [memory_limiter, batch]
+            exporters: [{{ .forward }}]
+
+config:
+  receivers:
+    blueprint/my_receiver: {}
+  exporters:
+    some_exporter: {}
+  service:
+    pipelines:
+      logs:
+        receivers: [blueprint/my_receiver]
+        exporters: [some_exporter]

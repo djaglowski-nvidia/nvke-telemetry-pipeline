@@ -1,0 +1,31 @@
+---
+# Source: test-chart/templates/transpile.yaml
+connectors:
+  forward/rcv/my_receiver: {}
+exporters:
+  some_exporter: {}
+processors:
+  batch/rcv/my_receiver: {}
+  memory_limiter/rcv/my_receiver:
+    check_interval: 1s
+    limit_mib: 512
+receivers:
+  otlp/rcv/my_receiver:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+service:
+  pipelines:
+    logs:
+      exporters:
+      - some_exporter
+      receivers:
+      - forward/rcv/my_receiver
+    logs/rcv/my_receiver:
+      exporters:
+      - forward/rcv/my_receiver
+      processors:
+      - memory_limiter/rcv/my_receiver
+      - batch/rcv/my_receiver
+      receivers:
+      - otlp/rcv/my_receiver

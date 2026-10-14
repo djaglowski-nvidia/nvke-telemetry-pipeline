@@ -1,0 +1,33 @@
+# An exporter blueprint can declare multiple processors
+# The processors are automatically scoped like the exporter component
+# and the processor order is preserved
+blueprints:
+  exporters:
+    my_exporter:
+      template: |
+        processors:
+          batch: {}
+          memory_limiter:
+           check_interval: 1s
+           limit_mib: 512
+
+        exporters:
+          debug:
+            verbosity: detailed
+
+        pipelines:
+          logs:
+            receivers: [{{ .forward }}]
+            processors: [memory_limiter, batch]
+            exporters: [debug]
+
+config:
+  receivers:
+    some_receiver: {}
+  exporters:
+    blueprint/my_exporter: {}
+  service:
+    pipelines:
+      logs:
+        receivers: [some_receiver]
+        exporters: [blueprint/my_exporter]

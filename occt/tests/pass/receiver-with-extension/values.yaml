@@ -1,0 +1,31 @@
+# An receiver blueprint can declare an extension.
+# The extension is automatically scoped and appended to the service extensions list.
+blueprints:
+  receivers:
+    my_receiver:
+      template: |
+        extensions:
+          health_check:
+            endpoint: 0.0.0.0:13133
+
+        receivers:
+          otlp:
+            protocols:
+              grpc:
+                endpoint: 0.0.0.0:4317
+
+        pipelines:
+          logs:
+            receivers: [otlp]
+            exporters: [{{ .forward }}]
+
+config:
+  receivers:
+    blueprint/my_receiver: {}
+  exporters:
+    some_exporter: {}
+  service:
+    pipelines:
+      logs:
+        receivers: [blueprint/my_receiver]
+        exporters: [some_exporter]

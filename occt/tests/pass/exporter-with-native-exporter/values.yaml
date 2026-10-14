@@ -17,9 +17,9 @@ config:
     some_receiver: {}
   exporters:
     some_exporter: {}
-    blueprint/my_exporter/a: {}
+    blueprint/my_exporter: {}
   service:
     pipelines:
       logs:
         receivers: [some_receiver]
-        exporters: [some_exporter, blueprint/my_exporter/a]
+        exporters: [some_exporter, blueprint/my_exporter]

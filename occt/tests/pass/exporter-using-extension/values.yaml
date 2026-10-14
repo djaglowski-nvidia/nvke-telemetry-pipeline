@@ -1,0 +1,32 @@
+# An exporter blueprint can use an extension in its internal config.
+# Extension declarations are automatically scoped, but
+# extension references must be scoped manually using `.scope`.
+blueprints:
+  exporters:
+    my_exporter:
+      template: |
+        extensions:
+          file_storage:
+            directory: /var/lib/otelcol
+
+        exporters:
+          otlp:
+            endpoint: collector.example.com:4317
+            sending_queue:
+              storage: file_storage/{{ .scope }}
+
+        pipelines:
+          logs:
+            receivers: [{{ .forward }}]
+            exporters: [otlp]
+
+config:
+  receivers:
+    some_receiver: {}
+  exporters:
+    blueprint/my_exporter: {}
+  service:
+    pipelines:
+      logs:
+        receivers: [some_receiver]
+        exporters: [blueprint/my_exporter]

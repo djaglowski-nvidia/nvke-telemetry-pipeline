@@ -1,0 +1,29 @@
+# An exporter blueprint can declare an extension.
+# The extension is automatically scoped and appended to the service extensions list.
+blueprints:
+  exporters:
+    my_exporter:
+      template: |
+        extensions:
+          health_check:
+            endpoint: 0.0.0.0:13133
+
+        exporters:
+          debug:
+            verbosity: detailed
+
+        pipelines:
+          logs:
+            receivers: [{{ .forward }}]
+            exporters: [debug]
+
+config:
+  receivers:
+    some_receiver: {}
+  exporters:
+    blueprint/my_exporter: {}
+  service:
+    pipelines:
+      logs:
+        receivers: [some_receiver]
+        exporters: [blueprint/my_exporter]

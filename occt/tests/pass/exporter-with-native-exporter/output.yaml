@@ -1,9 +1,9 @@
 ---
 # Source: test-chart/templates/transpile.yaml
 connectors:
-  forward/in/my_exporter/a: {}
+  forward/exp/my_exporter: {}
 exporters:
-  debug/in/my_exporter/a:
+  debug/exp/my_exporter:
     verbosity: detailed
   some_exporter: {}
 receivers:
@@ -13,11 +13,11 @@ service:
     logs:
       exporters:
       - some_exporter
-      - forward/in/my_exporter/a
+      - forward/exp/my_exporter
       receivers:
       - some_receiver
-    logs/in/my_exporter/a:
+    logs/exp/my_exporter:
       exporters:
-      - debug/in/my_exporter/a
+      - debug/exp/my_exporter
       receivers:
-      - forward/in/my_exporter/a
+      - forward/exp/my_exporter

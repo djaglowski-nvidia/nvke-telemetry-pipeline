@@ -1,0 +1,29 @@
+# An exporter blueprint can declare a processor in its internal pipeline.
+# The processor is automatically scoped like the exporter component.
+blueprints:
+  exporters:
+    my_exporter:
+      template: |
+        processors:
+          batch: {}
+
+        exporters:
+          debug:
+            verbosity: detailed
+
+        pipelines:
+          logs:
+            receivers: [{{ .forward }}]
+            processors: [batch]
+            exporters: [debug]
+
+config:
+  receivers:
+    some_receiver: {}
+  exporters:
+    blueprint/my_exporter: {}
+  service:
+    pipelines:
+      logs:
+        receivers: [some_receiver]
+        exporters: [blueprint/my_exporter]

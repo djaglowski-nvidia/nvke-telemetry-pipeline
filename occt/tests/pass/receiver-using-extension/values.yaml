@@ -1,0 +1,31 @@
+# A receiver blueprint can use an extension in its internal config.
+# Extension declarations are automatically scoped, but
+# extension references must be scoped manually using `.scope`.
+blueprints:
+  receivers:
+    my_receiver:
+      template: |
+        extensions:
+          file_storage:
+            directory: /var/lib/otelcol
+
+        receivers:
+          filelog:
+            include: [/var/log/*.log]
+            storage: file_storage/{{ .scope }}
+
+        pipelines:
+          logs:
+            receivers: [filelog]
+            exporters: [{{ .forward }}]
+
+config:
+  receivers:
+    blueprint/my_receiver: {}
+  exporters:
+    some_exporter: {}
+  service:
+    pipelines:
+      logs:
+        receivers: [blueprint/my_receiver]
+        exporters: [some_exporter]

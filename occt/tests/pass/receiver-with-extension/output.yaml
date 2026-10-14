@@ -1,0 +1,28 @@
+---
+# Source: test-chart/templates/transpile.yaml
+connectors:
+  forward/rcv/my_receiver: {}
+exporters:
+  some_exporter: {}
+extensions:
+  health_check/rcv/my_receiver:
+    endpoint: 0.0.0.0:13133
+receivers:
+  otlp/rcv/my_receiver:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+service:
+  extensions:
+  - health_check/rcv/my_receiver
+  pipelines:
+    logs:
+      exporters:
+      - some_exporter
+      receivers:
+      - forward/rcv/my_receiver
+    logs/rcv/my_receiver:
+      exporters:
+      - forward/rcv/my_receiver
+      receivers:
+      - otlp/rcv/my_receiver
