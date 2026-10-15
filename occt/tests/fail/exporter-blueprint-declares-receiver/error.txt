@@ -1,1 +1,0 @@
-occt: exporter blueprint "blueprint/my_sink/a" declares receiver "foo_receiver"

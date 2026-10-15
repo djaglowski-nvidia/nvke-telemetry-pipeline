@@ -45,7 +45,7 @@ Each page covers one top-level key in `nktp/values.yaml`.
 - [Local development loop](../dev/README.md)
 - [Chart unit tests](../nktp/tests/README.md)
 - [End-to-end tests](../tests/e2e/README.md)
-- [OCCT](../occt/README.md)
+- [NVCB](../nvcb/README.md)
 - [Releasing](../RELEASING.md)
 
 ## Design documents

@@ -25,7 +25,7 @@ body:
       description: Select the part of the repository the request applies to.
       options:
         - NKTP chart
-        - OCCT
+        - NVCB
         - Local development tooling
         - Documentation
         - Multiple components

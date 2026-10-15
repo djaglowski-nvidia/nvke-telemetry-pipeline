@@ -1,0 +1,1 @@
+nvcb: receiver blueprint "blueprint/my_source/a" declares exporter "foo_exporter"

@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-version: '3'
+version: "3"
 
 vars:
   # Each suite brings up its own cluster, so this is here to keep the one thing
@@ -18,14 +18,14 @@ tasks:
     vars:
       # Callers set HELM_VALUES_DIR to their own directory. Direct invocations
       # resolve relative paths from the repository root.
-      RESOLVED_HELM_VALUES_FILE: '{{if .HELM_VALUES_FILE}}{{if isAbs .HELM_VALUES_FILE}}{{.HELM_VALUES_FILE}}{{else}}{{.HELM_VALUES_DIR | default .ROOT_DIR}}/{{.HELM_VALUES_FILE}}{{end}}{{end}}'
+      RESOLVED_HELM_VALUES_FILE: "{{if .HELM_VALUES_FILE}}{{if isAbs .HELM_VALUES_FILE}}{{.HELM_VALUES_FILE}}{{else}}{{.HELM_VALUES_DIR | default .ROOT_DIR}}/{{.HELM_VALUES_FILE}}{{end}}{{end}}"
     preconditions:
-      - sh: 'test -r {{.KUBECONFIG_FILE | shellQuote}}'
-        msg: 'NKTP kubeconfig is not readable: {{.KUBECONFIG_FILE}}'
-      - sh: '{{if .BASE_HELM_VALUES_FILE}}test -f {{.BASE_HELM_VALUES_FILE | shellQuote}}{{else}}true{{end}}'
-        msg: 'Base Helm values file not found: {{.BASE_HELM_VALUES_FILE}}'
-      - sh: '{{if .RESOLVED_HELM_VALUES_FILE}}test -f {{.RESOLVED_HELM_VALUES_FILE | shellQuote}}{{else}}true{{end}}'
-        msg: 'Helm values file not found: {{.RESOLVED_HELM_VALUES_FILE}}'
+      - sh: "test -r {{.KUBECONFIG_FILE | shellQuote}}"
+        msg: "NKTP kubeconfig is not readable: {{.KUBECONFIG_FILE}}"
+      - sh: "{{if .BASE_HELM_VALUES_FILE}}test -f {{.BASE_HELM_VALUES_FILE | shellQuote}}{{else}}true{{end}}"
+        msg: "Base Helm values file not found: {{.BASE_HELM_VALUES_FILE}}"
+      - sh: "{{if .RESOLVED_HELM_VALUES_FILE}}test -f {{.RESOLVED_HELM_VALUES_FILE | shellQuote}}{{else}}true{{end}}"
+        msg: "Helm values file not found: {{.RESOLVED_HELM_VALUES_FILE}}"
     cmds:
       - >-
         helm upgrade --install {{.RELEASE | default "nktp" | shellQuote}}
@@ -42,10 +42,10 @@ tasks:
     internal: true
     desc: Install cert-manager and its CRDs on an explicitly selected cluster
     preconditions:
-      - sh: 'test -r {{.KUBECONFIG_FILE | shellQuote}}'
-        msg: 'cert-manager kubeconfig is not readable: {{.KUBECONFIG_FILE}}'
+      - sh: "test -r {{.KUBECONFIG_FILE | shellQuote}}"
+        msg: "cert-manager kubeconfig is not readable: {{.KUBECONFIG_FILE}}"
     cmds:
-      - '{{.TOOLS_PATH}} helm repo add jetstack https://charts.jetstack.io --force-update'
+      - "{{.TOOLS_PATH}} helm repo add jetstack https://charts.jetstack.io --force-update"
       - >-
         {{.TOOLS_PATH}} helm upgrade --install cert-manager jetstack/cert-manager
         --kubeconfig {{.KUBECONFIG_FILE | shellQuote}}
@@ -56,7 +56,7 @@ tasks:
         --wait --timeout 5m
 
   tests:lint:
-    desc: 'Lint all Go test suites (pass flags: task tests:lint -- --fix)'
+    desc: "Lint all Go test suites (pass flags: task tests:lint -- --fix)"
     dir: tests
     deps: [tests:lint:build]
     cmds:
@@ -82,11 +82,11 @@ tasks:
     cmds:
       - task: scale:test
         vars:
-          KUBECONFIG: '{{.KUBECONFIG}}'
-          CLI_ARGS: '{{.CLI_ARGS}}'
+          KUBECONFIG: "{{.KUBECONFIG}}"
+          CLI_ARGS: "{{.CLI_ARGS}}"
 
   test:
-    desc: 'Run the NKTP chart unit tests (pass flags: task test -- -u)'
+    desc: "Run the NKTP chart unit tests (pass flags: task test -- -u)"
     cmds:
       - helm repo add open-telemetry https://open-telemetry.github.io/opentelemetry-helm-charts --force-update
       - helm repo add prometheus-community https://prometheus-community.github.io/helm-charts --force-update
@@ -104,6 +104,6 @@ includes:
   dev:
     taskfile: ./dev/Taskfile.yml
     dir: ./dev
-  occt:
-    taskfile: ./occt/Taskfile.yml
-    dir: ./occt
+  nvcb:
+    taskfile: ./nvcb/Taskfile.yml
+    dir: ./nvcb

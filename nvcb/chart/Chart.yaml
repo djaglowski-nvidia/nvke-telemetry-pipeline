@@ -1,0 +1,7 @@
+apiVersion: v2
+name: nvcb
+description: |
+  Expands an OpenTelemetry Collector configuration containing
+  blueprint declarations into native Collector configuration.
+type: library
+version: 0.1.0

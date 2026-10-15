@@ -1,4 +1,4 @@
-occt/tests/test-chart/charts/
+nvcb/tests/test-chart/charts/
 dev/.bin/
 dev/.kubeconfig
 dev/.tilt.log

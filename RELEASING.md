@@ -1,7 +1,7 @@
 # Releasing Helm charts
 
-NKTP and OCCT are versioned and released independently. NKTP is an application
-chart; OCCT is a library chart used by other charts.
+NKTP and NVCB are versioned and released independently. NKTP is an application
+chart; NVCB is a library chart used by other charts.
 
 ## Development builds
 
@@ -31,7 +31,7 @@ bumps based on Conventional Commits are planned as a follow-up.
 | Chart | Version file | Example release tag |
 | --- | --- | --- |
 | NKTP | `nktp/Chart.yaml` | `nktp/v0.2.0` |
-| OCCT | `occt/chart/Chart.yaml` | `occt/v0.2.0` |
+| NVCB | `nvcb/chart/Chart.yaml` | `nvcb/v0.2.0` |
 
 For a release candidate, use a prerelease version such as `0.2.0-rc.1` and the
 matching tag, such as `nktp/v0.2.0-rc.1`. For the stable release, update the chart
@@ -44,7 +44,7 @@ requires a new version and tag.
 ## What publication validates
 
 The publishing job builds NKTP's locked dependencies, packages the selected
-chart and lints the archive. It also renders NKTP's templates. OCCT is linted
+chart and lints the archive. It also renders NKTP's templates. NVCB is linted
 without a standalone render because it is a library chart. Chart names and
 container image references are preserved; a chart release does not publish
 container images.

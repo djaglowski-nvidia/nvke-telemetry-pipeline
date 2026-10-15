@@ -1,1 +1,0 @@
-occt: connector blueprint declaration "blueprint/some_conn/x" is not supported

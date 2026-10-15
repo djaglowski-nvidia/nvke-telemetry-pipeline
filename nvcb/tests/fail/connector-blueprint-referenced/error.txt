@@ -1,0 +1,1 @@
+nvcb: pipeline "logs/egress" references undeclared receiver blueprint "blueprint/my_exporter/a"

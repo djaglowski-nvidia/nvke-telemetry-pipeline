@@ -3,14 +3,14 @@
 
 name: Publish Helm Chart to NVCR
 
-# Shared by the NKTP and OCCT publishing workflows.
+# Shared by the NKTP and NVCB publishing workflows.
 # Registry environment variables are populated from GitHub secrets.
 # Calling workflows can pass these secrets with secrets: inherit.
 on:
   workflow_call:
     inputs:
       chart:
-        description: Chart to publish (nktp or occt).
+        description: Chart to publish (nktp or nvcb).
         required: true
         type: string
 
@@ -44,7 +44,7 @@ jobs:
           set -euo pipefail
           case "${CHART}" in
             nktp) chart_path=nktp ;;
-            occt) chart_path=occt/chart ;;
+            nvcb) chart_path=nvcb/chart ;;
             *) echo "::error::Unsupported chart"; exit 1 ;;
           esac
           chart_version="$(helm show chart "${chart_path}" | awk '/^version:/ {gsub(/"/, "", $2); print $2}')"
@@ -88,7 +88,7 @@ jobs:
           helm package "${CHART_PATH}" --version "${VERSION}" --destination "${RUNNER_TEMP}/chart-dist"
           package="${RUNNER_TEMP}/chart-dist/${CHART}-${VERSION}.tgz"
           helm lint "${package}" --strict
-          # OCCT is a library chart; it cannot be rendered on its own.
+          # NVCB is a library chart; it cannot be rendered on its own.
           if [[ "${CHART}" == nktp ]]; then
             helm template nktp "${package}" > "${RUNNER_TEMP}/nktp-rendered.yaml"
           fi

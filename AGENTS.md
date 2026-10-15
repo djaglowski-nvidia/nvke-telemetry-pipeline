@@ -4,14 +4,14 @@
 
 - Purpose and users: NKTP is a Helm chart that deploys an OpenTelemetry-based
   pipeline for collecting, processing, and exporting Kubernetes metrics, logs,
-  and traces. It is how NVIDIA teams run OpenTelemetry on Kubernetes. OCCT, in
+  and traces. It is how NVIDIA teams run OpenTelemetry on Kubernetes. NVCB, in
   the same repository, is a Helm library chart that transpiles
   `blueprint/<type>[/<name>]` declarations into native Collector configuration.
 - Primary languages and frameworks: Helm charts and Go templates; Go for the
-  OCCT golden tests and the `tests/` module; Taskfile for the command surface;
+  NVCB golden tests and the `tests/` module; Taskfile for the command surface;
   GitHub Actions for CI.
 - Main entry points: `nktp/Chart.yaml`, `nktp/values.yaml`, and
-  `nktp/templates/` for the chart; `occt/chart/templates/_transpile.tpl` for the
+  `nktp/templates/` for the chart; `nvcb/chart/templates/_transpile.tpl` for the
   transpiler; `Taskfile.yml` for commands; `dev/Tiltfile` for the local loop.
 - Docs home: [docs/README.md](docs/README.md). Contribution rules:
   [CONTRIBUTING.md](CONTRIBUTING.md). Design principles, which every change
@@ -24,8 +24,8 @@
 | `nktp/` | The NKTP application chart | Dependencies are pinned in `Chart.yaml` and `Chart.lock`; `charts/*.tgz` is gitignored and produced by `helm dependency build` |
 | `nktp/tests/` | helm-unittest suites | `__snapshot__/` pins the full default render; other suites use targeted assertions |
 | `nktp/dashboards/` | Grafana dashboards shipped with the chart | JSON, loaded by templates |
-| `occt/chart/` | OCCT library chart | The transpiler lives in `templates/_transpile.tpl` |
-| `occt/tests/` | Go golden tests for OCCT | `pass/<scenario>/values.yaml` renders to `output.yaml`; `test-chart/` is the fixture chart |
+| `nvcb/chart/` | NVCB library chart | The transpiler lives in `templates/_transpile.tpl` |
+| `nvcb/tests/` | Go golden tests for NVCB | `pass/<scenario>/values.yaml` renders to `output.yaml`; `test-chart/` is the fixture chart |
 | `tests/` | Go suites for integration, e2e, scale, and perf | Build-tagged; integration runs locally without a Kubernetes cluster; e2e and scale have Taskfiles for cluster setup and execution; only e2e runs in CI |
 | `dev/` | Local Kind and Tilt loop | Uses only `dev/.kubeconfig` and never other kubectl contexts |
 | `docs/` | Getting started, architecture, per-component pages, guides, and design documents | Each component's behavior and values are documented under `docs/components/`; design proposals go under `docs/designs/` |
@@ -52,9 +52,9 @@ helm lint nktp && helm template nktp nktp
 task test -- -u
 git diff nktp/tests/__snapshot__/
 
-# OCCT: golden tests, and regeneration after an intentional change
-(cd occt/tests && go test ./...)
-(cd occt/tests && go test ./... -update)
+# NVCB: golden tests, and regeneration after an intentional change
+(cd nvcb/tests && go test ./...)
+(cd nvcb/tests && go test ./... -update)
 
 # NKTP chart: end-to-end tests on a Kind cluster
 task e2e:up
@@ -68,7 +68,7 @@ task dev:down
 
 - Expected results or limitations: `task test` needs network access to add the
   upstream Helm repositories and build dependencies, then runs in a few
-  seconds. The OCCT tests download Go modules on first run.
+  seconds. The NVCB tests download Go modules on first run.
   `task e2e:up` additionally needs a running
   container runtime, Kind, and kubectl; it and the run that follows take
   minutes, because a cluster has to come up and pull every image the chart
@@ -86,7 +86,7 @@ task dev:down
 2. **Read before writing.** Do not modify a template, values file, or test you
    have not read, and read the rendered output when the change affects it.
 3. **Tests must pass.** Run `task test` before opening a pull request, and the
-   OCCT tests when `occt/` changes. Fix failures; do not work around them, and
+   NVCB tests when `nvcb/` changes. Fix failures; do not work around them, and
    do not treat a pre-existing failure as acceptable without saying so.
 4. **Never make a test pass by weakening it.** Do not skip, delete, or loosen
    an assertion, and do not regenerate a snapshot or golden file until you can
@@ -194,7 +194,7 @@ Always:
 
 | Anti-pattern | Correct approach |
 | --- | --- |
-| Edit `nktp/tests/__snapshot__/*.snap` or `occt/tests/pass/*/output.yaml` by hand | Regenerate with `task test -- -u` or `go test ./... -update`, review the diff, explain the output change in the PR |
+| Edit `nktp/tests/__snapshot__/*.snap` or `nvcb/tests/pass/*/output.yaml` by hand | Regenerate with `task test -- -u` or `go test ./... -update`, review the diff, explain the output change in the PR |
 | Regenerate a snapshot to silence a failure | Find out why the rendered output changed first; the snapshot exists to catch exactly that |
 | Change `nktp/values.yaml` defaults to fix a local setup problem | Put the override in a `dev/configs/<name>/values.yaml` overlay and run `task dev:up -- <name>` |
 | Run `helm dependency update` as part of an unrelated change | Only in a deliberate dependency-bump PR; `task test` uses `helm dependency build`, which honors `Chart.lock` |

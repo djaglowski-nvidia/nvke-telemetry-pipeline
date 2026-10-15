@@ -72,7 +72,7 @@ Run the checks that CI runs before opening a pull request:
 ```bash
 task test                                 # NKTP chart unit tests
 helm lint nktp && helm template nktp nktp # what the lint job runs
-(cd occt/tests && go test ./...)          # OCCT golden tests, when changing occt/
+(cd nvcb/tests && go test ./...)          # NVCB golden tests, when changing nvcb/
 ```
 
 `task test` adds the upstream Helm repositories, builds the locked chart
@@ -86,11 +86,11 @@ task test -- -u
 git diff nktp/tests/__snapshot__/
 ```
 
-OCCT scenarios under `occt/tests/pass/` pin their rendered output in
+NVCB scenarios under `nvcb/tests/pass/` pin their rendered output in
 `output.yaml`. Regenerate them the same way after an intentional change:
 
 ```bash
-(cd occt/tests && go test ./... -update)
+(cd nvcb/tests && go test ./... -update)
 ```
 
 Never edit a snapshot or golden file by hand, and never regenerate one to make
@@ -126,8 +126,8 @@ while the submodule owns their implementation.
 
 Examples:
 
-- [OCCT](occt/Taskfile.yml) owns its test and snapshot update commands,
-  exposed as `task occt:test` and `task occt:update`.
+- [NVCB](nvcb/Taskfile.yml) owns its test and snapshot update commands,
+  exposed as `task nvcb:test` and `task nvcb:update`.
 - [Scale tests](tests/scale/Taskfile.yml) own local cluster provisioning
   and teardown through `task scale:up` and `task scale:down`.
   `task scale:install` sets up an existing cluster, and `task scale:test` runs a plan.

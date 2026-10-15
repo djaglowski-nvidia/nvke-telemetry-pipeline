@@ -24,7 +24,7 @@ body:
       description: Select the part of the repository the problem is in.
       options:
         - NKTP chart
-        - OCCT
+        - NVCB
         - Local development tooling
         - Documentation
         - Not sure

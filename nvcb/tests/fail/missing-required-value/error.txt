@@ -1,0 +1,1 @@
+nvcb: blueprint/my_source/a: endpoint is required

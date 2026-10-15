@@ -1,0 +1,1 @@
+{{- include "nvcb.run" (dict "config" .Values.config "blueprints" .Values.blueprints) -}}
