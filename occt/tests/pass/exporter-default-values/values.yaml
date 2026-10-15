@@ -1,0 +1,25 @@
+# An exporter blueprint can default a parameter in its template instead of its values block.
+# The declaration passes no parameters, so the template's own default is used.
+blueprints:
+  exporters:
+    my_exporter:
+      template: |
+        exporters:
+          debug:
+            verbosity: {{ .values.verbosity | default "detailed" }}
+
+        pipelines:
+          logs:
+            receivers: [{{ .forward }}]
+            exporters: [debug]
+
+config:
+  receivers:
+    some_receiver: {}
+  exporters:
+    blueprint/my_exporter: {}
+  service:
+    pipelines:
+      logs:
+        receivers: [some_receiver]
+        exporters: [blueprint/my_exporter]

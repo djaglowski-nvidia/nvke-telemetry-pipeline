@@ -1,0 +1,27 @@
+# A receiver blueprint receives parameters from its declaration without defaults.
+blueprints:
+  receivers:
+    my_receiver:
+      template: |
+        receivers:
+          otlp:
+            protocols:
+              grpc:
+                endpoint: {{ .values.endpoint | required "my_receiver: endpoint is required" | quote }}
+
+        pipelines:
+          logs:
+            receivers: [otlp]
+            exporters: [{{ .forward }}]
+
+config:
+  receivers:
+    blueprint/my_receiver:
+      endpoint: 0.0.0.0:14317
+  exporters:
+    some_exporter: {}
+  service:
+    pipelines:
+      logs:
+        receivers: [blueprint/my_receiver]
+        exporters: [some_exporter]

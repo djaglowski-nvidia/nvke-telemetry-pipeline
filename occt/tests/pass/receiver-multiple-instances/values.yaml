@@ -1,0 +1,30 @@
+# Two instances of the same blueprint receive different parameter values.
+# Both are used in the same pipeline, with independently scoped components.
+blueprints:
+  receivers:
+    my_receiver:
+      template: |
+        receivers:
+          otlp:
+            protocols:
+              grpc:
+                endpoint: {{ .values.endpoint | quote }}
+
+        pipelines:
+          logs:
+            receivers: [otlp]
+            exporters: [{{ .forward }}]
+
+config:
+  receivers:
+    blueprint/my_receiver/a:
+      endpoint: 0.0.0.0:14317
+    blueprint/my_receiver/b:
+      endpoint: 0.0.0.0:24317
+  exporters:
+    some_exporter: {}
+  service:
+    pipelines:
+      logs:
+        receivers: [blueprint/my_receiver/a, blueprint/my_receiver/b]
+        exporters: [some_exporter]

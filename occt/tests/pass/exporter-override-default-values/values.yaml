@@ -1,0 +1,25 @@
+# An exporter blueprint declaration can override the template's default values.
+blueprints:
+  exporters:
+    my_exporter:
+      template: |
+        exporters:
+          debug:
+            verbosity: {{ .values.verbosity | default "detailed" }}
+
+        pipelines:
+          logs:
+            receivers: [{{ .forward }}]
+            exporters: [debug]
+
+config:
+  receivers:
+    some_receiver: {}
+  exporters:
+    blueprint/my_exporter:
+      verbosity: basic
+  service:
+    pipelines:
+      logs:
+        receivers: [some_receiver]
+        exporters: [blueprint/my_exporter]

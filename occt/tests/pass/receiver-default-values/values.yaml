@@ -1,0 +1,27 @@
+# A receiver blueprint can default a parameter in its template instead of its values block.
+# The declaration passes no parameters, so the template's own default is used.
+blueprints:
+  receivers:
+    my_receiver:
+      template: |
+        receivers:
+          otlp:
+            protocols:
+              grpc:
+                endpoint: {{ .values.endpoint | default "0.0.0.0:4317" }}
+
+        pipelines:
+          logs:
+            receivers: [otlp]
+            exporters: [{{ .forward }}]
+
+config:
+  receivers:
+    blueprint/my_receiver: {}
+  exporters:
+    some_exporter: {}
+  service:
+    pipelines:
+      logs:
+        receivers: [blueprint/my_receiver]
+        exporters: [some_exporter]
