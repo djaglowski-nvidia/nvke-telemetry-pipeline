@@ -1,0 +1,23 @@
+# A blueprint registered under the other kind is not found.
+blueprints:
+  exporters:
+    my_sink:
+      template: |
+        exporters:
+          foo_exporter: {}
+
+        pipelines:
+          logs:
+            receivers: [{{ .forward }}]
+            exporters: [foo_exporter]
+
+config:
+  receivers:
+    blueprint/my_sink/x: {}
+  exporters:
+    some_exporter: {}
+  service:
+    pipelines:
+      logs:
+        receivers: [blueprint/my_sink/x]
+        exporters: [some_exporter]

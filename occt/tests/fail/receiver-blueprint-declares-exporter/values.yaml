@@ -1,0 +1,26 @@
+# A receiver blueprint cannot declare an exporter.
+blueprints:
+  receivers:
+    my_source:
+      template: |
+        receivers:
+          foo_receiver: {}
+
+        exporters:
+          foo_exporter: {}
+
+        pipelines:
+          logs:
+            receivers: [foo_receiver]
+            exporters: [foo_exporter, {{ .forward }}]
+
+config:
+  receivers:
+    blueprint/my_source/a: {}
+  exporters:
+    some_exporter: {}
+  service:
+    pipelines:
+      logs:
+        receivers: [blueprint/my_source/a]
+        exporters: [some_exporter]

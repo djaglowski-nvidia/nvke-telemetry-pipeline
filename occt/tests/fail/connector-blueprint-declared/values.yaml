@@ -1,0 +1,13 @@
+# A blueprint cannot be declared under connectors.
+config:
+  receivers:
+    some_receiver: {}
+  connectors:
+    blueprint/some_conn/x: {}
+  exporters:
+    some_exporter: {}
+  service:
+    pipelines:
+      logs:
+        receivers: [some_receiver]
+        exporters: [some_exporter]

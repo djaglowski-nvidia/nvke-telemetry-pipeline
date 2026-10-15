@@ -1,0 +1,27 @@
+# A blueprint cannot include a "service" section.
+blueprints:
+  receivers:
+    overreaching:
+      template: |
+        receivers:
+          foo_receiver: {}
+
+        service:
+          pipelines:
+            logs: {}
+
+        pipelines:
+          logs:
+            receivers: [foo_receiver]
+            exporters: [{{ .forward }}]
+
+config:
+  receivers:
+    blueprint/overreaching/a: {}
+  exporters:
+    some_exporter: {}
+  service:
+    pipelines:
+      logs:
+        receivers: [blueprint/overreaching/a]
+        exporters: [some_exporter]

@@ -1,0 +1,26 @@
+# An exporter blueprint cannot declare a receiver.
+blueprints:
+  exporters:
+    my_sink:
+      template: |
+        receivers:
+          foo_receiver: {}
+
+        exporters:
+          foo_exporter: {}
+
+        pipelines:
+          logs:
+            receivers: [{{ .forward }}, foo_receiver]
+            exporters: [foo_exporter]
+
+config:
+  receivers:
+    some_receiver: {}
+  exporters:
+    blueprint/my_sink/a: {}
+  service:
+    pipelines:
+      logs:
+        receivers: [some_receiver]
+        exporters: [blueprint/my_sink/a]

@@ -1,0 +1,23 @@
+# A declaration naming an unregistered type is rejected.
+blueprints:
+  receivers:
+    my_source:
+      template: |
+        receivers:
+          foo_receiver: {}
+
+        pipelines:
+          logs:
+            receivers: [foo_receiver]
+            exporters: [{{ .forward }}]
+
+config:
+  receivers:
+    blueprint/acme/x: {}
+  exporters:
+    some_exporter: {}
+  service:
+    pipelines:
+      logs:
+        receivers: [blueprint/acme/x]
+        exporters: [some_exporter]

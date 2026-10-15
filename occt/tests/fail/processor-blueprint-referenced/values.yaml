@@ -1,0 +1,12 @@
+# A blueprint cannot be referenced in a pipeline's processors list.
+config:
+  receivers:
+    some_receiver: {}
+  exporters:
+    some_exporter: {}
+  service:
+    pipelines:
+      logs:
+        receivers: [some_receiver]
+        processors: [blueprint/some_proc/x]
+        exporters: [some_exporter]

@@ -1,0 +1,13 @@
+# A blueprint cannot be declared under processors.
+config:
+  receivers:
+    some_receiver: {}
+  processors:
+    blueprint/some_proc/x: {}
+  exporters:
+    some_exporter: {}
+  service:
+    pipelines:
+      logs:
+        receivers: [some_receiver]
+        exporters: [some_exporter]

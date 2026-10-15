@@ -1,0 +1,24 @@
+# A blueprint that does not parse is reported rather than rendered.
+blueprints:
+  receivers:
+    parse_error:
+      template: |
+        receivers:
+          foo_receiver: {}
+
+        {{ if true }}
+        pipelines:
+          logs:
+            receivers: [foo_receiver]
+            exporters: [{{ .forward }}]
+
+config:
+  receivers:
+    blueprint/parse_error/a: {}
+  exporters:
+    some_exporter: {}
+  service:
+    pipelines:
+      logs:
+        receivers: [blueprint/parse_error/a]
+        exporters: [some_exporter]
