@@ -1,0 +1,34 @@
+---
+# Source: test-chart/templates/transpile.yaml
+connectors:
+  forward/exp/my_exporter: {}
+  forward/tee/exp/my_exporter: {}
+exporters:
+  debug/exp/my_exporter:
+    verbosity: detailed
+  debug/secondary/exp/my_exporter:
+    verbosity: basic
+receivers:
+  some_receiver: {}
+service:
+  pipelines:
+    logs:
+      exporters:
+      - forward/exp/my_exporter
+      receivers:
+      - some_receiver
+    logs/egress-secondary/exp/my_exporter:
+      exporters:
+      - debug/secondary/exp/my_exporter
+      receivers:
+      - forward/tee/exp/my_exporter
+    logs/egress/exp/my_exporter:
+      exporters:
+      - debug/exp/my_exporter
+      receivers:
+      - forward/tee/exp/my_exporter
+    logs/ingest/exp/my_exporter:
+      exporters:
+      - forward/tee/exp/my_exporter
+      receivers:
+      - forward/exp/my_exporter

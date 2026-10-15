@@ -1,0 +1,33 @@
+# An receiver blueprint can contain an internal connector.
+# The connector is scoped like any other component the body declares.
+blueprints:
+  receivers:
+    my_receiver:
+      template: |
+        receivers:
+          otlp:
+            protocols:
+              grpc:
+                endpoint: 0.0.0.0:4317
+
+        connectors:
+          count: {}
+
+        pipelines:
+          logs/collect:
+            receivers: [otlp]
+            exporters: [count]
+          metrics/emit:
+            receivers: [count]
+            exporters: [{{ .forward }}]
+
+config:
+  receivers:
+    blueprint/my_receiver: {}
+  exporters:
+    some_exporter: {}
+  service:
+    pipelines:
+      metrics:
+        receivers: [blueprint/my_receiver]
+        exporters: [some_exporter]

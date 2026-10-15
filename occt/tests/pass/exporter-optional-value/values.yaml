@@ -1,0 +1,32 @@
+# An exporter blueprint's output can depend on the presence/absence of an optional value
+
+blueprints:
+  exporters:
+    my_exporter:
+      template: |
+        exporters:
+        {{ if .values.endpoint }}
+          otlp:
+            endpoint: {{ .values.endpoint | quote }}
+        {{ else }}
+          debug:
+            verbosity: detailed
+        {{ end }}
+
+        pipelines:
+          logs:
+            receivers: [{{ .forward }}]
+            exporters: [{{ if .values.endpoint }}otlp{{ else }}debug{{ end }}]
+
+config:
+  receivers:
+    some_receiver: {}
+  exporters:
+    blueprint/my_exporter/local: {}
+    blueprint/my_exporter/remote:
+      endpoint: collector.example.com:4317
+  service:
+    pipelines:
+      logs:
+        receivers: [some_receiver]
+        exporters: [blueprint/my_exporter/local, blueprint/my_exporter/remote]

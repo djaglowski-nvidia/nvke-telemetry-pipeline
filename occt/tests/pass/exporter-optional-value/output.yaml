@@ -1,0 +1,30 @@
+---
+# Source: test-chart/templates/transpile.yaml
+connectors:
+  forward/exp/my_exporter/local: {}
+  forward/exp/my_exporter/remote: {}
+exporters:
+  debug/exp/my_exporter/local:
+    verbosity: detailed
+  otlp/exp/my_exporter/remote:
+    endpoint: collector.example.com:4317
+receivers:
+  some_receiver: {}
+service:
+  pipelines:
+    logs:
+      exporters:
+      - forward/exp/my_exporter/local
+      - forward/exp/my_exporter/remote
+      receivers:
+      - some_receiver
+    logs/exp/my_exporter/local:
+      exporters:
+      - debug/exp/my_exporter/local
+      receivers:
+      - forward/exp/my_exporter/local
+    logs/exp/my_exporter/remote:
+      exporters:
+      - otlp/exp/my_exporter/remote
+      receivers:
+      - forward/exp/my_exporter/remote

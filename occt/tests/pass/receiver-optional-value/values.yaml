@@ -1,0 +1,33 @@
+# A receiver blueprint's output can depend on the presence/absence of an optional value
+blueprints:
+  receivers:
+    my_receiver:
+      template: |
+        receivers:
+        {{ if .values.endpoint }}
+          otlp:
+            protocols:
+              grpc:
+                endpoint: {{ .values.endpoint | quote }}
+        {{ else }}
+          filelog:
+            include: [/var/log/*.log]
+        {{ end }}
+
+        pipelines:
+          logs:
+            receivers: [{{ if .values.endpoint }}otlp{{ else }}filelog{{ end }}]
+            exporters: [{{ .forward }}]
+
+config:
+  receivers:
+    blueprint/my_receiver/local: {}
+    blueprint/my_receiver/remote:
+      endpoint: 0.0.0.0:4317
+  exporters:
+    some_exporter: {}
+  service:
+    pipelines:
+      logs:
+        receivers: [blueprint/my_receiver/local, blueprint/my_receiver/remote]
+        exporters: [some_exporter]

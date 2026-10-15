@@ -1,0 +1,42 @@
+# An exporter blueprint routes logs to named internal pipelines.
+# Pipeline declarations are scoped automatically; routing configuration must
+# scope its pipeline references explicitly using `.scope`.
+blueprints:
+  exporters:
+    my_exporter:
+      template: |
+        connectors:
+          routing:
+            default_pipelines: [logs/default/{{ .scope }}]
+            table:
+              - context: log
+                condition: 'attributes["route"] == "priority"'
+                pipelines: [logs/priority/{{ .scope }}]
+
+        exporters:
+          debug/default:
+            verbosity: basic
+          debug/priority:
+            verbosity: detailed
+
+        pipelines:
+          logs/ingest:
+            receivers: [{{ .forward }}]
+            exporters: [routing]
+          logs/default:
+            receivers: [routing]
+            exporters: [debug/default]
+          logs/priority:
+            receivers: [routing]
+            exporters: [debug/priority]
+
+config:
+  receivers:
+    some_receiver: {}
+  exporters:
+    blueprint/my_exporter: {}
+  service:
+    pipelines:
+      logs:
+        receivers: [some_receiver]
+        exporters: [blueprint/my_exporter]

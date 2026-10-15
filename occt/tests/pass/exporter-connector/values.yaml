@@ -1,0 +1,36 @@
+# An exporter blueprint can contain an internal connector.
+# The connector is scoped like any other component the body declares.
+blueprints:
+  exporters:
+    my_exporter:
+      template: |
+        connectors:
+          forward/tee: {}
+
+        exporters:
+          debug:
+            verbosity: detailed
+          debug/secondary:
+            verbosity: basic
+
+        pipelines:
+          logs/ingest:
+            receivers: [{{ .forward }}]
+            exporters: [forward/tee]
+          logs/egress:
+            receivers: [forward/tee]
+            exporters: [debug]
+          logs/egress-secondary:
+            receivers: [forward/tee]
+            exporters: [debug/secondary]
+
+config:
+  receivers:
+    some_receiver: {}
+  exporters:
+    blueprint/my_exporter: {}
+  service:
+    pipelines:
+      logs:
+        receivers: [some_receiver]
+        exporters: [blueprint/my_exporter]

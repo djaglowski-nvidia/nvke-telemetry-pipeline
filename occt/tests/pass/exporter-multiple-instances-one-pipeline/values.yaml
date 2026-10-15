@@ -1,0 +1,26 @@
+# One exporter blueprint can be declared more than once under different names.
+# Each declaration expands independently, into its own scope and boundary connector.
+blueprints:
+  exporters:
+    my_exporter:
+      template: |
+        exporters:
+          debug:
+            verbosity: detailed
+
+        pipelines:
+          logs:
+            receivers: [{{ .forward }}]
+            exporters: [debug]
+
+config:
+  receivers:
+    some_receiver: {}
+  exporters:
+    blueprint/my_exporter/first: {}
+    blueprint/my_exporter/second: {}
+  service:
+    pipelines:
+      logs:
+        receivers: [some_receiver]
+        exporters: [blueprint/my_exporter/first, blueprint/my_exporter/second]

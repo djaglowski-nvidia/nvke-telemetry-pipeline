@@ -1,0 +1,42 @@
+# A receiver blueprint routes logs to named internal pipelines.
+# Pipeline declarations are scoped automatically; routing configuration must
+# scope its pipeline references explicitly using `.scope`.
+blueprints:
+  receivers:
+    my_receiver:
+      template: |
+        receivers:
+          otlp:
+            protocols:
+              grpc:
+                endpoint: 0.0.0.0:4317
+
+        connectors:
+          routing:
+            default_pipelines: [logs/default/{{ .scope }}]
+            table:
+              - context: log
+                condition: 'attributes["route"] == "priority"'
+                pipelines: [logs/priority/{{ .scope }}]
+
+        pipelines:
+          logs/collect:
+            receivers: [otlp]
+            exporters: [routing]
+          logs/default:
+            receivers: [routing]
+            exporters: [{{ .forward }}]
+          logs/priority:
+            receivers: [routing]
+            exporters: [{{ .forward }}]
+
+config:
+  receivers:
+    blueprint/my_receiver: {}
+  exporters:
+    some_exporter: {}
+  service:
+    pipelines:
+      logs:
+        receivers: [blueprint/my_receiver]
+        exporters: [some_exporter]

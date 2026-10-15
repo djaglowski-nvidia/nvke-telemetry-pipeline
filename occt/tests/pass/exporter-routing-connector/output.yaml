@@ -1,0 +1,41 @@
+---
+# Source: test-chart/templates/transpile.yaml
+connectors:
+  forward/exp/my_exporter: {}
+  routing/exp/my_exporter:
+    default_pipelines:
+    - logs/default/exp/my_exporter
+    table:
+    - condition: attributes["route"] == "priority"
+      context: log
+      pipelines:
+      - logs/priority/exp/my_exporter
+exporters:
+  debug/default/exp/my_exporter:
+    verbosity: basic
+  debug/priority/exp/my_exporter:
+    verbosity: detailed
+receivers:
+  some_receiver: {}
+service:
+  pipelines:
+    logs:
+      exporters:
+      - forward/exp/my_exporter
+      receivers:
+      - some_receiver
+    logs/default/exp/my_exporter:
+      exporters:
+      - debug/default/exp/my_exporter
+      receivers:
+      - routing/exp/my_exporter
+    logs/ingest/exp/my_exporter:
+      exporters:
+      - routing/exp/my_exporter
+      receivers:
+      - forward/exp/my_exporter
+    logs/priority/exp/my_exporter:
+      exporters:
+      - debug/priority/exp/my_exporter
+      receivers:
+      - routing/exp/my_exporter

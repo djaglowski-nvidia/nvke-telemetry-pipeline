@@ -1,0 +1,28 @@
+# One receiver blueprint can be declared more than once under different names.
+# Each declaration expands independently, into its own scope and boundary connector.
+blueprints:
+  receivers:
+    my_receiver:
+      template: |
+        receivers:
+          otlp:
+            protocols:
+              grpc:
+                endpoint: 0.0.0.0:4317
+
+        pipelines:
+          logs:
+            receivers: [otlp]
+            exporters: [{{ .forward }}]
+
+config:
+  receivers:
+    blueprint/my_receiver/first: {}
+    blueprint/my_receiver/second: {}
+  exporters:
+    some_exporter: {}
+  service:
+    pipelines:
+      logs:
+        receivers: [blueprint/my_receiver/first, blueprint/my_receiver/second]
+        exporters: [some_exporter]
