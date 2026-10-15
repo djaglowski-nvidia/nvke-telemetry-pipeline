@@ -1,4 +1,4 @@
-# An exporter blueprint's output can depend on the presence/absence of an optional value
+# An exporter blueprint's output can depend on the presence/absence of an optional value.
 
 blueprints:
   exporters:
