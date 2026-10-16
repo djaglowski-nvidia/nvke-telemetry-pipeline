@@ -91,6 +91,13 @@ Retain `GOMEMLIMIT` and `GOGC` when replacing its environment list.
 The chart adds `NODE_NAME`, `POD_NAMESPACE`, and `OTEL_K8S_NODE_IP` if the list
 omits them.
 
+The node Collector inherits `priorityClass.name` (default
+`nktp-telemetry-critical` at `1000000000`, below system-critical Pods), including
+its sidecar but not its Target Allocator. Use an existing class with
+`priorityClass.create: false`, or override
+`daemonset.kubernetes.priorityClassName` (`""` opts out); set
+`priorityClass.preemptionPolicy: Never` to disable preemption.
+
 ## Target Allocator
 
 Setting `daemonset.kubernetes.targetAllocator.enabled` to `false` will cause Helm

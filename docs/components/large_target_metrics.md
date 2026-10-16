@@ -22,6 +22,9 @@ Each Collector sends its own telemetry through its
 [sidecar](../architecture/self_telemetry.md) to watchdog.
 Use `large_target_metrics.otelcol.config` for Collector internal configuration and
 `large_target_metrics.kubernetes` for workload configuration.
+Collector Pods inherit `priorityClass.name`; override
+`large_target_metrics.kubernetes.priorityClassName` to use another class or `""`
+to opt out, without changing the separate Target Allocator's priority.
 
 ## Sizing large scrapes
 

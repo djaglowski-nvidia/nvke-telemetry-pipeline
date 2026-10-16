@@ -1,0 +1,264 @@
+suite: telemetry priority
+release:
+  namespace: nktp
+templates:
+  - templates/priority-class.yaml
+  - templates/daemonset.yaml
+  - templates/gateway-logs.yaml
+  - templates/gateway-metrics.yaml
+  - templates/gateway-traces.yaml
+  - templates/watchdog.yaml
+  - templates/large-target-metrics.yaml
+  - templates/cluster-events.yaml
+tests:
+  - it: creates a non-default class below system-critical priorities
+    template: templates/priority-class.yaml
+    asserts:
+      - isKind:
+          of: PriorityClass
+      - isAPIVersion:
+          of: scheduling.k8s.io/v1
+      - equal:
+          path: metadata.name
+          value: nktp-telemetry-critical
+      - notExists:
+          path: metadata.namespace
+      - equal:
+          path: value
+          value: 1000000000
+      - equal:
+          path: globalDefault
+          value: false
+      - equal:
+          path: preemptionPolicy
+          value: PreemptLowerPriority
+
+  - it: propagates a custom name to every Collector and accepts a custom description
+    set:
+      priorityClass.name: platform-observability
+      priorityClass.description: 'Platform telemetry: "high priority"'
+    asserts:
+      - equal:
+          path: metadata.name
+          value: platform-observability
+        template: templates/priority-class.yaml
+      - equal:
+          path: description
+          value: 'Platform telemetry: "high priority"'
+        template: templates/priority-class.yaml
+      - equal:
+          path: spec.priorityClassName
+          value: platform-observability
+        template: templates/daemonset.yaml
+      - equal:
+          path: spec.priorityClassName
+          value: platform-observability
+        template: templates/gateway-logs.yaml
+      - equal:
+          path: spec.priorityClassName
+          value: platform-observability
+        template: templates/gateway-metrics.yaml
+      - equal:
+          path: spec.priorityClassName
+          value: platform-observability
+        template: templates/gateway-traces.yaml
+      - equal:
+          path: spec.priorityClassName
+          value: platform-observability
+        template: templates/watchdog.yaml
+      - equal:
+          path: spec.priorityClassName
+          value: platform-observability
+        template: templates/large-target-metrics.yaml
+      - equal:
+          path: spec.priorityClassName
+          value: platform-observability
+        template: templates/cluster-events.yaml
+
+  - it: rejects an empty name when creating the class
+    template: templates/priority-class.yaml
+    set:
+      priorityClass.name: ""
+    asserts:
+      - failedTemplate:
+          errorMessage: priorityClass.name is required when priorityClass.create is true
+
+  - it: allows an empty description
+    template: templates/priority-class.yaml
+    set:
+      priorityClass.description: ""
+    asserts:
+      - equal:
+          path: description
+          value: ""
+
+  - it: allows custom priority and non-preempting scheduling
+    template: templates/priority-class.yaml
+    set:
+      priorityClass.value: 1000000
+      priorityClass.preemptionPolicy: Never
+    asserts:
+      - equal:
+          path: value
+          value: 1000000
+      - equal:
+          path: preemptionPolicy
+          value: Never
+
+  - it: can leave class ownership to the cluster administrator
+    template: templates/priority-class.yaml
+    set:
+      priorityClass.create: false
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: assigns the telemetry class to every Collector but not Target Allocators
+    asserts:
+      - equal:
+          path: spec.priorityClassName
+          value: nktp-telemetry-critical
+        template: templates/daemonset.yaml
+      - equal:
+          path: spec.priorityClassName
+          value: nktp-telemetry-critical
+        template: templates/gateway-logs.yaml
+      - equal:
+          path: spec.priorityClassName
+          value: nktp-telemetry-critical
+        template: templates/gateway-metrics.yaml
+      - equal:
+          path: spec.priorityClassName
+          value: nktp-telemetry-critical
+        template: templates/gateway-traces.yaml
+      - notExists:
+          path: spec.targetAllocator.priorityClassName
+        template: templates/daemonset.yaml
+      - notExists:
+          path: spec.targetAllocator.priorityClassName
+        template: templates/watchdog.yaml
+      - notExists:
+          path: spec.targetAllocator.priorityClassName
+        template: templates/large-target-metrics.yaml
+      - equal:
+          path: spec.priorityClassName
+          value: nktp-telemetry-critical
+        template: templates/watchdog.yaml
+      - equal:
+          path: spec.priorityClassName
+          value: nktp-telemetry-critical
+        template: templates/large-target-metrics.yaml
+      - equal:
+          path: spec.priorityClassName
+          value: nktp-telemetry-critical
+        template: templates/cluster-events.yaml
+
+  - it: preserves explicit per-Collector opt-outs while other Collectors inherit
+    set:
+      priorityClass.create: false
+      daemonset.kubernetes.priorityClassName: ""
+      gateway_logs.kubernetes.priorityClassName: ""
+      gateway_metrics.kubernetes.priorityClassName: ""
+      gateway_traces.kubernetes.priorityClassName: ""
+    asserts:
+      - equal:
+          path: spec.priorityClassName
+          value: ""
+        template: templates/daemonset.yaml
+      - equal:
+          path: spec.priorityClassName
+          value: ""
+        template: templates/gateway-logs.yaml
+      - equal:
+          path: spec.priorityClassName
+          value: ""
+        template: templates/gateway-metrics.yaml
+      - equal:
+          path: spec.priorityClassName
+          value: ""
+        template: templates/gateway-traces.yaml
+      - equal:
+          path: spec.priorityClassName
+          value: nktp-telemetry-critical
+        template: templates/watchdog.yaml
+      - equal:
+          path: spec.priorityClassName
+          value: nktp-telemetry-critical
+        template: templates/large-target-metrics.yaml
+      - equal:
+          path: spec.priorityClassName
+          value: nktp-telemetry-critical
+        template: templates/cluster-events.yaml
+
+  - it: preserves named overrides for every Collector
+    set:
+      daemonset.kubernetes.priorityClassName: custom-priority
+      gateway_logs.kubernetes.priorityClassName: custom-priority
+      gateway_metrics.kubernetes.priorityClassName: custom-priority
+      gateway_traces.kubernetes.priorityClassName: custom-priority
+      watchdog.kubernetes.priorityClassName: custom-priority
+      large_target_metrics.kubernetes.priorityClassName: custom-priority
+      cluster_events.kubernetes.priorityClassName: custom-priority
+    asserts:
+      - equal:
+          path: spec.priorityClassName
+          value: custom-priority
+        template: templates/daemonset.yaml
+      - equal:
+          path: spec.priorityClassName
+          value: custom-priority
+        template: templates/gateway-logs.yaml
+      - equal:
+          path: spec.priorityClassName
+          value: custom-priority
+        template: templates/gateway-metrics.yaml
+      - equal:
+          path: spec.priorityClassName
+          value: custom-priority
+        template: templates/gateway-traces.yaml
+      - equal:
+          path: spec.priorityClassName
+          value: custom-priority
+        template: templates/watchdog.yaml
+      - equal:
+          path: spec.priorityClassName
+          value: custom-priority
+        template: templates/large-target-metrics.yaml
+      - equal:
+          path: spec.priorityClassName
+          value: custom-priority
+        template: templates/cluster-events.yaml
+
+  - it: allows every Collector to use the cluster default priority
+    set:
+      priorityClass.create: false
+      priorityClass.name: ""
+    asserts:
+      - equal:
+          path: spec.priorityClassName
+          value: ""
+        template: templates/daemonset.yaml
+      - equal:
+          path: spec.priorityClassName
+          value: ""
+        template: templates/gateway-logs.yaml
+      - equal:
+          path: spec.priorityClassName
+          value: ""
+        template: templates/gateway-metrics.yaml
+      - equal:
+          path: spec.priorityClassName
+          value: ""
+        template: templates/gateway-traces.yaml
+      - equal:
+          path: spec.priorityClassName
+          value: ""
+        template: templates/watchdog.yaml
+      - equal:
+          path: spec.priorityClassName
+          value: ""
+        template: templates/large-target-metrics.yaml
+      - equal:
+          path: spec.priorityClassName
+          value: ""
+        template: templates/cluster-events.yaml

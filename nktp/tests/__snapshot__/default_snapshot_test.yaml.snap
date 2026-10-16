@@ -468,6 +468,7 @@ matches the snapshot with default values:
         runAsNonRoot: true
         seccompProfile:
           type: RuntimeDefault
+      priorityClassName: nktp-telemetry-critical
       replicas: 2
       resources:
         limits:
@@ -1069,6 +1070,7 @@ matches the snapshot with default values:
       podSecurityContext:
         seccompProfile:
           type: RuntimeDefault
+      priorityClassName: nktp-telemetry-critical
       resources:
         limits:
           cpu: "2"
@@ -1408,6 +1410,7 @@ matches the snapshot with default values:
         runAsNonRoot: true
         seccompProfile:
           type: RuntimeDefault
+      priorityClassName: nktp-telemetry-critical
       replicas: 2
       resources:
         limits:
@@ -1637,6 +1640,7 @@ matches the snapshot with default values:
         runAsNonRoot: true
         seccompProfile:
           type: RuntimeDefault
+      priorityClassName: nktp-telemetry-critical
       replicas: 2
       resources:
         limits:
@@ -1866,6 +1870,7 @@ matches the snapshot with default values:
         runAsNonRoot: true
         seccompProfile:
           type: RuntimeDefault
+      priorityClassName: nktp-telemetry-critical
       replicas: 2
       resources:
         limits:
@@ -3305,6 +3310,7 @@ matches the snapshot with default values:
         runAsNonRoot: true
         seccompProfile:
           type: RuntimeDefault
+      priorityClassName: nktp-telemetry-critical
       replicas: 2
       resources:
         limits:
@@ -13246,6 +13252,15 @@ matches the snapshot with default values:
             - emptyDir: {}
               name: pyroscope-storage
   76: |
+    apiVersion: scheduling.k8s.io/v1
+    description: Prioritizes NKTP telemetry below Kubernetes system-critical Pods.
+    globalDefault: false
+    kind: PriorityClass
+    metadata:
+      name: nktp-telemetry-critical
+    preemptionPolicy: PreemptLowerPriority
+    value: 1000000000
+  77: |
     apiVersion: rbac.authorization.k8s.io/v1
     kind: ClusterRoleBinding
     metadata:
@@ -13258,7 +13273,7 @@ matches the snapshot with default values:
       - kind: ServiceAccount
         name: nktp-watchdog-collector
         namespace: NAMESPACE
-  77: |
+  78: |
     apiVersion: rbac.authorization.k8s.io/v1
     kind: Role
     metadata:
@@ -13282,7 +13297,7 @@ matches the snapshot with default values:
           - get
           - list
           - watch
-  78: |
+  79: |
     apiVersion: rbac.authorization.k8s.io/v1
     kind: RoleBinding
     metadata:
@@ -13296,7 +13311,7 @@ matches the snapshot with default values:
       - kind: ServiceAccount
         name: nktp-watchdog-targetallocator
         namespace: NAMESPACE
-  79: |
+  80: |
     apiVersion: opentelemetry.io/v1beta1
     kind: OpenTelemetryCollector
     metadata:
@@ -13526,6 +13541,7 @@ matches the snapshot with default values:
         runAsNonRoot: true
         seccompProfile:
           type: RuntimeDefault
+      priorityClassName: nktp-telemetry-critical
       replicas: 2
       resources:
         limits:

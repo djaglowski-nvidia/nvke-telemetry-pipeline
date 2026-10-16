@@ -27,6 +27,17 @@ global:
   # Telemetry that already has k8s.cluster.name keeps it. Empty sets "unknown".
   clusterName: ""
 
+# Cluster-scoped class inherited by all NKTP Collectors, below system-critical Pods.
+# Disable creation and set name to use an existing class. With creation disabled,
+# name: "" uses the cluster's default priority. 
+# A workload's kubernetes.priorityClassName overrides this default; "" opts out.
+priorityClass:
+  create: true
+  name: nktp-telemetry-critical
+  description: "Prioritizes NKTP telemetry below Kubernetes system-critical Pods."
+  value: 1000000000
+  preemptionPolicy: PreemptLowerPriority # Set Never to prioritize scheduling without preempting other Pods.
+
 certManager:
   # Creates a Certificate for each collector and its sidecar for collector->gateway and collector->watchdog
   # and creates a self-signed Issuer to act as a in-cluster CA + Issuer to sign collector Certificates

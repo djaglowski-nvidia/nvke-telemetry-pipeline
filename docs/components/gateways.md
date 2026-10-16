@@ -55,6 +55,12 @@ See OpenTelemetry's
 [queue-sizing guidance](https://opentelemetry.io/docs/collector/resiliency/#sending-queue-in-memory-buffering)
 and [sending queue configuration](https://github.com/open-telemetry/opentelemetry-collector/blob/v0.162.0/exporter/exporterhelper/README.md#sending-queue).
 
+Gateways inherit `priorityClass.name` (default `nktp-telemetry-critical` at
+`1000000000`, below system-critical Pods), including their sidecars; set
+`priorityClass.preemptionPolicy: Never` to disable preemption. Use an existing
+class with `priorityClass.create: false`, or override
+`<gateway>.kubernetes.priorityClassName` per gateway (`""` opts out).
+
 Each gateway sets `k8s.cluster.name` from `global.clusterName` with its
 `transform/cluster` processor, unless the telemetry already has one. When
 `global.clusterName` is empty, the value is `unknown`. The chart passes the name
