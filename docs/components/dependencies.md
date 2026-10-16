@@ -72,7 +72,7 @@ metrics-server:
 ```
 
 The bundled chart is pinned to metrics-server chart 3.13.1, which installs metrics-server
-0.8.1.
+0.8.1. That version supports Kubernetes 1.31+.
 
 Settings pass through under `metrics-server` using the upstream chart's own values, none
 of which NKTP overrides. See the [chart's values reference](https://github.com/kubernetes-sigs/metrics-server/blob/metrics-server-helm-chart-3.13.1/charts/metrics-server/README.md)
