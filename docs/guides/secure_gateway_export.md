@@ -162,11 +162,52 @@ spec:
     name: backend-client-ca
   usages:
     - client auth
-  commonName: example.com
+  commonName: example.com # Placeholder: the client identity your backend expects.
   privateKey:
     rotationPolicy: Always
 ```
 
-cert-manager maintains `tls.crt` and `tls.key` in `backend-tls`. Mount
-that Secret in every gateway and retain `cert_file`, `key_file`, and
-`reload_interval` in the exporter configuration.
+Replace `commonName` with the identity your backend maps to the client, or set
+the `dnsNames` or `uris` it reads instead.
+
+cert-manager maintains `tls.crt` and `tls.key` in `backend-tls`. It writes
+`ca.crt` only when the issuer supplies one, and that is the CA of the client
+certificate, not of the backend's server certificate.
+
+3. Create a separate Secret with the CA that signs the backend's server
+   certificate. Edit the namespace and local certificate path below before
+   running:
+
+```bash
+NKTP_NAMESPACE=nktp
+BACKEND_CA_FILE=/path/to/backend-server-ca.crt
+kubectl create secret generic backend-ca \
+  --namespace "$NKTP_NAMESPACE" \
+  --from-file="ca.crt=$BACKEND_CA_FILE"
+```
+
+4. In every gateway, replace the `backend-tls` volume from the previous section
+   with one that projects both Secrets. Keep the other volumes and the mounts;
+   the mount path and file names stay the same:
+
+```yaml
+      - name: backend-tls
+        projected:
+          defaultMode: 0440
+          sources:
+            - secret:
+                name: backend-tls
+                items:
+                  - key: tls.crt
+                    path: tls.crt
+                  - key: tls.key
+                    path: tls.key
+            - secret:
+                name: backend-ca
+                items:
+                  - key: ca.crt
+                    path: ca.crt
+```
+
+Retain `ca_file`, `cert_file`, `key_file`, and `reload_interval` in the
+exporter configuration.
