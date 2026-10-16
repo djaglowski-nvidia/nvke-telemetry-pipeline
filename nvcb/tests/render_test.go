@@ -7,6 +7,7 @@ import (
 	"flag"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -49,6 +50,38 @@ func TestPass(t *testing.T) {
 			require.NoError(t, err)
 			assert.Equal(t, string(expected), release.Manifest,
 				"rendered output does not match %s (run go test -update to regenerate)", goldenPath)
+		})
+	}
+}
+
+func TestFail(t *testing.T) {
+	scenarios, err := os.ReadDir("fail")
+	require.NoError(t, err)
+	for _, scenario := range scenarios {
+		t.Run(scenario.Name(), func(t *testing.T) {
+			chart, err := loader.Load("test-chart")
+			require.NoError(t, err)
+			library, err := loader.Load("../chart")
+			require.NoError(t, err)
+			chart.SetDependencies(library)
+
+			values, err := chartutil.ReadValuesFile(filepath.Join("fail", scenario.Name(), "values.yaml"))
+			require.NoError(t, err)
+
+			dryRun := action.NewInstall(new(action.Configuration))
+			dryRun.DryRun = true
+			dryRun.ClientOnly = true
+			dryRun.ReleaseName = "test"
+			dryRun.Namespace = "test"
+			_, err = dryRun.Run(chart, values)
+			require.Error(t, err, "expected configuration to be rejected")
+
+			goldenPath := filepath.Join("fail", scenario.Name(), "error.txt")
+			expected, readErr := os.ReadFile(goldenPath)
+			require.NoError(t, readErr)
+
+			assert.ErrorContains(t, err, strings.TrimSpace(string(expected)),
+				"error does not contain expected message from %s", goldenPath)
 		})
 	}
 }

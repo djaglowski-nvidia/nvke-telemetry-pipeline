@@ -1,6 +1,6 @@
 dependencies:
-- name: occt
+- name: nvcb
   repository: file://../../chart
   version: 0.1.0
-digest: sha256:d35ab88f9ef09b3bba67f6fc4e2c6cfbb54ddeb6c92019dd0e96b0ca9398b218
-generated: "2026-09-04T07:03:32.261577675Z"
+digest: sha256:2b4952ad2ae2b05b3503707747754e3f0f09ff84097c1e73ceb1c9a3a1e74309
+generated: "2026-10-15T11:04:28.482726-05:00"

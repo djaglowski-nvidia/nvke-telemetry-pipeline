@@ -19,4 +19,6 @@ go test -update ./...
 git diff
 ```
 
-To add a scenario, create `pass/<name>/values.yaml` and run `go test -update ./...`.
+To add a passing scenario, create `pass/<name>/values.yaml` and run `go test -update ./...`.
+
+To add a failing scenario, create `fail/<name>/values.yaml` and write the expected error substring in `fail/<name>/error.txt`.
