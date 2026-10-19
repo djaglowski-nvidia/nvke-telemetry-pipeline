@@ -1,0 +1,15 @@
+# Blueprint must have a template string
+blueprints:
+  exporters:
+    my_exporter: {}
+
+receivers:
+  some_receiver: {}
+exporters:
+  blueprint/my_exporter: {}
+  some_exporter: {}
+service:
+  pipelines:
+    logs:
+      receivers: [some_receiver]
+      exporters: [blueprint/my_exporter]

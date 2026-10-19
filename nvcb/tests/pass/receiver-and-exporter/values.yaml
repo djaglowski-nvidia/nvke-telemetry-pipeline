@@ -26,13 +26,12 @@ blueprints:
             receivers: [{{ .forward }}]
             exporters: [debug]
 
-config:
-  receivers:
-    blueprint/my_receiver: {}
-  exporters:
-    blueprint/my_exporter: {}
-  service:
-    pipelines:
-      logs:
-        receivers: [blueprint/my_receiver]
-        exporters: [blueprint/my_exporter]
+receivers:
+  blueprint/my_receiver: {}
+exporters:
+  blueprint/my_exporter: {}
+service:
+  pipelines:
+    logs:
+      receivers: [blueprint/my_receiver]
+      exporters: [blueprint/my_exporter]

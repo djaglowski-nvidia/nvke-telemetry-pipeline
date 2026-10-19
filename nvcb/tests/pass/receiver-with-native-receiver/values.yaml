@@ -14,14 +14,13 @@ blueprints:
             receivers: [otlp]
             exporters: [{{ .forward }}]
 
-config:
-  receivers:
-    some_receiver: {}
-    blueprint/my_receiver: {}
-  exporters:
-    some_exporter: {}
-  service:
-    pipelines:
-      logs:
-        receivers: [blueprint/my_receiver, some_receiver]
-        exporters: [some_exporter]
+receivers:
+  some_receiver: {}
+  blueprint/my_receiver: {}
+exporters:
+  some_exporter: {}
+service:
+  pipelines:
+    logs:
+      receivers: [blueprint/my_receiver, some_receiver]
+      exporters: [some_exporter]

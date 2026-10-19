@@ -19,15 +19,14 @@ blueprints:
             receivers: [{{ if .values.endpoint }}otlp{{ else }}filelog{{ end }}]
             exporters: [{{ .forward }}]
 
-config:
-  receivers:
-    blueprint/my_receiver/local: {}
-    blueprint/my_receiver/remote:
-      endpoint: 0.0.0.0:4317
-  exporters:
-    some_exporter: {}
-  service:
-    pipelines:
-      logs:
-        receivers: [blueprint/my_receiver/local, blueprint/my_receiver/remote]
-        exporters: [some_exporter]
+receivers:
+  blueprint/my_receiver/local: {}
+  blueprint/my_receiver/remote:
+    endpoint: 0.0.0.0:4317
+exporters:
+  some_exporter: {}
+service:
+  pipelines:
+    logs:
+      receivers: [blueprint/my_receiver/local, blueprint/my_receiver/remote]
+      exporters: [some_exporter]

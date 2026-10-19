@@ -1,0 +1,1 @@
+nvcb: service.pipelines must be a map

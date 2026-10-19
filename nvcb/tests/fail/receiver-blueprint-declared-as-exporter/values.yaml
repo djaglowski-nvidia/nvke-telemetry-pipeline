@@ -11,13 +11,12 @@ blueprints:
             receivers: [foo_receiver]
             exporters: [{{ .forward }}]
 
-config:
-  receivers:
-    some_receiver: {}
-  exporters:
-    blueprint/my_source/x: {}
-  service:
-    pipelines:
-      logs:
-        receivers: [some_receiver]
-        exporters: [blueprint/my_source/x]
+receivers:
+  some_receiver: {}
+exporters:
+  blueprint/my_source/x: {}
+service:
+  pipelines:
+    logs:
+      receivers: [some_receiver]
+      exporters: [blueprint/my_source/x]

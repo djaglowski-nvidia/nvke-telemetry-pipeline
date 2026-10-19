@@ -1,0 +1,22 @@
+# Blueprints must be declared with the expected blueprint/<type>[/<name>] form
+blueprints:
+  exporters:
+    my_sink:
+      template: |
+        exporters:
+          foo_exporter: {}
+
+        pipelines:
+          logs:
+            receivers: [{{ .forward }}]
+            exporters: [foo_exporter]
+
+receivers:
+  some_receiver: {}
+exporters:
+  blueprint/: {}
+service:
+  pipelines:
+    logs:
+      receivers: [some_receiver]
+      exporters: [blueprint/]

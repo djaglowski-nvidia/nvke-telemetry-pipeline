@@ -13,17 +13,16 @@ blueprints:
             receivers: [{{ .forward }}]
             exporters: [debug]
 
-config:
-  receivers:
-    some_receiver: {}
-  exporters:
-    blueprint/my_exporter/a: {}
-    some_exporter: {}
-  service:
-    pipelines:
-      logs/ingest:
-        receivers: [some_receiver]
-        exporters: [blueprint/my_exporter/a]
-      logs/egress:
-        receivers: [blueprint/my_exporter/a]
-        exporters: [some_exporter]
+receivers:
+  some_receiver: {}
+exporters:
+  blueprint/my_exporter/a: {}
+  some_exporter: {}
+service:
+  pipelines:
+    logs/ingest:
+      receivers: [some_receiver]
+      exporters: [blueprint/my_exporter/a]
+    logs/egress:
+      receivers: [blueprint/my_exporter/a]
+      exporters: [some_exporter]

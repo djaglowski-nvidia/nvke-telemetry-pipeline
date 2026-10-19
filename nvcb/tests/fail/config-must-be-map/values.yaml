@@ -1,0 +1,2 @@
+# The entire transpiler input must be a map.
+["not", "a", "map"]

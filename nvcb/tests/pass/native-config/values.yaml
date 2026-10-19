@@ -1,18 +1,17 @@
 # A config with no blueprints passes through unchanged.
-config:
-  receivers:
-    otlp:
-      protocols:
-        grpc:
-          endpoint: 0.0.0.0:4317
-  processors:
-    batch: {}
-  exporters:
-    debug:
-      verbosity: detailed
-  service:
-    pipelines:
-      logs:
-        receivers: [otlp]
-        processors: [batch]
-        exporters: [debug]
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+processors:
+  batch: {}
+exporters:
+  debug:
+    verbosity: detailed
+service:
+  pipelines:
+    logs:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [debug]

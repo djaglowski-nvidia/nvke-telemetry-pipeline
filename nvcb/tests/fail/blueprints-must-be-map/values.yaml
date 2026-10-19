@@ -1,0 +1,12 @@
+# Blueprints must be a map
+blueprints: ["not", "a", "map"]
+
+receivers:
+  some_receiver: {}
+exporters:
+  some_exporter: {}
+service:
+  pipelines:
+    logs:
+      receivers: [some_receiver]
+      exporters: [some_exporter]

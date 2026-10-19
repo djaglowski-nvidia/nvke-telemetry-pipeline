@@ -23,13 +23,12 @@ blueprints:
             processors: [memory_limiter, batch]
             exporters: [{{ .forward }}]
 
-config:
-  receivers:
-    blueprint/my_receiver: {}
-  exporters:
-    some_exporter: {}
-  service:
-    pipelines:
-      logs:
-        receivers: [blueprint/my_receiver]
-        exporters: [some_exporter]
+receivers:
+  blueprint/my_receiver: {}
+exporters:
+  some_exporter: {}
+service:
+  pipelines:
+    logs:
+      receivers: [blueprint/my_receiver]
+      exporters: [some_exporter]

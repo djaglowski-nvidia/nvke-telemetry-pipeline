@@ -18,15 +18,14 @@ blueprints:
             receivers: [{{ .forward }}]
             exporters: [{{ if .values.endpoint }}otlp{{ else }}debug{{ end }}]
 
-config:
-  receivers:
-    some_receiver: {}
-  exporters:
-    blueprint/my_exporter/local: {}
-    blueprint/my_exporter/remote:
-      endpoint: collector.example.com:4317
-  service:
-    pipelines:
-      logs:
-        receivers: [some_receiver]
-        exporters: [blueprint/my_exporter/local, blueprint/my_exporter/remote]
+receivers:
+  some_receiver: {}
+exporters:
+  blueprint/my_exporter/local: {}
+  blueprint/my_exporter/remote:
+    endpoint: collector.example.com:4317
+service:
+  pipelines:
+    logs:
+      receivers: [some_receiver]
+      exporters: [blueprint/my_exporter/local, blueprint/my_exporter/remote]

@@ -15,16 +15,15 @@ blueprints:
             receivers: [otlp]
             exporters: [{{ .forward }}]
 
-config:
-  receivers:
-    blueprint/my_receiver/a:
-      endpoint: 0.0.0.0:14317
-    blueprint/my_receiver/b:
-      endpoint: 0.0.0.0:24317
-  exporters:
-    some_exporter: {}
-  service:
-    pipelines:
-      logs:
-        receivers: [blueprint/my_receiver/a, blueprint/my_receiver/b]
-        exporters: [some_exporter]
+receivers:
+  blueprint/my_receiver/a:
+    endpoint: 0.0.0.0:14317
+  blueprint/my_receiver/b:
+    endpoint: 0.0.0.0:24317
+exporters:
+  some_exporter: {}
+service:
+  pipelines:
+    logs:
+      receivers: [blueprint/my_receiver/a, blueprint/my_receiver/b]
+      exporters: [some_exporter]

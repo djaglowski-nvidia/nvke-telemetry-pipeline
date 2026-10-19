@@ -30,13 +30,12 @@ blueprints:
             receivers: [routing]
             exporters: [debug/priority]
 
-config:
-  receivers:
-    some_receiver: {}
-  exporters:
-    blueprint/my_exporter: {}
-  service:
-    pipelines:
-      logs:
-        receivers: [some_receiver]
-        exporters: [blueprint/my_exporter]
+receivers:
+  some_receiver: {}
+exporters:
+  blueprint/my_exporter: {}
+service:
+  pipelines:
+    logs:
+      receivers: [some_receiver]
+      exporters: [blueprint/my_exporter]

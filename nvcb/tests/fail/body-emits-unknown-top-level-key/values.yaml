@@ -15,13 +15,12 @@ blueprints:
             receivers: [foo_receiver]
             exporters: [{{ .forward }}]
 
-config:
-  receivers:
-    blueprint/overreaching/a: {}
-  exporters:
-    some_exporter: {}
-  service:
-    pipelines:
-      logs:
-        receivers: [blueprint/overreaching/a]
-        exporters: [some_exporter]
+receivers:
+  blueprint/overreaching/a: {}
+exporters:
+  some_exporter: {}
+service:
+  pipelines:
+    logs:
+      receivers: [blueprint/overreaching/a]
+      exporters: [some_exporter]

@@ -21,13 +21,12 @@ blueprints:
             processors: [memory_limiter, batch]
             exporters: [debug]
 
-config:
-  receivers:
-    some_receiver: {}
-  exporters:
-    blueprint/my_exporter: {}
-  service:
-    pipelines:
-      logs:
-        receivers: [some_receiver]
-        exporters: [blueprint/my_exporter]
+receivers:
+  some_receiver: {}
+exporters:
+  blueprint/my_exporter: {}
+service:
+  pipelines:
+    logs:
+      receivers: [some_receiver]
+      exporters: [blueprint/my_exporter]

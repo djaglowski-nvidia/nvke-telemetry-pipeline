@@ -1,0 +1,14 @@
+# Blueprints receivers/exporters sections must be maps
+blueprints:
+  receivers: []
+  exporters: []
+
+receivers:
+  some_receiver: {}
+exporters:
+  some_exporter: {}
+service:
+  pipelines:
+    logs:
+      receivers: [some_receiver]
+      exporters: [some_exporter]
