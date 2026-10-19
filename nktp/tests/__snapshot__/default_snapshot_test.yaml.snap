@@ -7045,7 +7045,7 @@ matches the snapshot with default values:
               "id": 7,
               "type": "timeseries",
               "title": "Failed sends",
-              "description": "Items rejected per second, separated by component and signal. The sender may retry. This is not a permanent-loss count. Zero means no reported failures where matching telemetry is present. Missing telemetry stays unknown.",
+              "description": "Items per second that exporters failed to send to their destination, separated by component and signal. The exporter may retry them. This is not a permanent-loss count. Zero is anchored to a present exporter queue. Missing telemetry stays unknown.",
               "gridPos": {
                 "x": 8,
                 "y": 17,
@@ -7141,7 +7141,7 @@ matches the snapshot with default values:
               "id": 8,
               "type": "timeseries",
               "title": "Enqueue failures",
-              "description": "Items rejected per second, separated by component and signal. The sender may retry. This is not a permanent-loss count. Zero means no reported failures where matching telemetry is present. Missing telemetry stays unknown.",
+              "description": "Items per second that exporters could not add to a full sending queue, separated by component and signal. The error returns to the receiver, so a pushing sender may retry. This is not a permanent-loss count. Zero is anchored to a present exporter queue. Missing telemetry stays unknown.",
               "gridPos": {
                 "x": 16,
                 "y": 17,
@@ -10210,7 +10210,7 @@ matches the snapshot with default values:
                   "id": 56,
                   "type": "timeseries",
                   "title": "Sidecar failed sends",
-                  "description": "Self-telemetry sidecars only. Items rejected per second, separated by component and signal. The sender may retry. This is not a permanent-loss count. Zero means no reported failures where matching telemetry is present. Missing telemetry stays unknown.",
+                  "description": "Self-telemetry sidecars only. Items per second that exporters failed to send to their destination, separated by component and signal. The exporter may retry them. This is not a permanent-loss count. Zero is anchored to a present exporter queue. Missing telemetry stays unknown.",
                   "gridPos": {
                     "x": 8,
                     "y": 42,
@@ -10306,7 +10306,7 @@ matches the snapshot with default values:
                   "id": 57,
                   "type": "timeseries",
                   "title": "Sidecar enqueue failures",
-                  "description": "Self-telemetry sidecars only. Items rejected per second, separated by component and signal. The sender may retry. This is not a permanent-loss count. Zero means no reported failures where matching telemetry is present. Missing telemetry stays unknown.",
+                  "description": "Self-telemetry sidecars only. Items per second that exporters could not add to a full sending queue, separated by component and signal. The error returns to the receiver, so a pushing sender may retry. This is not a permanent-loss count. Zero is anchored to a present exporter queue. Missing telemetry stays unknown.",
                   "gridPos": {
                     "x": 16,
                     "y": 42,
@@ -13188,7 +13188,7 @@ matches the snapshot with default values:
       template:
         metadata:
           annotations:
-            checksum/dashboards: 2cff4232174e5060209911c83035694f0ccc6490be0be0a2f364ab454bba9d17
+            checksum/dashboards: ebaee50fa7590460dee0ee55af89eea57309d8fec2319ecf1d23fab6ce8defb7
           labels:
             app: lgtm
         spec:
