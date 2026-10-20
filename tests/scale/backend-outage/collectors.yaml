@@ -1,0 +1,80 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+# Isolated delivery-verification backend; gateway is derived at runtime.
+apiVersion: opentelemetry.io/v1beta1
+kind: OpenTelemetryCollector
+metadata:
+  name: outage-blackhole
+spec:
+  mode: deployment
+  replicas: 1
+  image: ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector-contrib:0.162.0
+  terminationGracePeriodSeconds: 5
+  resources:
+    requests:
+      cpu: 200m
+      memory: 128Mi
+    limits:
+      cpu: "2"
+      memory: 4Gi
+  env:
+    - name: GOGC
+      value: "50"
+  config:
+    extensions:
+      pprof:
+        endpoint: 127.0.0.1:1777
+      health_check:
+        endpoint: 0.0.0.0:13133
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+            # Serialize arrival-count updates on the gateway's connection.
+            max_concurrent_streams: 1
+    processors:
+      transform/verification:
+        metric_statements:
+          - context: datapoint
+            statements:
+              # Retries preserve original timestamps. Count each arrival using
+              # fresh timestamps so cumulative conversion also counts retries.
+              - set(time_unix_nano, UnixNano(Now()))
+      deltatocumulative/verification:
+        max_stale: 30m
+    connectors:
+      count/verification:
+        metrics:
+          outage_ignored_metrics:
+            conditions: ['false']
+        datapoints:
+          outage_received_points:
+            conditions: ['attributes["run_id"] != nil']
+            attributes: [{key: run_id}, {key: sequence}]
+    exporters:
+      nop: {}
+      prometheus:
+        endpoint: 0.0.0.0:8889
+        metric_expiration: 30m
+    service:
+      extensions: [health_check, pprof]
+      telemetry:
+        metrics:
+          readers:
+            - pull:
+                exporter:
+                  prometheus:
+                    host: 0.0.0.0
+                    port: 8888
+        traces:
+          level: none
+      pipelines:
+        metrics:
+          receivers: [otlp]
+          processors: [transform/verification]
+          exporters: [nop, count/verification]
+        metrics/verification:
+          receivers: [count/verification]
+          processors: [deltatocumulative/verification]
+          exporters: [prometheus]

@@ -1,0 +1,51 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: outage-scrape-server
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: outage-scrape-server}
+  template:
+    metadata:
+      labels: {app: outage-scrape-server}
+    spec:
+      terminationGracePeriodSeconds: 5
+      initContainers:
+        - name: seed
+          image: public.ecr.aws/docker/library/busybox:1.37.0
+          command: [sh, -c, 'cat /seed/[0-9]* | gzip -dc > /scrapes/metrics.paused']
+          resources:
+            requests: {cpu: 100m, memory: 16Mi}
+            limits: {cpu: '1', memory: 64Mi}
+          volumeMounts:
+            - {name: scrapes, mountPath: /scrapes}
+            - {name: seed, mountPath: /seed, readOnly: true}
+      containers:
+        - name: http
+          image: public.ecr.aws/docker/library/busybox:1.37.0
+          command: [httpd, -f, -p, '8080', -h, /scrapes]
+          ports: [{name: http, containerPort: 8080}]
+          readinessProbe:
+            tcpSocket: {port: http}
+          resources:
+            requests: {cpu: 100m, memory: 16Mi}
+            limits: {cpu: '1', memory: 64Mi}
+          volumeMounts: [{name: scrapes, mountPath: /scrapes}]
+      volumes:
+        - {name: scrapes, emptyDir: {}}
+        - name: seed
+          projected:
+            sources:
+              - configMap:
+                  name: outage-scrape-server-000000
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: outage-scrape-server
+spec:
+  selector: {app: outage-scrape-server}
+  ports: [{name: http, port: 8080, targetPort: http}]

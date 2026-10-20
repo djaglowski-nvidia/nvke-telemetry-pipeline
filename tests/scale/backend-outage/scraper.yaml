@@ -1,0 +1,61 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+# Test instrumentation; runtime and pipeline settings come from the installed
+# large-target metrics Collector.
+apiVersion: opentelemetry.io/v1beta1
+kind: OpenTelemetryCollector
+metadata:
+  name: outage-scraper
+spec:
+  config:
+    receivers:
+      prometheus:
+        config:
+          scrape_configs:
+            - job_name: outage-scrape-server
+              scrape_interval: 30s
+              scrape_timeout: 10s
+              fallback_scrape_protocol: PrometheusText0.0.4
+              static_configs:
+                - targets: ['outage-scrape-server:8080']
+    processors:
+      filter/scrape:
+        error_mode: propagate
+        metrics:
+          metric: ['name == "up"', 'IsMatch(name, "^scrape_")']
+          # Pausing the scrape server ends the input phase, not the metric series.
+          datapoint: ['flags == FLAG_NO_RECORDED_VALUE']
+      transform/identify:
+        metric_statements:
+          - context: datapoint
+            statements:
+              - set(attributes["run_id"], "${env:OUTAGE_RUN_ID}")
+              - set(attributes["sequence"], String(time_unix_nano))
+      transform/scrape_receipts:
+        metric_statements:
+          - context: datapoint
+            statements:
+              # Each batch contributes a separate delta for the same scrape.
+              # Preserve its sequence label, but give the receipt a fresh time
+              # so cumulative conversion does not discard later batches.
+              - set(time_unix_nano, UnixNano(Now()))
+      deltatocumulative/scrapes:
+        max_stale: 30m
+    connectors:
+      count/scrapes:
+        metrics:
+          outage_ignored_metrics:
+            conditions: ['false']
+        datapoints:
+          outage_scraped_points:
+            attributes: [{key: run_id}, {key: sequence}]
+    exporters:
+      prometheus:
+        endpoint: '0.0.0.0:8889'
+        metric_expiration: 30m
+    service:
+      pipelines:
+        metrics/scrapes:
+          receivers: [count/scrapes]
+          processors: [transform/scrape_receipts, deltatocumulative/scrapes]
+          exporters: [prometheus]

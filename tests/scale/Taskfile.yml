@@ -49,6 +49,15 @@ tasks:
     cmds:
       - go test -tags scale -count=1 -v -timeout={{.TEST_TIMEOUT | shellQuote}} -run '^TestRun$' ./scale -args -kubeconfig {{.TEST_KUBECONFIG | shellQuote}} {{.CLI_ARGS}}
 
+  outage:
+    desc: Simulate a backend outage to tune the gateway sending queue
+    dir: '{{.ROOT_DIR}}/tests'
+    vars:
+      TEST_TIMEOUT: '{{.TEST_TIMEOUT | default "12m"}}'
+      TEST_KUBECONFIG: '{{if .KUBECONFIG}}{{if isAbs .KUBECONFIG}}{{clean .KUBECONFIG}}{{else}}{{joinPath .ROOT_DIR .KUBECONFIG}}{{end}}{{else}}{{.TASKFILE_DIR}}/.kubeconfig{{end}}'
+    cmds:
+      - go test -tags scale -count=1 -v -timeout={{.TEST_TIMEOUT | shellQuote}} -run '^TestBackendOutage$' ./scale/backend-outage -args -kubeconfig {{.TEST_KUBECONFIG | shellQuote}} {{.CLI_ARGS}}
+
   install:
     dir: '{{.ROOT_DIR}}'
     desc: Install NKTP and the load-test environment in the selected cluster

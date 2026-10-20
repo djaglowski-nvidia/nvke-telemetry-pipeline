@@ -1,0 +1,3 @@
+# HELP outage_fixture_dcgm_device_utilization Synthetic sample approximating larger DCGM metrics.
+# TYPE outage_fixture_dcgm_device_utilization gauge
+outage_fixture_dcgm_device_utilization{namespace="fixture-namespace",pod="fixture-workload-synthetic-component-__SERIES__",uid="00000000-0000-4000-8000-000000__SERIES__",node="node-__NODE__",container="fixture-container",gpu="g-__SERIES__",UUID="GPU-00000000-0000-4000-8000-000000__SERIES__",device="nvidia-device-__SERIES__",modelName="synthetic-gpu-model-server",driver_version="synthetic-driver-version"} 1

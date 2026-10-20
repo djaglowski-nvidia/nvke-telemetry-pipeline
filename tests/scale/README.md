@@ -7,6 +7,7 @@ contains its plan, usage notes and any required Helm values.
 | Workload | Purpose |
 | --- | --- |
 | [Mixed workload](mixed-workload/README.md) | Metrics, stdout logs, traces, Events and large scrape targets together |
+| [Backend outage](backend-outage/README.md) | Simulate a backend outage to tune the gateway sending queue; compare delivery, client backpressure, memory usage, and recovery |
 | [Telemetrygen](examples/telemetrygen/README.md) | Send OTLP metrics, logs and traces |
 | [Avalanche](examples/avalanche/README.md) | Generate Prometheus scrape targets |
 | [KWOK](examples/kwok/README.md) | Simulate Kubernetes nodes and Pod lifecycles |
@@ -66,7 +67,8 @@ Tests use the selected kubeconfig's current context. Without an override,
 `scale:test` uses `tests/scale/.kubeconfig`. Passing
 `KUBECONFIG="$KUBECONFIG"` as a Task variable selects the file set above. Relative Task
 paths resolve from the repository root, while `-plan` and `-kubeconfig` paths
-passed after `--` resolve from `tests/scale`. Prefer absolute paths.
+passed after `--` to `scale:test` resolve from `tests/scale`.
+Prefer absolute paths.
 
 For longer plans, set `TEST_TIMEOUT=30m` before `--`, allowing time for the plan
 and cleanup. The default is 12 minutes. The command prints the run ID, generator

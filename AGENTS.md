@@ -104,6 +104,12 @@ task dev:down
    commands. Use this pattern instead of interactive `read -r` prompts or
    separate variable-validation lines. Keep example output and pseudocommands
    separate from runnable shell blocks.
+8. **Keep READMEs focused on user needs.** Document what readers need to run,
+   configure, or interpret the software. Do not update a README for every minor
+   change or record every implementation decision. Include internal details,
+   compatibility notes, or decision rationale only when they affect a user's
+   actions or understanding; keep other details in code comments, design docs,
+   or pull request descriptions.
 
 ## Secrets and credentials
 

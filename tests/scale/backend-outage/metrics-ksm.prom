@@ -1,0 +1,3 @@
+# HELP outage_fixture_value Synthetic sample sized to match observed KSM metrics.
+# TYPE outage_fixture_value gauge
+outage_fixture_value{namespace="fixture-namespace",pod="fixture-workload-synthetic-component-__SERIES__",uid="00000000-0000-4000-8000-000000__SERIES__",node="node-__NODE__",container="fixture-container"} 1

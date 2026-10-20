@@ -76,13 +76,19 @@ func WaitForDeployment(ctx context.Context, opts DeploymentWaitOptions) error {
 		for _, condition := range deployment.Status.Conditions {
 			if condition.Type == appsv1.DeploymentAvailable && condition.Status == corev1.ConditionTrue {
 				available = true
-				break
+			}
+			if condition.Type == appsv1.DeploymentProgressing && condition.Reason == "ProgressDeadlineExceeded" && deployment.Status.ObservedGeneration >= deployment.Generation {
+				return false, fmt.Errorf("deployment exceeded its progress deadline: %s", condition.Message)
 			}
 		}
 		status := deployment.Status
 		last = fmt.Sprintf("generation=%d observed=%d desired=%d replicas=%d updated=%d ready=%d available=%d Available=%t",
 			deployment.Generation, status.ObservedGeneration, want, status.Replicas,
 			status.UpdatedReplicas, status.ReadyReplicas, status.AvailableReplicas, available)
+		if deployment.DeletionTimestamp != nil {
+			last += ", deleting"
+			return false, nil
+		}
 		if opts.ReplicaCount != nil && want != *opts.ReplicaCount {
 			return false, nil
 		}
