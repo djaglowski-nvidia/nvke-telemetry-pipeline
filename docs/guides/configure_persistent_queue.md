@@ -93,8 +93,9 @@ lists by hand when combining it with another example, such as the one in
 ## Size the volumes
 
 `queue_size` counts serialized bytes and bounds each queue. The chart's
-defaults, 8MiB per signal for the watchdog and 16MiB for each gateway, would
-leave most of a volume unused, so the example sets 512MiB.
+defaults are 8MiB per signal for the watchdog and about 0.48 GiB for each
+gateway. The example sets 512MiB for every queue, which is half of the space it
+gives each queue.
 
 Keep `queue_size` at no more than half of the space for each queue. A full
 512MiB queue took 530MiB on disk, and the file grew to 635MiB while the queue
@@ -110,8 +111,8 @@ Request at least the provider's minimum volume size. OCI block volumes have a
 minimum of 50GB.
 
 Each replica that has run keeps its own claim. The watchdog autoscales between
-2 and 16 replicas and each gateway between 2 and 64, so at their maximum that
-is up to 208 volumes, or 10.4TB at the OCI minimum. Lower
+2 and 16 replicas and each gateway between 2 and 128, so at their maximum that
+is up to 400 volumes, or 20TB at the OCI minimum. Lower
 `autoscaler.maxReplicas` to bound it. With `whenScaled: Retain`, telemetry
 queued on a removed replica is sent when that replica scales back out. With
 `Delete`, it is discarded.

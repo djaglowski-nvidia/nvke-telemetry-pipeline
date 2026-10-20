@@ -19,8 +19,10 @@ Collector RSS, and queue and delivery metrics were recorded.
 ## Test configuration
 
 The initial results below use a 1.5 GiB queue and 256 MiB body limit.
-The chart defaults are a 2 GiB queue and 1 GiB body limit. Additional measurements
-with these defaults appear under mixed sample lengths below.
+Additional measurements with a 2 GiB queue and 1 GiB body limit appear under
+mixed sample lengths below. Both are measurement configurations. The chart
+defaults are a 128 MiB queue and 1 GiB body limit. See
+[Large-target metrics](../../docs/components/large_target_metrics.md).
 
 | Setting | Value |
 | --- | --- |
