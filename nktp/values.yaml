@@ -2933,6 +2933,15 @@ opentelemetry-kube-stack:
 # so it binds port 9100 on every node.
 node-exporter:
   enabled: true
+  # node_exporter's cpufreq collector hangs on arm64 nodes that use the
+  # cppc_cpufreq driver. A read of cpuinfo_avg_freq never returns, so scrapes of
+  # the exporter hang and time out (prometheus/node_exporter#3791). The fix,
+  # prometheus/procfs#879, is in no node_exporter release yet. Remove this once
+  # the chart's node_exporter has it. Without the collector there are no
+  # node_cpu_frequency_* or node_cpu_scaling_* series, and nothing in nktp reads
+  # them.
+  extraArgs:
+    - --no-collector.cpufreq
   prometheus:
     monitor:
       # Declares the exporter as a scrape target, ready for a collector to pick up.

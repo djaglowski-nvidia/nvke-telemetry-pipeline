@@ -29,6 +29,13 @@ tests:
           path: spec.template.spec.containers[0].ports[0].containerPort
           value: 9100
 
+  - it: turns off the cpufreq collector by default
+    template: charts/node-exporter/templates/daemonset.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --no-collector.cpufreq
+
   - it: exposes the exporter through a Service and its own ServiceAccount
     asserts:
       - containsDocument:
