@@ -235,6 +235,6 @@ func (p *Prometheus) Run(ctx context.Context) (report Report, err error) {
 func queryPrometheus(ctx context.Context, client prometheusv1.API, expression string, at time.Time, timeout time.Duration) (QueryObservation, error) {
 	queryCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	value, warnings, err := client.Query(queryCtx, expression, at)
+	value, warnings, _, err := client.Query(queryCtx, expression, at)
 	return QueryObservation{EvaluatedAt: at, Value: value, Warnings: warnings}, err
 }
