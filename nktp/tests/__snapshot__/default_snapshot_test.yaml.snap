@@ -310,7 +310,7 @@ matches the snapshot with default values:
     kind: OpenTelemetryCollector
     metadata:
       labels:
-        helm.sh/chart: opentelemetry-kube-stack-0.22.0
+        helm.sh/chart: opentelemetry-kube-stack-0.25.1
       name: nktp-cluster-events
       namespace: NAMESPACE
     spec:
@@ -593,7 +593,7 @@ matches the snapshot with default values:
     kind: OpenTelemetryCollector
     metadata:
       labels:
-        helm.sh/chart: opentelemetry-kube-stack-0.22.0
+        helm.sh/chart: opentelemetry-kube-stack-0.25.1
       name: nktp-daemonset
       namespace: NAMESPACE
     spec:
@@ -1099,7 +1099,7 @@ matches the snapshot with default values:
                 fieldPath: metadata.name
           - name: OTEL_RESOURCE_ATTRIBUTES
             value: service.instance.id=$(POD_NAME)
-        image: ghcr.io/open-telemetry/opentelemetry-operator/target-allocator:0.159.0
+        image: ghcr.io/open-telemetry/opentelemetry-operator/target-allocator:0.161.0
         mtls:
           enabled: true
           useCertManager: true
@@ -1240,7 +1240,7 @@ matches the snapshot with default values:
     kind: OpenTelemetryCollector
     metadata:
       labels:
-        helm.sh/chart: opentelemetry-kube-stack-0.22.0
+        helm.sh/chart: opentelemetry-kube-stack-0.25.1
       name: nktp-gateway-logs
       namespace: NAMESPACE
     spec:
@@ -1470,7 +1470,7 @@ matches the snapshot with default values:
     kind: OpenTelemetryCollector
     metadata:
       labels:
-        helm.sh/chart: opentelemetry-kube-stack-0.22.0
+        helm.sh/chart: opentelemetry-kube-stack-0.25.1
       name: nktp-gateway-metrics
       namespace: NAMESPACE
     spec:
@@ -1700,7 +1700,7 @@ matches the snapshot with default values:
     kind: OpenTelemetryCollector
     metadata:
       labels:
-        helm.sh/chart: opentelemetry-kube-stack-0.22.0
+        helm.sh/chart: opentelemetry-kube-stack-0.25.1
       name: nktp-gateway-traces
       namespace: NAMESPACE
     spec:
@@ -3141,7 +3141,7 @@ matches the snapshot with default values:
     kind: OpenTelemetryCollector
     metadata:
       labels:
-        helm.sh/chart: opentelemetry-kube-stack-0.22.0
+        helm.sh/chart: opentelemetry-kube-stack-0.25.1
       name: nktp-large-target-metrics
       namespace: NAMESPACE
     spec:
@@ -3338,7 +3338,7 @@ matches the snapshot with default values:
                 fieldPath: metadata.name
           - name: OTEL_RESOURCE_ATTRIBUTES
             value: service.instance.id=$(POD_NAME)
-        image: ghcr.io/open-telemetry/opentelemetry-operator/target-allocator:0.159.0
+        image: ghcr.io/open-telemetry/opentelemetry-operator/target-allocator:0.161.0
         mtls:
           enabled: true
           useCertManager: true
@@ -13316,7 +13316,7 @@ matches the snapshot with default values:
     kind: OpenTelemetryCollector
     metadata:
       labels:
-        helm.sh/chart: opentelemetry-kube-stack-0.22.0
+        helm.sh/chart: opentelemetry-kube-stack-0.25.1
       name: nktp-watchdog
       namespace: NAMESPACE
     spec:
@@ -13568,7 +13568,7 @@ matches the snapshot with default values:
                 fieldPath: metadata.name
           - name: OTEL_RESOURCE_ATTRIBUTES
             value: service.instance.id=$(POD_NAME)
-        image: ghcr.io/open-telemetry/opentelemetry-operator/target-allocator:0.159.0
+        image: ghcr.io/open-telemetry/opentelemetry-operator/target-allocator:0.161.0
         mtls:
           enabled: true
           useCertManager: true

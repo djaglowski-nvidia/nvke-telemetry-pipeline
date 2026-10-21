@@ -199,7 +199,7 @@ tests:
         documentIndex: 0
       - equal:
           path: "spec.targetAllocator.image"
-          value: "mirror.example.com/open-telemetry/opentelemetry-operator/target-allocator:0.159.0"
+          value: "mirror.example.com/open-telemetry/opentelemetry-operator/target-allocator:0.161.0"
         documentIndex: 0
   - it: replaces all own telemetry exporter lists with gRPC for large_target_metrics
     set:

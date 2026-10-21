@@ -30,7 +30,7 @@ certificates for each pair, as described in
 NKTP uses an existing cert-manager installation to issue and renew the
 Operator's admission webhook certificate by default. The upstream Operator
 chart documents the available approaches under
-[TLS Certificate Requirement](https://github.com/open-telemetry/opentelemetry-helm-charts/blob/opentelemetry-operator-0.123.0/charts/opentelemetry-operator/README.md#tls-certificate-requirement).
+[TLS Certificate Requirement](https://github.com/open-telemetry/opentelemetry-helm-charts/blob/opentelemetry-operator-0.126.0/charts/opentelemetry-operator/README.md#tls-certificate-requirement).
 
 ### Internal mTLS
 
@@ -164,7 +164,7 @@ To provide your own webhook certificate instead, also set
 `admissionWebhooks.autoGenerateCert.enabled: false` and supply the upstream
 chart's `admissionWebhooks.certFile`, `keyFile`, and `caFile` values under
 `opentelemetry-kube-stack.opentelemetry-operator`. See the upstream chart's
-[TLS Certificate Requirement](https://github.com/open-telemetry/opentelemetry-helm-charts/blob/opentelemetry-operator-0.123.0/charts/opentelemetry-operator/README.md#tls-certificate-requirement).
+[TLS Certificate Requirement](https://github.com/open-telemetry/opentelemetry-helm-charts/blob/opentelemetry-operator-0.126.0/charts/opentelemetry-operator/README.md#tls-certificate-requirement).
 
 ### Switching internal traffic to plaintext
 

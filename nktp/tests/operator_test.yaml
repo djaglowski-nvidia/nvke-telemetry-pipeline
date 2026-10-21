@@ -18,7 +18,7 @@ tests:
           name: nktp-operator
       - equal:
           path: spec.template.spec.containers[0].image
-          value: ghcr.io/open-telemetry/opentelemetry-operator/opentelemetry-operator:0.159.0
+          value: ghcr.io/open-telemetry/opentelemetry-operator/opentelemetry-operator:0.161.0
 
   - it: passes through operator image overrides
     set:
@@ -183,7 +183,7 @@ tests:
           value: pre-delete
       - contains:
           path: spec.template.spec.containers[0].args
-          content: helm.sh/chart=opentelemetry-kube-stack-0.22.0
+          content: helm.sh/chart=opentelemetry-kube-stack-0.25.1
 
   - it: omits the upstream cleanup job and its access resources when disabled
     set:

@@ -116,7 +116,7 @@ tests:
           value: telemetry
       - equal:
           path: metadata.labels["helm.sh/chart"]
-          value: opentelemetry-kube-stack-0.22.0
+          value: opentelemetry-kube-stack-0.25.1
       - equal:
           path: spec.image
           value: example.com/collector:global
