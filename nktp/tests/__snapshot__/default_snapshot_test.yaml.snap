@@ -1107,7 +1107,7 @@ matches the snapshot with default values:
           metrics:
             enableMetrics: false
         prometheusCR:
-          denyFSAccessThroughSMs: true
+          denyFSAccessThroughSMs: false
           enabled: true
           podMonitorSelector:
             matchExpressions:

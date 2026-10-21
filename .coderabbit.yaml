@@ -80,6 +80,13 @@ reviews:
         Check that image tags and chart dependency versions are pinned, never
         `latest` or a floating range.
 
+        `denyFSAccessThroughSMs: false` is intentional for both the node and
+        large-target Target Allocators, preserving compatibility with monitors
+        that reference mounted bearer-token or TLS files. Do not flag this
+        default as an oversight or recommend enabling it without migrating the
+        selected monitors first. See `docs/designs/monitor_file_access.md` for
+        the security rationale and compatibility examples.
+
     - path: "nktp/tests/**/*_test.yaml"
       instructions: |
         helm-unittest suites. Focus on:

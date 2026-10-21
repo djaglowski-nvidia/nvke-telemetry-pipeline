@@ -27,7 +27,7 @@ tests:
           value: [metrics-monitors]
       - equal:
           path: spec.targetAllocator.prometheusCR.denyFSAccessThroughSMs
-          value: true
+          value: false
       - notExists:
           path: spec.rbac
 
@@ -410,7 +410,7 @@ tests:
                 enableMetrics: false
             prometheusCR:
               enabled: true
-              denyFSAccessThroughSMs: true
+              denyFSAccessThroughSMs: false
               serviceMonitorSelector:
                 matchExpressions:
                   - {key: nktp.nvidia.io/large-target, operator: NotIn, values: ["true"]}

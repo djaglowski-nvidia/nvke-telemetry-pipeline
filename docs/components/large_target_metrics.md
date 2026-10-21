@@ -9,8 +9,15 @@ responses, such as kube-state-metrics.
 A Target Allocator distributes scrapes across the pool's replicas.
 Collectors refresh their assigned targets every 10 seconds. Configure this with
 `large_target_metrics.kubernetes.targetAllocator.collectorTargetReloadInterval`.
-The Target Allocator rejects ServiceMonitor and PodMonitor endpoints that reference
-local bearer-token or TLS files in the Collector container.
+
+The Target Allocator defaults `prometheusCR.denyFSAccessThroughSMs` to `false`
+for compatibility with existing ServiceMonitors and PodMonitors that reference
+local bearer-token or TLS files. Referenced files must exist in each scraping
+Collector container. Prefer Secret or CA ConfigMap references when authoring
+monitors. Before enabling `denyFSAccessThroughSMs`, ensure that none of the
+allocator's selected monitors reference files in the Collector container. See
+[Restrict monitor file access](../guides/restrict_monitor_file_access.md).
+
 Setting `large_target_metrics.kubernetes.targetAllocator.enabled` to `false`
 will cause Helm rendering to fail. Target Allocator telemetry is sent to watchdog.
 The allocator has its own security contexts and resource budget under

@@ -18,6 +18,7 @@ each part in depth.
 - [Configure cert-manager](guides/configure_cert_manager.md)
 - [Secure gateway export](guides/secure_gateway_export.md)
 - [Configure kubelet metrics](guides/configure_kubelet_metrics.md)
+- [Restrict monitor file access](guides/restrict_monitor_file_access.md)
 - [Enable host process metrics](guides/enable_host_process_metrics.md)
 - [Configure a persistent exporter queue](guides/configure_persistent_queue.md)
 - [Enable log checkpoints for the node Collector](guides/enable_daemonset_log_checkpoints.md)
@@ -50,5 +51,6 @@ Each page covers one top-level key in `nktp/values.yaml`.
 
 ## Design documents
 
+- [Monitor file-access restriction: rationale and compatibility](designs/monitor_file_access.md)
 - [Required target allocation](designs/target_allocation.md)
 - [kube-state-metrics](designs/kube_state_metrics.md)

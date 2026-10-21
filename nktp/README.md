@@ -117,7 +117,11 @@ receiver's `otelcol.config`.
   the metrics port, admit the release namespace. If a monitor references a
   Secret or CA ConfigMap, list its namespace in
   `daemonset.kubernetes.targetAllocator.prometheusCR.secretNamespaces` so the
-  node Target Allocator can read it.
+  node Target Allocator can read it. Both the node and large-target allocators
+  default `prometheusCR.denyFSAccessThroughSMs` to `false` for compatibility
+  with monitors that reference files in Collector containers. Before setting
+  it to `true`, replace file references in the selected monitors with Secret
+  or CA ConfigMap references; otherwise, affected scrape jobs are dropped.
 - **Large scrape responses:** label the monitor
   `nktp.nvidia.io/large-target: "true"` to scrape it from the large-target pool,
   which reserves more memory per scrape, instead of the node collector.

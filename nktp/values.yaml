@@ -1483,7 +1483,7 @@ daemonset:
           enableMetrics: false # Metrics are pushed over OTLP without a ServiceMonitor.
       prometheusCR:
         enabled: true
-        denyFSAccessThroughSMs: true # Reject monitor endpoints that reference files in the Collector container.
+        denyFSAccessThroughSMs: false # Preserve compatibility with monitors that reference files in the Collector container.
         # Explicit namespaces for chart-managed RBAC and Secret watching.
         # secretNamespaces: [metrics-monitors]
         # Exclude monitoring CRs labeled nktp.nvidia.io/large-target: "true" and common kubelet ServiceMonitors
