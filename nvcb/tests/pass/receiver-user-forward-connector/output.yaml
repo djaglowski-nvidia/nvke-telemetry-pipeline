@@ -1,0 +1,29 @@
+---
+# Source: test-chart/templates/run.yaml
+connectors:
+  forward/(rcv/my_receiver): {}
+  forward/rcv/my_receiver: {}
+exporters:
+  debug: {}
+receivers:
+  otlp/(rcv/my_receiver):
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+service:
+  pipelines:
+    logs:
+      exporters:
+      - debug
+      receivers:
+      - forward/rcv/my_receiver
+    logs/collect/(rcv/my_receiver):
+      exporters:
+      - forward/(rcv/my_receiver)
+      receivers:
+      - otlp/(rcv/my_receiver)
+    logs/emit/(rcv/my_receiver):
+      exporters:
+      - forward/rcv/my_receiver
+      receivers:
+      - forward/(rcv/my_receiver)

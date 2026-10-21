@@ -6,10 +6,10 @@ connectors:
 exporters:
   some_exporter: {}
 receivers:
-  filelog/rcv/my_receiver_b:
+  filelog/(rcv/my_receiver_b):
     include:
     - /var/log/*.log
-  otlp/rcv/my_receiver_a:
+  otlp/(rcv/my_receiver_a):
     protocols:
       grpc:
         endpoint: 0.0.0.0:4317
@@ -21,13 +21,13 @@ service:
       receivers:
       - forward/rcv/my_receiver_a
       - forward/rcv/my_receiver_b
-    logs/rcv/my_receiver_a:
+    logs/(rcv/my_receiver_a):
       exporters:
       - forward/rcv/my_receiver_a
       receivers:
-      - otlp/rcv/my_receiver_a
-    logs/rcv/my_receiver_b:
+      - otlp/(rcv/my_receiver_a)
+    logs/(rcv/my_receiver_b):
       exporters:
       - forward/rcv/my_receiver_b
       receivers:
-      - filelog/rcv/my_receiver_b
+      - filelog/(rcv/my_receiver_b)

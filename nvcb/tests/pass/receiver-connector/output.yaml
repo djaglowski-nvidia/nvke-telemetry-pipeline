@@ -1,29 +1,29 @@
 ---
 # Source: test-chart/templates/run.yaml
 connectors:
-  count/rcv/my_receiver: {}
+  count/(rcv/my_receiver): {}
   forward/rcv/my_receiver: {}
 exporters:
   some_exporter: {}
 receivers:
-  otlp/rcv/my_receiver:
+  otlp/(rcv/my_receiver):
     protocols:
       grpc:
         endpoint: 0.0.0.0:4317
 service:
   pipelines:
-    logs/collect/rcv/my_receiver:
+    logs/collect/(rcv/my_receiver):
       exporters:
-      - count/rcv/my_receiver
+      - count/(rcv/my_receiver)
       receivers:
-      - otlp/rcv/my_receiver
+      - otlp/(rcv/my_receiver)
     metrics:
       exporters:
       - some_exporter
       receivers:
       - forward/rcv/my_receiver
-    metrics/emit/rcv/my_receiver:
+    metrics/emit/(rcv/my_receiver):
       exporters:
       - forward/rcv/my_receiver
       receivers:
-      - count/rcv/my_receiver
+      - count/(rcv/my_receiver)

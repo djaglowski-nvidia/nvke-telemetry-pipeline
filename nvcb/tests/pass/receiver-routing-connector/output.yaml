@@ -2,18 +2,18 @@
 # Source: test-chart/templates/run.yaml
 connectors:
   forward/rcv/my_receiver: {}
-  routing/rcv/my_receiver:
+  routing/(rcv/my_receiver):
     default_pipelines:
-    - logs/default/rcv/my_receiver
+    - logs/default/(rcv/my_receiver)
     table:
     - condition: attributes["route"] == "priority"
       context: log
       pipelines:
-      - logs/priority/rcv/my_receiver
+      - logs/priority/(rcv/my_receiver)
 exporters:
   some_exporter: {}
 receivers:
-  otlp/rcv/my_receiver:
+  otlp/(rcv/my_receiver):
     protocols:
       grpc:
         endpoint: 0.0.0.0:4317
@@ -24,18 +24,18 @@ service:
       - some_exporter
       receivers:
       - forward/rcv/my_receiver
-    logs/collect/rcv/my_receiver:
+    logs/collect/(rcv/my_receiver):
       exporters:
-      - routing/rcv/my_receiver
+      - routing/(rcv/my_receiver)
       receivers:
-      - otlp/rcv/my_receiver
-    logs/default/rcv/my_receiver:
-      exporters:
-      - forward/rcv/my_receiver
-      receivers:
-      - routing/rcv/my_receiver
-    logs/priority/rcv/my_receiver:
+      - otlp/(rcv/my_receiver)
+    logs/default/(rcv/my_receiver):
       exporters:
       - forward/rcv/my_receiver
       receivers:
-      - routing/rcv/my_receiver
+      - routing/(rcv/my_receiver)
+    logs/priority/(rcv/my_receiver):
+      exporters:
+      - forward/rcv/my_receiver
+      receivers:
+      - routing/(rcv/my_receiver)

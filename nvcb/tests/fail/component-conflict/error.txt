@@ -1,1 +1,1 @@
-nvcb: blueprint "blueprint/source" conflicts with receivers component "otlp/rcv/source"
+nvcb: blueprint "blueprint/source" conflicts with receivers component "otlp/(rcv/source)"

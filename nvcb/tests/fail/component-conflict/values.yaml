@@ -14,7 +14,7 @@ blueprints:
             exporters: [{{ .forward }}]
 receivers:
   blueprint/source: {}
-  otlp/rcv/source:
+  otlp/(rcv/source):
     protocols:
       grpc:
         endpoint: 0.0.0.0:14317
@@ -23,5 +23,5 @@ exporters:
 service:
   pipelines:
     logs:
-      receivers: [blueprint/source, otlp/rcv/source]
+      receivers: [blueprint/source, otlp/(rcv/source)]
       exporters: [debug]

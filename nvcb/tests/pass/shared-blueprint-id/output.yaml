@@ -4,17 +4,17 @@ connectors:
   forward/exp/shared/a: {}
   forward/rcv/shared/a: {}
 exporters:
-  debug/exp/shared/a: {}
+  debug/(exp/shared/a): {}
   debug/native: {}
 receivers:
+  otlp/(rcv/shared/a):
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
   otlp/native:
     protocols:
       grpc:
         endpoint: 0.0.0.0:4318
-  otlp/rcv/shared/a:
-    protocols:
-      grpc:
-        endpoint: 0.0.0.0:4317
 service:
   pipelines:
     logs:
@@ -22,18 +22,18 @@ service:
       - debug/native
       receivers:
       - forward/rcv/shared/a
-    logs/rcv/shared/a:
+    logs/(rcv/shared/a):
       exporters:
       - forward/rcv/shared/a
       receivers:
-      - otlp/rcv/shared/a
+      - otlp/(rcv/shared/a)
     metrics:
       exporters:
       - forward/exp/shared/a
       receivers:
       - otlp/native
-    metrics/exp/shared/a:
+    metrics/(exp/shared/a):
       exporters:
-      - debug/exp/shared/a
+      - debug/(exp/shared/a)
       receivers:
       - forward/exp/shared/a

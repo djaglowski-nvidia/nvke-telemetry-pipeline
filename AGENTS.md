@@ -11,8 +11,8 @@
   NVCB golden tests and the `tests/` module; Taskfile for the command surface;
   GitHub Actions for CI.
 - Main entry points: `nktp/Chart.yaml`, `nktp/values.yaml`, and
-  `nktp/templates/` for the chart; `nvcb/chart/templates/_transpile.tpl` for the
-  transpiler; `Taskfile.yml` for commands; `dev/Tiltfile` for the local loop.
+  `nktp/templates/` for the chart; `nvcb/chart/templates/_run.tpl` for NVCB;
+  `Taskfile.yml` for commands; `dev/Tiltfile` for the local loop.
 - Docs home: [docs/README.md](docs/README.md). Contribution rules:
   [CONTRIBUTING.md](CONTRIBUTING.md). Design principles, which every change
   must follow: [docs/design_principles.md](docs/design_principles.md).
@@ -24,7 +24,7 @@
 | `nktp/` | The NKTP application chart | Dependencies are pinned in `Chart.yaml` and `Chart.lock`; `charts/*.tgz` is gitignored and produced by `helm dependency build` |
 | `nktp/tests/` | helm-unittest suites | `__snapshot__/` pins the full default render; other suites use targeted assertions |
 | `nktp/dashboards/` | Grafana dashboards shipped with the chart | JSON, loaded by templates |
-| `nvcb/chart/` | NVCB library chart | The transpiler lives in `templates/_transpile.tpl` |
+| `nvcb/chart/` | NVCB library chart | The engine lives in `templates/_run.tpl` |
 | `nvcb/tests/` | Go golden tests for NVCB | `pass/<scenario>/values.yaml` renders to `output.yaml`; `test-chart/` is the fixture chart |
 | `tests/` | Go suites for integration, e2e, scale, and perf | Build-tagged; integration runs locally without a Kubernetes cluster; e2e and scale have Taskfiles for cluster setup and execution; only e2e runs in CI |
 | `dev/` | Local Kind and Tilt loop | Uses only `dev/.kubeconfig` and never other kubectl contexts |

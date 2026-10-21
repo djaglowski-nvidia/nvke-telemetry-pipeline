@@ -4,9 +4,9 @@ connectors:
   forward/exp/my_exporter/first: {}
   forward/exp/my_exporter/second: {}
 exporters:
-  debug/exp/my_exporter/first:
+  debug/(exp/my_exporter/first):
     verbosity: detailed
-  debug/exp/my_exporter/second:
+  debug/(exp/my_exporter/second):
     verbosity: detailed
 receivers:
   some_receiver: {}
@@ -18,13 +18,13 @@ service:
       - forward/exp/my_exporter/second
       receivers:
       - some_receiver
-    logs/exp/my_exporter/first:
+    logs/(exp/my_exporter/first):
       exporters:
-      - debug/exp/my_exporter/first
+      - debug/(exp/my_exporter/first)
       receivers:
       - forward/exp/my_exporter/first
-    logs/exp/my_exporter/second:
+    logs/(exp/my_exporter/second):
       exporters:
-      - debug/exp/my_exporter/second
+      - debug/(exp/my_exporter/second)
       receivers:
       - forward/exp/my_exporter/second

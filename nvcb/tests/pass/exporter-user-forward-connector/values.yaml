@@ -1,0 +1,29 @@
+# A user defined `forward` connector does not collide with the generated forward connector.
+
+blueprints:
+  exporters:
+    my_exporter:
+      template: |
+        exporters:
+          debug: {}
+        connectors:
+          forward: {}
+        pipelines:
+          logs/ingest:
+            receivers: [{{ .forward }}]
+            exporters: [forward]
+          logs/export:
+            receivers: [forward]
+            exporters: [debug]
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+exporters:
+  blueprint/my_exporter: {}
+service:
+  pipelines:
+    logs:
+      receivers: [otlp]
+      exporters: [blueprint/my_exporter]

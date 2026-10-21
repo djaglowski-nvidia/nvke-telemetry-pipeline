@@ -3,7 +3,7 @@
 connectors:
   forward/exp/my_exporter: {}
 exporters:
-  debug/exp/my_exporter:
+  debug/(exp/my_exporter):
     verbosity: detailed
 receivers:
   some_receiver: {}
@@ -14,9 +14,9 @@ service:
       - forward/exp/my_exporter
       receivers:
       - some_receiver
-    logs/exp/my_exporter:
+    logs/(exp/my_exporter):
       exporters:
-      - debug/exp/my_exporter
+      - debug/(exp/my_exporter)
       receivers:
       - forward/exp/my_exporter
     metrics:
@@ -24,8 +24,8 @@ service:
       - forward/exp/my_exporter
       receivers:
       - some_receiver
-    metrics/exp/my_exporter:
+    metrics/(exp/my_exporter):
       exporters:
-      - debug/exp/my_exporter
+      - debug/(exp/my_exporter)
       receivers:
       - forward/exp/my_exporter

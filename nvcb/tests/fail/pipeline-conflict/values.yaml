@@ -15,6 +15,6 @@ exporters:
   debug: {}
 service:
   pipelines:
-    logs/rcv/source:
+    logs/(rcv/source):
       receivers: [blueprint/source]
       exporters: [debug]

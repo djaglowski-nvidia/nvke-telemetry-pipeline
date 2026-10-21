@@ -4,9 +4,9 @@ connectors:
   forward/exp/my_exporter/a: {}
   forward/exp/my_exporter/b: {}
 exporters:
-  otlp/exp/my_exporter/a:
+  otlp/(exp/my_exporter/a):
     endpoint: collector-a.example.com:4317
-  otlp/exp/my_exporter/b:
+  otlp/(exp/my_exporter/b):
     endpoint: collector-b.example.com:4317
 receivers:
   some_receiver: {}
@@ -18,13 +18,13 @@ service:
       - forward/exp/my_exporter/b
       receivers:
       - some_receiver
-    logs/exp/my_exporter/a:
+    logs/(exp/my_exporter/a):
       exporters:
-      - otlp/exp/my_exporter/a
+      - otlp/(exp/my_exporter/a)
       receivers:
       - forward/exp/my_exporter/a
-    logs/exp/my_exporter/b:
+    logs/(exp/my_exporter/b):
       exporters:
-      - otlp/exp/my_exporter/b
+      - otlp/(exp/my_exporter/b)
       receivers:
       - forward/exp/my_exporter/b

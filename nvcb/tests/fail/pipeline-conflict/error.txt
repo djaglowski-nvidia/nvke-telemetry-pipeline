@@ -1,1 +1,1 @@
-nvcb: blueprint "blueprint/source" conflicts with pipeline "logs/rcv/source"
+nvcb: blueprint "blueprint/source" conflicts with pipeline "logs/(rcv/source)"

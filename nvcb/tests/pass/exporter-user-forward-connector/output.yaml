@@ -1,0 +1,29 @@
+---
+# Source: test-chart/templates/run.yaml
+connectors:
+  forward/(exp/my_exporter): {}
+  forward/exp/my_exporter: {}
+exporters:
+  debug/(exp/my_exporter): {}
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+service:
+  pipelines:
+    logs:
+      exporters:
+      - forward/exp/my_exporter
+      receivers:
+      - otlp
+    logs/export/(exp/my_exporter):
+      exporters:
+      - debug/(exp/my_exporter)
+      receivers:
+      - forward/(exp/my_exporter)
+    logs/ingest/(exp/my_exporter):
+      exporters:
+      - forward/(exp/my_exporter)
+      receivers:
+      - forward/exp/my_exporter

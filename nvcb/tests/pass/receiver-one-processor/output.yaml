@@ -5,9 +5,9 @@ connectors:
 exporters:
   some_exporter: {}
 processors:
-  batch/rcv/my_receiver: {}
+  batch/(rcv/my_receiver): {}
 receivers:
-  otlp/rcv/my_receiver:
+  otlp/(rcv/my_receiver):
     protocols:
       grpc:
         endpoint: 0.0.0.0:4317
@@ -18,10 +18,10 @@ service:
       - some_exporter
       receivers:
       - forward/rcv/my_receiver
-    logs/rcv/my_receiver:
+    logs/(rcv/my_receiver):
       exporters:
       - forward/rcv/my_receiver
       processors:
-      - batch/rcv/my_receiver
+      - batch/(rcv/my_receiver)
       receivers:
-      - otlp/rcv/my_receiver
+      - otlp/(rcv/my_receiver)

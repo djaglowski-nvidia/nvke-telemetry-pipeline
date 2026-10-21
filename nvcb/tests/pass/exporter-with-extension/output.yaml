@@ -3,24 +3,24 @@
 connectors:
   forward/exp/my_exporter: {}
 exporters:
-  debug/exp/my_exporter:
+  debug/(exp/my_exporter):
     verbosity: detailed
 extensions:
-  health_check/exp/my_exporter:
+  health_check/(exp/my_exporter):
     endpoint: 0.0.0.0:13133
 receivers:
   some_receiver: {}
 service:
   extensions:
-  - health_check/exp/my_exporter
+  - health_check/(exp/my_exporter)
   pipelines:
     logs:
       exporters:
       - forward/exp/my_exporter
       receivers:
       - some_receiver
-    logs/exp/my_exporter:
+    logs/(exp/my_exporter):
       exporters:
-      - debug/exp/my_exporter
+      - debug/(exp/my_exporter)
       receivers:
       - forward/exp/my_exporter
