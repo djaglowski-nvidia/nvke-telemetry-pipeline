@@ -1,5 +1,5 @@
 ---
-# Source: test-chart/templates/transpile.yaml
+# Source: test-chart/templates/run.yaml
 connectors:
   count/rcv/my_receiver: {}
   forward/rcv/my_receiver: {}

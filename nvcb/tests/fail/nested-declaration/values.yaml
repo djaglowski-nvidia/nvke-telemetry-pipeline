@@ -1,0 +1,23 @@
+# A blueprint body cannot declare another blueprint.
+blueprints:
+  receivers:
+    source:
+      template: |
+        receivers:
+          otlp: {}
+        processors:
+          blueprint/batch: {}
+        pipelines:
+          logs:
+            receivers: [otlp]
+            processors: [blueprint/batch]
+            exporters: [{{ .forward }}]
+receivers:
+  blueprint/source: {}
+exporters:
+  debug: {}
+service:
+  pipelines:
+    logs:
+      receivers: [blueprint/source]
+      exporters: [debug]

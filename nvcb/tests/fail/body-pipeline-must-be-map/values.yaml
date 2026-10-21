@@ -1,0 +1,18 @@
+# A blueprint's pipelines must be a map, even when empty.
+blueprints:
+  receivers:
+    source:
+      template: |
+        receivers:
+          otlp: {}
+        pipelines:
+          logs: []
+receivers:
+  blueprint/source: {}
+exporters:
+  debug: {}
+service:
+  pipelines:
+    logs:
+      receivers: [blueprint/source]
+      exporters: [debug]

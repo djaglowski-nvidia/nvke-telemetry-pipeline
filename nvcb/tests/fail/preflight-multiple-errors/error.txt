@@ -1,0 +1,10 @@
+nvcb: invalid configuration:
+- nvcb: blueprint "blueprint/broken" must be a map
+- nvcb: unknown blueprint type "missing" for receiver declaration "blueprint/missing"
+- nvcb: processors must be a map
+- nvcb: service.extensions entries must be strings
+- nvcb: service.extensions references blueprint "blueprint/source"
+- nvcb: pipeline "logs" references undeclared receiver blueprint "blueprint/undeclared"
+- nvcb: pipeline "logs" references blueprint "blueprint/proc"
+- nvcb: pipeline "metrics" receivers must be a list
+- nvcb: pipeline "metrics" references undeclared exporter blueprint "blueprint/notdeclared"

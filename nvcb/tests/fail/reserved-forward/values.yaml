@@ -1,0 +1,22 @@
+# A blueprint may not declare a connector named {{ .forward }}.
+blueprints:
+  receivers:
+    source:
+      template: |
+        receivers:
+          otlp: {}
+        connectors:
+          {{ .forward }}: {}
+        pipelines:
+          logs:
+            receivers: [otlp]
+            exporters: [{{ .forward }}]
+receivers:
+  blueprint/source: {}
+exporters:
+  debug: {}
+service:
+  pipelines:
+    logs:
+      receivers: [blueprint/source]
+      exporters: [debug]

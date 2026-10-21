@@ -1,0 +1,1 @@
+nvcb: pipeline "logs" exporters must be a list

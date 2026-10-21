@@ -1,0 +1,18 @@
+# A blueprint pipeline cannot reference another blueprint as a receiver.
+blueprints:
+  receivers:
+    source:
+      template: |
+        pipelines:
+          logs:
+            receivers: [blueprint/inner]
+            exporters: [{{ .forward }}]
+receivers:
+  blueprint/source: {}
+exporters:
+  debug: {}
+service:
+  pipelines:
+    logs:
+      receivers: [blueprint/source]
+      exporters: [debug]

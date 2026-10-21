@@ -1,0 +1,1 @@
+nvcb: blueprint "blueprint/sink" cannot declare nested blueprint "blueprint/foo"

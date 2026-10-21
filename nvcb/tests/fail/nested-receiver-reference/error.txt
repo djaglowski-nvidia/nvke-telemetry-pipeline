@@ -1,0 +1,1 @@
+nvcb: blueprint "blueprint/source" cannot declare nested blueprint "blueprint/inner"

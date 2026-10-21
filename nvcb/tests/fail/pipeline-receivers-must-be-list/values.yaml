@@ -1,0 +1,13 @@
+# A user pipeline's receivers must be a list, not an empty map.
+receivers:
+  otlp: {}
+processors:
+  batch: {}
+exporters:
+  debug: {}
+service:
+  pipelines:
+    logs:
+      receivers: {}
+      processors: [batch]
+      exporters: [debug]

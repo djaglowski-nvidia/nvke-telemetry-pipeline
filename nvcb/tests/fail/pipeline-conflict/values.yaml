@@ -1,0 +1,20 @@
+# A scoped pipeline must not collide with a user pipeline ID.
+blueprints:
+  receivers:
+    source:
+      template: |
+        receivers:
+          otlp: {}
+        pipelines:
+          logs:
+            receivers: [otlp]
+            exporters: [{{ .forward }}]
+receivers:
+  blueprint/source: {}
+exporters:
+  debug: {}
+service:
+  pipelines:
+    logs/rcv/source:
+      receivers: [blueprint/source]
+      exporters: [debug]

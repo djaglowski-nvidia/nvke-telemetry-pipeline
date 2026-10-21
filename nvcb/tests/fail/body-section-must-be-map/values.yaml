@@ -1,0 +1,19 @@
+# Any component defined within a blueprint must be a map, even when empty.
+blueprints:
+  receivers:
+    source:
+      template: |
+        receivers: []
+        pipelines:
+          logs:
+            receivers: [otlp]
+            exporters: [{{ .forward }}]
+receivers:
+  blueprint/source: {}
+exporters:
+  debug: {}
+service:
+  pipelines:
+    logs:
+      receivers: [blueprint/source]
+      exporters: [debug]

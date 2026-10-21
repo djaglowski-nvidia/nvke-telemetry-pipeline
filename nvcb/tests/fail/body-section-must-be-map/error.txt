@@ -1,0 +1,1 @@
+nvcb: blueprint "blueprint/source" section "receivers" must be a map

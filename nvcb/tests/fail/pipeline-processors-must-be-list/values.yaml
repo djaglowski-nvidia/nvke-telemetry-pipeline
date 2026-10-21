@@ -1,0 +1,13 @@
+# A blueprint's pipelines.processors must be a list, not an empty map.
+receivers:
+  otlp: {}
+processors:
+  batch: {}
+exporters:
+  debug: {}
+service:
+  pipelines:
+    logs:
+      receivers: [otlp]
+      processors: {}
+      exporters: [debug]

@@ -1,1 +1,1 @@
-nvcb: pipeline "logs" references processor blueprint "blueprint/some_proc/x"
+nvcb: pipeline "logs" references blueprint "blueprint/some_proc/x"

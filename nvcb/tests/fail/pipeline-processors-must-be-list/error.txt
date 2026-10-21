@@ -1,0 +1,1 @@
+nvcb: pipeline "logs" processors must be a list

@@ -1,0 +1,23 @@
+# A blueprint's pipelines.receivers must be a list, not an empty map.
+blueprints:
+  receivers:
+    source:
+      template: |
+        receivers:
+          otlp: {}
+        processors:
+          batch: {}
+        pipelines:
+          logs:
+            receivers: {}
+            processors: [batch]
+            exporters: [{{ .forward }}]
+receivers:
+  blueprint/source: {}
+exporters:
+  debug: {}
+service:
+  pipelines:
+    logs:
+      receivers: [blueprint/source]
+      exporters: [debug]

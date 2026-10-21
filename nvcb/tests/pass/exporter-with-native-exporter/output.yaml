@@ -1,5 +1,5 @@
 ---
-# Source: test-chart/templates/transpile.yaml
+# Source: test-chart/templates/run.yaml
 connectors:
   forward/exp/my_exporter: {}
 exporters:

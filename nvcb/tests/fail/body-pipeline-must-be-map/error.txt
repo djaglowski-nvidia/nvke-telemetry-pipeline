@@ -1,0 +1,1 @@
+nvcb: blueprint "blueprint/source" pipeline "logs" must be a map

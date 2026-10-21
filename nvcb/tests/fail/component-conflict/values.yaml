@@ -1,0 +1,27 @@
+# A component ID may not collide with a component ID once a blueprint's generated scope is applied.
+blueprints:
+  receivers:
+    source:
+      template: |
+        receivers:
+          otlp:
+            protocols:
+              grpc:
+                endpoint: 0.0.0.0:4317
+        pipelines:
+          logs:
+            receivers: [otlp]
+            exporters: [{{ .forward }}]
+receivers:
+  blueprint/source: {}
+  otlp/rcv/source:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:14317
+exporters:
+  debug: {}
+service:
+  pipelines:
+    logs:
+      receivers: [blueprint/source, otlp/rcv/source]
+      exporters: [debug]

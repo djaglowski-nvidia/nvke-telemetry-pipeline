@@ -1,4 +1,4 @@
-# A config with no blueprints passes through unchanged.
+# A config with no blueprints passes through unchanged, including extension order.
 receivers:
   otlp:
     protocols:
@@ -9,7 +9,11 @@ processors:
 exporters:
   debug:
     verbosity: detailed
+extensions:
+  zpages: {}
+  health_check: {}
 service:
+  extensions: [zpages, health_check]
   pipelines:
     logs:
       receivers: [otlp]

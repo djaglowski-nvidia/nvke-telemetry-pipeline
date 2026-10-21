@@ -1,0 +1,1 @@
+nvcb: pipeline "logs" exporters entries must be strings

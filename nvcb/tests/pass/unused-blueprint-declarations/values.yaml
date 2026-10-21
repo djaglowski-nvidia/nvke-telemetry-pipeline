@@ -1,0 +1,20 @@
+# Unreferenced declarations are removed without rendering or adding connectors.
+blueprints:
+  receivers:
+    unused:
+      template: '{{ fail "unused receiver body must not execute" }}'
+  exporters:
+    unused:
+      template: '{{ fail "unused exporter body must not execute" }}'
+receivers:
+  otlp: {}
+  blueprint/unused: {}
+  blueprint/unused/second: {}
+exporters:
+  debug: {}
+  blueprint/unused: {}
+service:
+  pipelines:
+    logs:
+      receivers: [otlp]
+      exporters: [debug]

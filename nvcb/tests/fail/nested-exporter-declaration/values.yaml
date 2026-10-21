@@ -1,0 +1,21 @@
+# An exporter blueprint cannot declare another exporter blueprint.
+blueprints:
+  exporters:
+    sink:
+      template: |
+        exporters:
+          debug: {}
+          blueprint/foo: {}
+        pipelines:
+          logs:
+            receivers: [{{ .forward }}]
+            exporters: [debug]
+receivers:
+  otlp: {}
+exporters:
+  blueprint/sink: {}
+service:
+  pipelines:
+    logs:
+      receivers: [otlp]
+      exporters: [blueprint/sink]

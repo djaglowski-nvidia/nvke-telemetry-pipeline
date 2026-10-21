@@ -1,0 +1,1 @@
+nvcb: blueprint "blueprint/source" cannot declare reserved forward connector "forward/rcv/source"

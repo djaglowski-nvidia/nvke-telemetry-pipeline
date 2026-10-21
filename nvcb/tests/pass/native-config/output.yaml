@@ -1,8 +1,11 @@
 ---
-# Source: test-chart/templates/transpile.yaml
+# Source: test-chart/templates/run.yaml
 exporters:
   debug:
     verbosity: detailed
+extensions:
+  health_check: {}
+  zpages: {}
 processors:
   batch: {}
 receivers:
@@ -11,6 +14,9 @@ receivers:
       grpc:
         endpoint: 0.0.0.0:4317
 service:
+  extensions:
+  - zpages
+  - health_check
   pipelines:
     logs:
       exporters:

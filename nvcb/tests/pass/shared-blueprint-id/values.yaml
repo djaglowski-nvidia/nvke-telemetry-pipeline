@@ -1,0 +1,41 @@
+# Identical receiver/exporter blueprint IDs remain distinct after flattening.
+# Their signal requirements must remain separate too.
+blueprints:
+  receivers:
+    shared:
+      template: |
+        receivers:
+          otlp:
+            protocols:
+              grpc:
+                endpoint: 0.0.0.0:4317
+        pipelines:
+          logs:
+            receivers: [otlp]
+            exporters: [{{ .forward }}]
+  exporters:
+    shared:
+      template: |
+        exporters:
+          debug: {}
+        pipelines:
+          metrics:
+            receivers: [{{ .forward }}]
+            exporters: [debug]
+receivers:
+  blueprint/shared/a: {}
+  otlp/native:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4318
+exporters:
+  blueprint/shared/a: {}
+  debug/native: {}
+service:
+  pipelines:
+    logs:
+      receivers: [blueprint/shared/a]
+      exporters: [debug/native]
+    metrics:
+      receivers: [otlp/native]
+      exporters: [blueprint/shared/a]

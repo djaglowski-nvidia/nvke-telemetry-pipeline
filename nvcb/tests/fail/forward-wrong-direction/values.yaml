@@ -1,0 +1,20 @@
+# Receiver blueprints may use .forward only as an exporter.
+blueprints:
+  receivers:
+    source:
+      template: |
+        receivers:
+          otlp: {}
+        pipelines:
+          logs:
+            receivers: [otlp, {{ .forward }}]
+            exporters: [{{ .forward }}]
+receivers:
+  blueprint/source: {}
+exporters:
+  debug: {}
+service:
+  pipelines:
+    logs:
+      receivers: [blueprint/source]
+      exporters: [debug]

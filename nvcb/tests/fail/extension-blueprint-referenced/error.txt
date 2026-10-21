@@ -1,1 +1,1 @@
-nvcb: service.extensions references extension blueprint "blueprint/my_exporter"
+nvcb: service.extensions references blueprint "blueprint/my_exporter"

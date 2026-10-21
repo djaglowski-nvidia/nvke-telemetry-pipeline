@@ -1,0 +1,21 @@
+# A receiver blueprint cannot declare another receiver blueprint.
+blueprints:
+  receivers:
+    source:
+      template: |
+        receivers:
+          otlp: {}
+          blueprint/foo: {}
+        pipelines:
+          logs:
+            receivers: [otlp]
+            exporters: [{{ .forward }}]
+receivers:
+  blueprint/source: {}
+exporters:
+  debug: {}
+service:
+  pipelines:
+    logs:
+      receivers: [blueprint/source]
+      exporters: [debug]

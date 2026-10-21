@@ -1,0 +1,23 @@
+# Config shape, declaration, and reference errors are collected and reported together.
+blueprints:
+  receivers:
+    source:
+      template: '{{ fail "preflight must finish before rendering" }}'
+  exporters:
+    broken: []
+receivers:
+  blueprint/missing: {}
+  blueprint/source: {}
+processors: []
+exporters:
+  debug: {}
+service:
+  extensions: [false, blueprint/source]
+  pipelines:
+    logs:
+      receivers: [blueprint/source, blueprint/undeclared]
+      processors: [blueprint/proc]
+      exporters: [debug]
+    metrics:
+      receivers: not-a-list
+      exporters: [blueprint/notdeclared]

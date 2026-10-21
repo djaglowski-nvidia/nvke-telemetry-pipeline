@@ -1,0 +1,13 @@
+# Every user pipeline exporter reference must be a string, including later entries.
+receivers:
+  otlp: {}
+processors:
+  batch: {}
+exporters:
+  debug: {}
+service:
+  pipelines:
+    logs:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [debug, null]
