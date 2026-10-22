@@ -1,0 +1,129 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+name: PR DCO Check
+
+# Labels open pull requests whose head fails the DCO app's check with
+# needs-dco, so the ones that only need a sign-off can be found with
+# label:needs-dco. Advisory: the DCO check itself is what blocks a merge.
+#
+# A sweep rather than check_run: for a head pushed from a fork, the check_run
+# payload names no pull request.
+on:
+  schedule:
+    - cron: '20,50 * * * *'
+  # A new head has no DCO verdict yet. No checkout, so the write token never
+  # meets fork code.
+  pull_request_target:
+    types: [synchronize]
+  workflow_dispatch: {}
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || 'sweep' }}
+  cancel-in-progress: true
+
+jobs:
+  clear-on-push:
+    name: Clear the Label on a New Head
+    if: github.event_name == 'pull_request_target'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      pull-requests: write
+    steps:
+      - name: Remove needs-dco
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            try {
+              await github.rest.issues.removeLabel({
+                ...context.repo,
+                issue_number: context.payload.pull_request.number,
+                name: 'needs-dco',
+              });
+            } catch (error) {
+              // 404 means the label was not on the pull request.
+              if (error.status !== 404) throw error;
+            }
+
+  sweep:
+    name: Label Pull Requests Missing a Sign-Off
+    if: github.event_name != 'pull_request_target'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      checks: read
+      pull-requests: write
+    steps:
+      - name: Label pull requests that need a DCO sign-off
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const LABEL = 'needs-dco';
+            // The DCO app (https://github.com/dcoapp/app) reports a check run
+            // named DCO: action_required when a commit lacks the trailer,
+            // success once every commit has it or a remediation commit covers it.
+            const CHECK = 'DCO';
+            const APP = 'dco';
+
+            const open = await github.paginate(github.rest.pulls.list, {
+              ...context.repo,
+              state: 'open',
+              per_page: 100,
+            });
+
+            let labelled = 0;
+            let cleared = 0;
+            let undetermined = 0;
+
+            for (const pr of open) {
+              const runs = await github.paginate(github.rest.checks.listForRef, {
+                ...context.repo,
+                ref: pr.head.sha,
+                check_name: CHECK,
+                filter: 'latest',
+                per_page: 100,
+              });
+
+              // Only the app's own run counts: a workflow could name a job DCO.
+              const run = runs
+                .filter((r) => r.app?.slug === APP)
+                .sort((a, b) => (a.started_at ?? '').localeCompare(b.started_at ?? '') || a.id - b.id)
+                .at(-1);
+
+              if (!run || run.status !== 'completed') {
+                undetermined += 1;
+                core.info(`#${pr.number}: no completed DCO run, left unchanged`);
+                continue;
+              }
+
+              const hasLabel = pr.labels.some((l) => l.name === LABEL);
+              const missing = ['action_required', 'failure'].includes(run.conclusion);
+
+              if (missing && !hasLabel) {
+                await github.rest.issues.addLabels({
+                  ...context.repo,
+                  issue_number: pr.number,
+                  labels: [LABEL],
+                });
+                labelled += 1;
+                core.info(`#${pr.number}: labelled (${run.conclusion})`);
+              } else if (run.conclusion === 'success' && hasLabel) {
+                try {
+                  await github.rest.issues.removeLabel({
+                    ...context.repo,
+                    issue_number: pr.number,
+                    name: LABEL,
+                  });
+                  cleared += 1;
+                  core.info(`#${pr.number}: cleared`);
+                } catch (error) {
+                  // 404 means someone removed it by hand first.
+                  if (error.status !== 404) throw error;
+                }
+              }
+            }
+
+            core.info(`${open.length} checked: ${labelled} labelled, ${cleared} cleared, ${undetermined} undetermined`);

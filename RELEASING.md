@@ -52,6 +52,12 @@ container images.
 The run logs include the package checksum and published artifact digest. The
 run summary identifies the chart version and source commit.
 
+A release tag also creates a GitHub Release for that tag, with generated release
+notes. It carries the chart archive, `checksums.txt` and a signed
+build-provenance attestation for the archive. Verify a downloaded archive with
+`gh attestation verify nktp-<version>.tgz --repo <owner>/<repository>`.
+Development builds from `main` get neither a release nor an attestation.
+
 Maintainers can also start a chart publishing run manually from `main` or a
 matching chart release tag. A manual run from `main` uses the development version
 for the selected commit; a run from a release tag uses that tag's version. Other

@@ -1,0 +1,6 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Read from the default branch by the DCO GitHub App: https://github.com/dcoapp/app
+allowRemediationCommits:
+  individual: true

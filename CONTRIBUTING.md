@@ -112,6 +112,18 @@ See [tests/e2e/README.md](tests/e2e/README.md) for what a run does, for
 pointing the suite at a cluster you brought up yourself, and for running the
 validations against a release that is already installed somewhere.
 
+Two license checks also run on every pull request. Run them locally before
+pushing:
+
+```bash
+task license:check
+```
+
+The first requires the SPDX header on Go, shell, `.tpl`, workflow and Taskfile
+files. The second reads the chart dependencies in `nktp/charts/`, which the
+task fetches first, and fails when a bundled chart's version changes without
+the same change in [nktp/THIRD_PARTY_NOTICES.md](nktp/THIRD_PARTY_NOTICES.md).
+
 No specialized hardware or credentials are needed for any of the above. Chart
 publishing to NVCR runs only from `main` and release tags and is described in
 [RELEASING.md](RELEASING.md); pull requests validate without publishing.
@@ -158,7 +170,10 @@ Signed-off-by: Joe Smith <joe.smith@email.com>
 ```
 
 If you forget, `git commit --amend -s` fixes the last commit and
-`git rebase --signoff main` fixes an entire branch.
+`git rebase --signoff main` fixes an entire branch. You can also push one
+signed-off remediation commit that covers the earlier ones; the failing `DCO`
+check prints its exact text. Pull requests with a missing sign-off are labelled
+`needs-dco`.
 
 Signing off certifies the Developer Certificate of Origin 1.1, reproduced in
 full below from [developercertificate.org](https://developercertificate.org/):

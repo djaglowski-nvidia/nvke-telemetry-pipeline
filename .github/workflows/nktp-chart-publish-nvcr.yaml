@@ -28,6 +28,12 @@ jobs:
     if: >-
       github.repository == 'NVIDIA-dev/nktp' &&
       (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/nktp/v'))
+    # The ceiling for the called workflow: only its release job, which runs on
+    # release tags, takes more than contents: read.
+    permissions:
+      attestations: write
+      contents: write
+      id-token: write
     uses: ./.github/workflows/chart-publish-nvcr.yaml
     with:
       chart: nktp

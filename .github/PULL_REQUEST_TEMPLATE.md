@@ -14,3 +14,5 @@
 
 <!-- What you actually ran, and what it told you. "CI is green" is not testing;
      say which suites cover this change, or say plainly that none do yet. -->
+
+- [ ] `task license:check` passes, if this adds files or changes chart dependencies
