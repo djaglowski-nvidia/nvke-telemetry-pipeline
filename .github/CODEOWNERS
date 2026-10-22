@@ -1,4 +1,4 @@
 # CODEOWNERS - Automatic PR review assignment
 # https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
 
-* @nvidia-dev/nktp-maintainers
+* @dsx-ai-factory/nktp-maintainers
