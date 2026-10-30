@@ -1,0 +1,75 @@
+suite: node-exporter guard without schema validation
+release:
+  name: test
+templates:
+  - templates/node-exporter.yaml
+  - charts/node-exporter/templates/daemonset.yaml
+tests:
+  - it: accepts other exporter arguments
+    set:
+      node-exporter:
+        extraArgs:
+          - --no-collector.cpufreq
+          - --collector.supervisord.url=http://localhost:9001/RPC2
+    asserts:
+      - notFailedTemplate: {}
+        template: templates/node-exporter.yaml
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --no-collector.cpufreq
+        template: charts/node-exporter/templates/daemonset.yaml
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --collector.supervisord.url=http://localhost:9001/RPC2
+        template: charts/node-exporter/templates/daemonset.yaml
+
+  - it: rejects the exporter's own TLS server configuration
+    set:
+      node-exporter:
+        extraArgs:
+          - --web.config.file=/etc/node-exporter/web.yml
+    template: templates/node-exporter.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: node-exporter.extraArgs entry "--web.config.file=/etc/node-exporter/web.yml" is not supported
+
+  - it: rejects the exporter's own TLS server configuration given as a separate argument
+    set:
+      node-exporter:
+        extraArgs:
+          - --web.config.file
+          - /etc/node-exporter/web.yml
+    template: templates/node-exporter.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: node-exporter.extraArgs entry "--web.config.file" is not supported
+
+  - it: rejects the supervisord collector
+    set:
+      node-exporter:
+        extraArgs:
+          - --collector.supervisord
+    template: templates/node-exporter.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: node-exporter.extraArgs entry "--collector.supervisord" is not supported
+
+  - it: rejects arguments loaded from a file
+    set:
+      node-exporter:
+        extraArgs:
+          - "@/etc/node-exporter/args"
+    template: templates/node-exporter.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: node-exporter.extraArgs entry "@/etc/node-exporter/args" is not supported
+
+  - it: rejects arguments expanded from environment variables
+    set:
+      node-exporter:
+        extraArgs:
+          - $(EXTRA)
+    template: templates/node-exporter.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: node-exporter.extraArgs entry "\$\(EXTRA\)" is not supported

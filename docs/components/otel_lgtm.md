@@ -64,6 +64,12 @@ otel-lgtm:
       value: "true"
 ```
 
+NKTP disables Grafana's bundled Cloud Monitoring data source plugin (`stackdriver`) through
+`GF_PLUGINS_DISABLE_PLUGINS`. To disable more plugins, set the same variable in `otel-lgtm.env` to a
+comma-separated list, with `value` or `valueFrom`. NKTP renders a single entry at that position, with
+`stackdriver` first and your list after it. JSON list syntax is not supported for this variable. NKTP does not
+provision a Cloud Monitoring data source.
+
 For custom backend configuration, create a ConfigMap in the release namespace
 and mount its files at the paths used by the image. For example:
 
