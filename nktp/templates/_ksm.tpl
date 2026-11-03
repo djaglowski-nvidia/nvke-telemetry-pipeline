@@ -130,6 +130,11 @@ volumeattachments: {group: "storage.k8s.io", scope: cluster}
         {{- end -}}
       {{- end -}}
       {{- $kubernetes := mustMergeOverwrite (deepCopy ($ksm.kubernetes | default dict)) ($config.kubernetes | default dict) -}}
+      {{- if and $.Values.priorityClass.name (not (hasKey $kubernetes "priorityClassName")) -}}
+        {{- $_ := set $kubernetes "priorityClassName" $.Values.priorityClass.name -}}
+      {{- end -}}
+      {{- $fullname := printf "nktp-ksm-%s" $name -}}
+      {{- $_ := set $groups $name (dict "name" $fullname "shards" (int $config.shards) "args" $args "namespaces" $namespaces "daemonset" $config.daemonset "rules" $rules "kubernetes" $kubernetes "serviceAccount" ($kubernetes.serviceAccount | default $fullname)) -}}
       {{- $group := dict "name" $fullname "shards" (int $config.shards) "args" $args "namespaces" $namespaces "daemonset" $config.daemonset "rules" $rules "customRules" $customRules "kubernetes" $kubernetes "serviceAccount" ($kubernetes.serviceAccount | default $fullname) -}}
       {{- if $crs -}}
         {{- $_ := set $group "customResourceState" (dict "configMap" (printf "%s-custom-resource-state" $fullname) "config" $crs.config) -}}
