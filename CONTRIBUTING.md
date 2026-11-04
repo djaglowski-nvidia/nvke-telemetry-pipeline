@@ -128,6 +128,22 @@ No specialized hardware or credentials are needed for any of the above. Chart
 publishing to NVCR runs only from `main` and release tags and is described in
 [RELEASING.md](RELEASING.md); pull requests validate without publishing.
 
+### Security scanning
+
+CI scans source dependencies on every pull request and chart images when a pull
+request changes chart inputs. Both scans also run on a schedule. Review the job
+summary and report artifact for findings, even when the scan passes. If a
+security check fails or reports a vulnerability introduced by your change,
+reproduce it locally, update the affected dependency or image, then rerun the
+scan and relevant tests to verify the fix. Coordinate fixes for existing
+findings or bundled chart updates with a maintainer.
+
+To scan locally, install Helm, Grype, and [yq v4](https://github.com/mikefarah/yq),
+then run `task security:scan` from the repository root. The task needs network
+access to fetch chart dependencies and scan images. Follow [SECURITY.md](SECURITY.md)
+for potentially undisclosed vulnerabilities; do not post sensitive details in
+a public issue or pull request.
+
 ### Submodule tooling
 
 When a project submodule needs environment bootstrap or tool installation beyond
