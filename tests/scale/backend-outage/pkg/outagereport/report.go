@@ -31,12 +31,16 @@ type Report struct {
 	QueueOverheadSettleTimeout string                      `json:"queue_overhead_settle_timeout"`
 	GatewayMemoryLimiter       Metrics                     `json:"gateway_memory_limiter"`
 	ResourceSummary            map[string]Resources        `json:"resource_summary"`
+	Samples                    []map[string]any            `json:"samples"`
 	PhaseMetrics               map[string]map[string]Phase `json:"phase_metrics"`
 	ScraperClientImpact        Metrics                     `json:"scraper_client_impact"`
 	GatewayImpact              Metrics                     `json:"gateway_impact"`
 	ScraperQueueAtRestoreBytes *float64                    `json:"at_backend_restore_scraper_queue_bytes"`
 	Result                     *Delivery                   `json:"result"`
 	RecoverySeconds            *float64                    `json:"recovery_seconds"`
+	RecoveryInput              *bool                       `json:"recovery_input"`
+	RecoveryInputSeconds       *float64                    `json:"recovery_input_seconds"`
+	RecoveryDrainSeconds       *float64                    `json:"recovery_drain_seconds"`
 	VerificationComplete       *bool                       `json:"verification_complete"`
 	VerificationError          string                      `json:"verification_error"`
 	QueueOnlyOverheadEstimate  *QueueOverhead              `json:"queue_only_overhead_estimate"`

@@ -27,19 +27,22 @@ var outageScraperMemoryLimit = flag.String("outage-scraper-memory-limit", "8Gi",
 var outageScrapeInterval = flag.Duration("outage-scrape-interval", 30*time.Second, "Prometheus scrape interval")
 var outageScrapeTemplate = flag.String("outage-scrape-template", "metrics-ksm-mixed.prom", "Prometheus template path (relative to tests/scale/backend-outage unless absolute)")
 var outageScrapeSeries = flag.Int("outage-scrape-series", 175000, "total series per scrape, expanded from the selected scrape template")
-var outageVerificationScrapeTimeout = flag.Duration("outage-verification-scrape-timeout", 60*time.Second, "timeout for scraping receipt counters")
+var outageVerificationScrapeTimeout = flag.Duration("outage-verification-scrape-timeout", 60*time.Second, "timeout for delivery verification and individual receipt-counter requests")
 var outageMode = flag.String("outage-mode", "outage", "test mode: outage or queue-overhead")
-var outageDuration = flag.Duration("outage-duration", time.Minute, "backend downtime in outage mode only")
-var outageBaseline = flag.Duration("outage-baseline", time.Minute, "healthy baseline scraping duration")
-var outageRecovery = flag.Duration("outage-recovery", 3*time.Minute, "maximum recovery observation window")
+var outageDuration = flag.Duration("outage-duration", 2*time.Minute, "backend downtime in outage mode only")
+var outageBaseline = flag.Duration("outage-baseline", 2*time.Minute, "healthy baseline scraping duration")
+var outageRecovery = flag.Duration("outage-recovery", 2*time.Minute, "active recovery input duration (ignored when -outage-recovery-input=false)")
+var outageRecoveryInput = flag.Bool("outage-recovery-input", true, "outage mode: continue scraping through backend restoration and recovery")
 var outageHeapInterval = flag.Duration("outage-heap-interval", 30*time.Second, "periodic Collector heap interval (0 disables)")
 var outageQueueOverheadScrapes = flag.Int("queue-overhead-scrapes", 2, "queue-overhead mode: successful input scrapes after baseline, then pause input")
 var outageQueueOverheadSettleTimeout = flag.Duration("queue-overhead-settle-timeout", time.Minute, "queue-overhead mode: maximum wait for in-flight requests to finish after pausing input")
 var outageOutput = flag.String("outage-output", "", "artifact directory (default /tmp/nktp-outage-RUN)")
 var outageGatewaySource = flag.String("outage-gateway-source", "nktp-gateway-metrics", "installed Collector to derive the gateway from")
 var outageGatewaySourceNamespace = flag.String("outage-gateway-source-namespace", "nktp", "source gateway namespace")
-var outageGatewayQueueBytes = flag.Int64("outage-gateway-queue-bytes", 128<<20, "gateway byte-sized sending queue (0 inherits source ratio unless queue-percent is positive)")
+var outageGatewayQueueBytes = flag.Int64("outage-gateway-queue-bytes", 512<<20, "gateway byte-sized sending queue (0 inherits source ratio unless queue-percent is positive)")
 var outageGatewayMemoryLimit = flag.String("outage-gateway-memory-limit", "1Gi", "gateway memory limit (empty inherits source)")
+var outageGatewayMemoryRequest = flag.String("outage-gateway-memory-request", "", "gateway memory request (empty inherits source, capped at the memory limit)")
+var outageGatewayGoMemLimit = flag.String("outage-gateway-gomemlimit", "", "gateway GOMEMLIMIT, e.g. 192MiB or off (empty preserves automatic scaling)")
 var outageGatewayQueuePercent = flag.Float64("outage-gateway-queue-percent", 0, "gateway queue percentage of memory limit (replaces default bytes; exclusive with explicit positive queue-bytes)")
 var outageGatewaySpikePercent = flag.Int("outage-gateway-spike-percent", -1, "gateway memory-limiter spike percentage of container memory (-1 inherits source; positive and below hard limit)")
 var outageGatewayStorage = flag.String("outage-gateway-storage", "", "gateway persistent queue PVC size, e.g. 1Gi (empty uses in-memory queue)")
@@ -65,6 +68,7 @@ type runConfig struct {
 	ScrapeSeries, OverheadScrapes                                    int
 	ScrapeInterval, Baseline, Duration, Recovery                     time.Duration
 	VerificationTimeout, DrainTimeout, HeapInterval                  time.Duration
+	RecoveryInput                                                    bool
 }
 
 // configFromFlags validates scenario flags and resolves the kubeconfig path.
@@ -82,8 +86,11 @@ func configFromFlags(t *testing.T) runConfig {
 	if *outageGatewayStorage != "" && *outageMode == "queue-overhead" {
 		t.Fatal("persistent storage requires outage mode; queue-overhead mode estimates in-memory queue heap")
 	}
-	if *outageScrapeSeries <= 0 || *outageScrapeInterval <= 0 || *outageBaseline < *outageScrapeInterval || *outageRecovery <= 0 || *outageVerificationScrapeTimeout <= 0 || *outageHeapInterval < 0 {
-		t.Fatal("series/interval/recovery must be positive; baseline must cover at least one scrape interval")
+	if *outageScrapeSeries <= 0 || *outageScrapeInterval <= 0 || *outageBaseline < *outageScrapeInterval || *outageVerificationScrapeTimeout <= 0 || *outageHeapInterval < 0 {
+		t.Fatal("series, interval, and verification timeout must be positive; baseline must cover at least one scrape interval; heap interval must be nonnegative")
+	}
+	if *outageMode == "outage" && *outageRecoveryInput && *outageRecovery < *outageScrapeInterval {
+		t.Fatal("recovery with continued input must cover at least one scrape interval")
 	}
 	kubeconfig := *kubeconfigPath
 	require.NotEmpty(t, kubeconfig, "set KUBECONFIG or pass -kubeconfig")
@@ -101,7 +108,10 @@ func configFromFlags(t *testing.T) runConfig {
 		ScrapeTemplate: *outageScrapeTemplate, BackendManifest: *outageManifest,
 		GatewaySource: *outageGatewaySource, GatewayNamespace: *outageGatewaySourceNamespace,
 		ScraperSource: *outageScraperSource, ScraperNamespace: *outageScraperSourceNamespace,
-		Gateway:        collectorOptions{MemoryLimit: *outageGatewayMemoryLimit, QueueBytes: queueBytes, QueuePercent: *outageGatewayQueuePercent},
+		Gateway: collectorOptions{
+			MemoryLimit: *outageGatewayMemoryLimit, MemoryRequest: *outageGatewayMemoryRequest,
+			GoMemLimit: *outageGatewayGoMemLimit, QueueBytes: queueBytes, QueuePercent: *outageGatewayQueuePercent,
+		},
 		GatewaySpike:   *outageGatewaySpikePercent,
 		GatewayStorage: *outageGatewayStorage, GatewayStorageClass: *outageGatewayStorageClass,
 		Scraper: scraperOptions{
@@ -112,7 +122,8 @@ func configFromFlags(t *testing.T) runConfig {
 		ScrapeInterval: *outageScrapeInterval, Baseline: *outageBaseline, Duration: *outageDuration,
 		Recovery: *outageRecovery, VerificationTimeout: *outageVerificationScrapeTimeout,
 		OverheadScrapes: *outageQueueOverheadScrapes, DrainTimeout: *outageQueueOverheadSettleTimeout,
-		HeapInterval: *outageHeapInterval,
+		HeapInterval:  *outageHeapInterval,
+		RecoveryInput: *outageMode == "outage" && *outageRecoveryInput,
 	}
 }
 
@@ -126,6 +137,9 @@ func validateMode(mode string, duration, interval time.Duration, scrapes int, se
 			return fmt.Errorf("-outage-duration must cover at least one scrape interval")
 		}
 	case "queue-overhead":
+		if explicit["outage-recovery-input"] {
+			return fmt.Errorf("recovery input flags apply only to -outage-mode outage")
+		}
 		if explicit["outage-duration"] {
 			return fmt.Errorf("-outage-duration applies only to -outage-mode outage")
 		}
