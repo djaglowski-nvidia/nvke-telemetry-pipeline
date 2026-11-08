@@ -147,6 +147,9 @@ a:focus{outline:none}
 .pill:hover rect,.pill:focus-visible rect{fill:#16201a;stroke:var(--g)}
 .pill.go rect{stroke:var(--g)}
 .pill.go:hover rect,.pill.go:focus-visible rect{fill:#1d2b17}
+/* on a touch screen Home, Back and Next take taps from well around them, so a thumb finds them */
+.pill .hit{fill:none;pointer-events:none}
+@media (pointer: coarse){.pill .hit{pointer-events:all}}
 .cta > rect{fill:#16201a;stroke:var(--g);stroke-width:2.5;transition:fill .2s}
 .cta > text{font-size:22px;font-weight:600}
 .cta:hover > rect,.cta:focus-visible > rect{fill:#1d2b17}
@@ -162,12 +165,20 @@ a:focus{outline:none}
 .dest.up .key{display:inline}
 .key{transition:opacity .15s ease-out}
 .pressed .key{opacity:0}
+/* a touch screen has no arrow keys to hint at */
+@media (pointer: coarse){.key,.dest.up .key{display:none}}
 .dest-title{font-size:20px;font-weight:700}
 .dest-sub{font-size:15px;fill:var(--mut)}
 .choice{transform-box:fill-box;transform-origin:center}
 .choice-title{font-size:30px;font-weight:700}
 .choice-sub{font-size:20px;fill:var(--mut)}
 .lead{font-size:24px;fill:var(--mut)}
+/* held upright, a phone shows the slides as a strip across its middle; until dismissed, a note under them suggests turning it */
+#turn{display:none;position:fixed;left:50%;bottom:24px;translate:-50% 0;align-items:center;gap:10px;width:max-content;max-width:calc(100% - 32px);
+  padding:10px 14px 10px 12px;border:1px solid #334036;border-radius:22px;background:#121814;color:var(--fg);font:inherit;font-size:15px;line-height:1.3;text-align:left;cursor:pointer}
+@media (orientation: portrait) and (pointer: coarse){#turn:not(.gone){display:flex}}
+#turn svg{flex:none;width:20px;height:20px}
+#turn .x{flex:none;color:var(--mut);font-size:18px;line-height:1}
 </style>
 </head>
 <body>
@@ -1680,12 +1691,13 @@ a:focus{outline:none}
 
 <!-- ============ NAVIGATION: under every screen but the landing ============ -->
 <g id="nav">
-  <a id="nav-home" class="pill" href="#home"><rect x="80" y="916" width="86" height="32" rx="16"/><path d="M95 932.4 L100.6 927.3 L106.2 932.4 M96.6 931.4 V936.6 H104.6 V931.4" fill="none" stroke="#e8ece9" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/><text x="111.7" y="937.5">Home</text></a>
-  <a id="nav-back" class="pill" href="#home"><rect x="176" y="916" width="78" height="32" rx="16"/><text x="214.3" y="937.5" text-anchor="middle">← Back</text></a>
+  <a id="nav-home" class="pill" href="#home"><path class="hit" d="M-400 846 H171 V1400 H-400 Z"/><rect x="80" y="916" width="86" height="32" rx="16"/><path d="M95 932.4 L100.6 927.3 L106.2 932.4 M96.6 931.4 V936.6 H104.6 V931.4" fill="none" stroke="#e8ece9" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/><text x="111.7" y="937.5">Home</text></a>
+  <a id="nav-back" class="pill" href="#home"><path class="hit" d="M171 846 H420 V1400 H171 Z"/><rect x="176" y="916" width="78" height="32" rx="16"/><text x="214.3" y="937.5" text-anchor="middle">← Back</text></a>
   <g id="nav-progress"><path id="nav-track" d="M278 932 H1418" fill="none" stroke="#1a211c" stroke-width="4" stroke-linecap="round"/><path id="nav-fill" d="M278 932 H1418" fill="none" stroke="#76b900" stroke-width="4" stroke-linecap="round" pathLength="100" stroke-dasharray="0 100" style="transition:stroke-dasharray .5s ease"/></g>
-  <a id="nav-next" class="pill go" href="#home"><rect x="1442" y="916" width="78" height="32" rx="16"/><text x="1480.9" y="937.5" text-anchor="middle">Next →</text></a>
+  <a id="nav-next" class="pill go" href="#home"><path class="hit" d="M1250 846 H2000 V1400 H1250 Z"/><rect x="1442" y="916" width="78" height="32" rx="16"/><text x="1480.9" y="937.5" text-anchor="middle">Next →</text></a>
 </g>
 </svg>
+<button id="turn" type="button" aria-label="Turn your phone sideways. Tap to dismiss."><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="#76b900" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="10" height="17" rx="2"/><path d="M16 3.5 A 7 7 0 0 1 21.5 10 M19.6 8.9 L21.5 10 L22.6 8"/></svg><span>Turn your phone sideways</span><span class="x" aria-hidden="true">×</span></button>
 <script>
 (() => {
   const $ = (id) => document.getElementById(id);
@@ -2044,8 +2056,23 @@ a:focus{outline:none}
     else if (e.key === ' ' && cued) { go(); e.preventDefault(); }
     else if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && was?.screen) { flow(e.key === 'ArrowUp' ? 1.5 : 1 / 1.5); e.preventDefault(); }
   });
+  // on a touch screen a swipe does what the arrows do: leftward for what's next, rightward to go back;
+  // not while the page is pinched in, when a swipe is for looking around it
+  let swipe = null;
+  stage.addEventListener('touchstart', (e) => { swipe = e.touches.length === 1 ? { x: e.touches[0].clientX, y: e.touches[0].clientY } : null; }, { passive: true });
+  stage.addEventListener('touchcancel', () => { swipe = null; }, { passive: true });
+  stage.addEventListener('touchend', (e) => {
+    const s = swipe, t = e.changedTouches[0];
+    swipe = null;
+    if (!s || e.touches.length || (window.visualViewport?.scale ?? 1) > 1.01) return;
+    const dx = t.clientX - s.x, dy = t.clientY - s.y;
+    if (Math.abs(dx) < 50 || Math.abs(dx) < 2 * Math.abs(dy)) return;
+    if (dx < 0 && next) press(next);
+    else if (dx > 0 && back) location.hash = back;
+  }, { passive: true });
   // on the landing page a click or a tap speeds the river up, as the up arrow does; Learn more still just leads on
   stage.addEventListener('click', (e) => { if (was?.screen === 'landing' && !e.target.closest('a')) flow(1.5); });
+  $('turn').addEventListener('click', (e) => e.currentTarget.classList.add('gone'));
   route();
   if (was.screen === 'landing' && !calm.matches) fill();
 })();
