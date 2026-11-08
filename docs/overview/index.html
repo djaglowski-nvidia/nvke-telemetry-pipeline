@@ -94,6 +94,16 @@ tspan.hid{fill-opacity:0}
 @keyframes qred{0%{opacity:0}3%,50%{opacity:1}53%,100%{opacity:0}}
 @keyframes qgreen{0%{opacity:1}3%,50%{opacity:0}53%,100%{opacity:1}}
 @keyframes qfill{0%,3%{transform:scaleY(.2)}44%,53%{transform:scaleY(.85)}94%,100%{transform:scaleY(.2)}}
+/* one gateway per signal: the logs gateway scales out to three replicas and back to one; while there are three its queue drains and its
+   egress runs dense, and while there's one it turns amber, its egress thins and its queue fills */
+.rep{animation:rep 8s ease-in-out infinite}
+.rep-q{transform-box:fill-box;transform-origin:50% 100%;animation:repq 8s ease-in-out infinite}
+.rep-out{animation:repout 8s ease-in-out infinite}
+.rep-warn{animation:repwarn 8s ease-in-out infinite}
+@keyframes rep{0%,8%{translate:var(--back) 0}14%,58%{translate:0 0}64%,100%{translate:var(--back) 0}}
+@keyframes repq{0%,14%{transform:scaleY(1)}50%,64%{transform:scaleY(.1875)}100%{transform:scaleY(1)}}
+@keyframes repout{0%,8%{opacity:0}14%,58%{opacity:1}64%,100%{opacity:0}}
+@keyframes repwarn{0%,8%{opacity:1}14%,58%{opacity:0}64%,100%{opacity:1}}
 .oom-flow{animation:oomflow 8s linear infinite}
 .oom-reach{stroke-dasharray:100;animation:oomreach 8s linear infinite}
 .oom-fill{transform-box:fill-box;transform-origin:50% 100%;animation:oomfill 8s linear infinite,oomcolor 8s linear infinite}
@@ -1160,9 +1170,9 @@ a:focus{outline:none}
       <g data-in="a-events-pool" data-out="a-stress"><path class="flow l" d="M844 233 H860 C 910 233, 910 299, 956 299 H970"/></g><g data-in="a-stress" class="mp"><path class="flow l" d="M844 233 H860 C 910 233, 910 299, 956 299 H970"/></g>
       <g data-in="a-large-pool"><g class="drain-flow"><path class="flow m" d="M498.6 738.3 L514 734 C 564 720, 600 520, 956 437 L971.6 433.4"/></g></g>
       <g fill="none" stroke="#7c8a83" stroke-width="2"><rect x="1094" y="275" width="16" height="70" rx="4"/><rect x="1094" y="395" width="16" height="70" rx="4"/><rect x="1094" y="515" width="16" height="70" rx="4"/></g>
-      <g data-out="a-stress" opacity=".85"><rect x="1097" y="330" width="10" height="12" rx="2" fill="#fbbf24"/><rect x="1097" y="450" width="10" height="12" rx="2" fill="#38bdf8"/><rect x="1097" y="570" width="10" height="12" rx="2" fill="#c084fc"/></g>
+      <g data-out="a-stress" opacity=".85"><rect class="rep-q" data-out="a-large" data-restart="a-gw-load" data-at="0" x="1097" y="278" width="10" height="64" rx="2" fill="#fbbf24"/><rect data-in="a-large" x="1097" y="330" width="10" height="12" rx="2" fill="#fbbf24"/><rect x="1097" y="450" width="10" height="12" rx="2" fill="#38bdf8"/><rect x="1097" y="570" width="10" height="12" rx="2" fill="#c084fc"/></g>
       <g data-in="a-stress" opacity=".85"><rect class="gq" x="1097" y="278" width="10" height="64" rx="2" fill="#fbbf24"/><rect class="gq gq-m" x="1097" y="398" width="10" height="64" rx="2" fill="#38bdf8"/><rect class="gq gq-t" x="1097" y="518" width="10" height="64" rx="2" fill="#c084fc"/></g>
-      <g data-in="a-gw-load" data-out="a-large"><path class="flow l dense" style="stroke-width:6;animation-duration:.25s" d="M1068 309 H1084 C 1200 309, 1220 419, 1296 419 H1322"/></g>
+      <g data-in="a-gw-load" data-out="a-large"><g class="rep-out" data-restart="a-gw-load" data-at="0"><path class="flow l dense" style="stroke-width:6;animation-duration:.25s" d="M1068 309 H1084 C 1200 309, 1220 419, 1296 419 H1322"/></g></g>
       <g data-out="a-stress"><path class="flow l" d="M1068 309 H1084 C 1200 309, 1220 419, 1296 419 H1322"/><path class="flow m" d="M1068 429 H1322"/><path class="flow t" d="M1068 549 H1084 C 1200 549, 1220 439, 1296 439 H1322"/></g>
       <!-- under stress: each line out to the backend breaks now and then -->
       <g data-in="a-stress">
@@ -1173,8 +1183,10 @@ a:focus{outline:none}
         <g class="lb-ok" style="animation-delay:-4.25s"><path class="flow t" d="M1068 549 H1084 C 1200 549, 1220 439, 1296 439 H1322"/></g>
         <g class="lb-break" style="animation-delay:-4.25s"><path d="M1084 549 C 1152 549, 1187 511, 1220 480" fill="none" stroke="#f87171" stroke-width="3" stroke-dasharray="6 8"/><use href="#brk" x="1218" y="456" width="26" height="26"/></g>
       </g>
-      <g data-in="a-gw-load" data-out="a-large"><use href="#col" x="928" y="272" width="120" height="75"/><use href="#col" x="944" y="272" width="120" height="75"/></g>
+      <!-- the logs gateway's extra replicas: retracted, each sits exactly behind the gateway, which is drawn over it -->
+      <g data-in="a-gw-load" data-out="a-large" data-restart="a-gw-load" data-at="0"><use class="rep" style="--back:32px" href="#col" x="928" y="272" width="120" height="75"/><use class="rep" style="--back:16px" href="#col" x="944" y="272" width="120" height="75"/></g>
       <use href="#col" x="960" y="272" width="120" height="75"/><use href="#col" x="960" y="392" width="120" height="75"/><use href="#col" x="960" y="512" width="120" height="75"/>
+      <g data-in="a-gw-load" data-out="a-large"><use href="#col-warn" class="rep-warn" data-restart="a-gw-load" data-at="0" x="960" y="272" width="120" height="75"/></g>
       <!-- under stress: a gateway turns amber while its egress is down and its queue fills -->
       <g data-in="a-stress"><use href="#col-warn" class="gw-warn" x="960" y="272" width="120" height="75"/><use href="#col-warn" class="gw-warn lb-m" style="animation-delay:-3.88s" x="960" y="392" width="120" height="75"/><use href="#col-warn" class="gw-warn" style="animation-delay:-4.25s" x="960" y="512" width="120" height="75"/></g>
       <text class="mut" x="1020" y="370" text-anchor="middle" font-size="18">logs</text>
