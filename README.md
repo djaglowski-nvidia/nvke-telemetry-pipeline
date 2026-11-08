@@ -4,7 +4,7 @@ The NVKE Telemetry Pipeline (NKTP) is an opinionated deployment of OpenTelemetry
 
 It ships as part of [NVKE](https://github.com/dsx-ai-factory/nvke), and you can also install it on its own on any Kubernetes cluster with Helm.
 
-## Watch the overview
+## Take the interactive tour
 
 [![An interactive overview of NKTP](docs/overview/banner.svg)](https://dsx-ai-factory.github.io/nvke-telemetry-pipeline/overview)
 
