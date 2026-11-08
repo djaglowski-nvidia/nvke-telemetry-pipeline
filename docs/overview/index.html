@@ -9,8 +9,11 @@
 html,body{margin:0;height:100%;overflow:hidden;color:var(--fg);
   background:radial-gradient(ellipse at 50% 40%,#111a13 0%,#0a0d0b 60%,#070908 100%);
   font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,Helvetica,Arial,sans-serif}
-#stage{position:absolute;inset:0;width:100%;height:100%}
+#stage{position:absolute;inset:0;width:100%;height:100%;touch-action:manipulation}
 [data-in],[data-out],[data-dim],[data-fade],[data-halt]{transition:opacity .6s ease}
+/* opacity doesn't apply to a word inside a line of text, so a tspan fades with its fill instead */
+tspan[data-in],tspan[data-out]{transition:fill-opacity .6s ease}
+tspan.hid{fill-opacity:0}
 .scene{opacity:0;visibility:hidden;transform-box:view-box;transform-origin:0 0;transition:opacity .6s ease,visibility 0s .6s}
 .scene.on{opacity:1;visibility:visible;transition:opacity .6s ease}
 .scene.zoom{opacity:1;visibility:visible;transition:none}
@@ -261,6 +264,11 @@ a:focus{outline:none}
     <path d="M3 3 H27 L37 13 V47 H3 Z" fill="#16201a" stroke="#76b900" stroke-width="2.5"/>
     <path d="M27 3 V13 H37" fill="none" stroke="#76b900" stroke-width="2.5"/>
     <path d="M9 22 H31 M9 30 H31 M9 38 H24" stroke="#5b6b60" stroke-width="2.5"/>
+  </symbol>
+  <symbol id="doc-m" viewBox="0 0 40 50">
+    <path d="M3 3 H27 L37 13 V47 H3 Z" fill="#0d1a1d" stroke="#38bdf8" stroke-width="2.5"/>
+    <path d="M27 3 V13 H37" fill="none" stroke="#38bdf8" stroke-width="2.5"/>
+    <path d="M9 22 H31 M9 30 H31 M9 38 H24" stroke="#38bdf8" stroke-width="2.5" opacity=".7"/>
   </symbol>
   <symbol id="sm" viewBox="0 0 40 30">
     <path d="M3 24 L12 15 L19 19 L28 7 L37 11" fill="none" stroke="#38bdf8" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
@@ -783,9 +791,8 @@ a:focus{outline:none}
 
 <!-- ============ OTEL COMPONENTS ============ -->
 <g class="scene" data-steps="c-pipeline c-distros c-instr" data-module="otel">
-  <text class="title" x="80" y="110" data-out="c-instr">OTel Collector</text>
-  <!-- where the word falls in "OTel Collector Distributions" set as one line, so OTel Collector stays put while it fades in -->
-  <text class="title" x="417.85" y="110" data-in="c-distros" data-out="c-instr">Distributions</text>
+  <!-- one line of text, so the space before Distributions follows whatever font the reader has, while the word fades in -->
+  <text class="title" x="80" y="110" data-out="c-instr">OTel Collector<tspan data-in="c-distros"> Distributions</tspan></text>
   <text class="title" x="80" y="110" data-in="c-instr">OTel Instrumentation</text>
   <text class="lead" x="80" y="162" data-out="c-distros">The Collector receives telemetry, processes it, and exports it to a backend.</text>
   <text class="lead" x="80" y="162" data-in="c-distros" data-out="c-instr">Each Collector distribution includes a different set of components.</text>
@@ -1526,16 +1533,14 @@ a:focus{outline:none}
   <!-- lowered to clear the caption -->
   <g transform="translate(0 5)">
 
-  <rect x="100" y="230" width="460" height="530" rx="18" fill="#121814" stroke="#334036" stroke-width="2"/>
+  <rect x="100" y="230" width="366" height="530" rx="18" fill="#121814" stroke="#334036" stroke-width="2"/>
   <text class="lbl" x="124" y="266" font-weight="700">Your service</text>
 
   <!-- each signal: its label centred on its options and a rail in its colour that every option leaves from;
-       instrumentation lives inside the service, endpoints and the logs bridge sit on its border -->
-  <!-- each signal: its label centred on its options and a rail in its colour that every option leaves from;
-       instrumentation lives inside the service, endpoints and the logs bridge sit on its border -->
+       each option sits mostly inside the service and sticks out past its border by 44, so all of them end at x 510 -->
   <g data-in="s-traces">
     <use href="#st" x="124" y="300" width="40" height="30"/><text class="lbl" x="172" y="323">Traces</text>
-    <g><path class="flow t" d="M494 315 H1190"/><g class="chip"><rect x="780" y="291" width="180" height="48" rx="24"/><text x="870" y="323" text-anchor="middle">push OTLP</text></g></g>
+    <g><path class="flow t" d="M494 315 H1310"/><g class="chip"><rect x="815" y="291" width="180" height="48" rx="24"/><text x="905" y="323" text-anchor="middle">push OTLP</text></g></g>
     <path class="flow t" d="M288 315 H340"/>
     <g><rect x="330" y="300" width="180" height="30" rx="8" fill="#17220f" stroke="#76b900" stroke-width="2"/><text x="420" y="320" text-anchor="middle" font-size="15">OTel Instrumentation</text></g>
     <rect x="285" y="301" width="6" height="28" rx="2" fill="#c084fc"/>
@@ -1544,17 +1549,17 @@ a:focus{outline:none}
   <g data-in="s-metrics">
     <use href="#sm" x="124" y="460" width="40" height="30"/><text class="lbl" x="172" y="483">Metrics</text>
     <!-- preferred: instrument and push OTLP -->
-    <g><path class="flow m" d="M494 435 H1190"/><g class="chip"><rect x="780" y="411" width="180" height="48" rx="24"/><text x="870" y="443" text-anchor="middle">push OTLP</text></g></g>
+    <g><path class="flow m" d="M494 435 H1310"/><g class="chip"><rect x="815" y="411" width="180" height="48" rx="24"/><text x="905" y="443" text-anchor="middle">push OTLP</text></g></g>
     <g><path class="flow m" d="M288 435 H340"/><g><rect x="330" y="420" width="180" height="30" rx="8" fill="#17220f" stroke="#76b900" stroke-width="2"/><text x="420" y="440" text-anchor="middle" font-size="15">OTel Instrumentation</text></g></g>
     <!-- or expose /metrics, with a ServiceMonitor (outside the service) pointing NKTP at it -->
     <g>
-      <path class="flow m" d="M288 515 H1190"/>
-      <rect x="516" y="503" width="88" height="24" rx="6" fill="#0d1310" stroke="#38bdf8" stroke-width="2"/>
-      <text x="560" y="520" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="15" fill="#38bdf8">/metrics</text>
-      <path d="M592 529 V538" stroke="#7c8a83" stroke-width="2" stroke-dasharray="2 4"/>
-      <use href="#doc" x="572" y="540" width="40" height="50"/>
-      <text x="622" y="571" font-size="18">ServiceMonitor</text>
-      <g class="chip"><rect x="810" y="491" width="120" height="48" rx="24"/><text x="870" y="523" text-anchor="middle">scrape</text></g>
+      <path class="flow m" d="M288 515 H1310"/>
+      <rect x="422" y="503" width="88" height="24" rx="6" fill="#0d1310" stroke="#38bdf8" stroke-width="2"/>
+      <text x="466" y="520" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="15" fill="#38bdf8">/metrics</text>
+      <path d="M498 529 V538" stroke="#7c8a83" stroke-width="2" stroke-dasharray="2 4"/>
+      <use href="#doc-m" x="478" y="540" width="40" height="50"/>
+      <text x="528" y="571" font-size="18">ServiceMonitor</text>
+      <g class="chip"><rect x="845" y="491" width="120" height="48" rx="24"/><text x="905" y="523" text-anchor="middle">scrape</text></g>
     </g>
     <rect x="285" y="421" width="6" height="108" rx="2" fill="#38bdf8"/>
   </g>
@@ -1562,23 +1567,23 @@ a:focus{outline:none}
   <g data-in="s-logs">
     <use href="#sl" x="124" y="660" width="40" height="30"/><text class="lbl" x="172" y="683">Logs</text>
     <path class="flow l" d="M288 635 H670"/>
-    <path class="flow l" d="M700 635 H1190"/>
-    <rect x="490" y="623" width="140" height="24" rx="6" fill="#0d1310" stroke="#fbbf24" stroke-width="2"/>
-    <text x="560" y="640" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="14" fill="#fbbf24">stdout / stderr</text>
+    <path class="flow l" d="M700 635 H1310"/>
+    <rect x="370" y="623" width="140" height="24" rx="6" fill="#0d1310" stroke="#fbbf24" stroke-width="2"/>
+    <text x="440" y="640" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="14" fill="#fbbf24">stdout / stderr</text>
     <use href="#file" x="660" y="609" width="30" height="38"/><use href="#file" x="676" y="619" width="30" height="38"/>
     <text class="mut" x="686" y="679" text-anchor="middle" font-size="16">pod logs</text>
-    <g class="chip"><rect x="820" y="611" width="100" height="48" rx="24"/><text x="870" y="643" text-anchor="middle">read</text></g>
+    <g class="chip"><rect x="855" y="611" width="100" height="48" rx="24"/><text x="905" y="643" text-anchor="middle">read</text></g>
     <g>
-      <path class="flow l" d="M288 715 H1190"/>
-      <g><rect x="470" y="700" width="180" height="30" rx="8" fill="#17220f" stroke="#76b900" stroke-width="2"/><text x="560" y="720" text-anchor="middle" font-size="15">OTel Logs Bridge</text></g>
-      <g class="chip"><rect x="780" y="691" width="180" height="48" rx="24"/><text x="870" y="723" text-anchor="middle">push OTLP</text></g>
+      <path class="flow l" d="M288 715 H1310"/>
+      <g><rect x="330" y="700" width="180" height="30" rx="8" fill="#17220f" stroke="#76b900" stroke-width="2"/><text x="420" y="720" text-anchor="middle" font-size="15">OTel Logs Bridge</text></g>
+      <g class="chip"><rect x="815" y="691" width="180" height="48" rx="24"/><text x="905" y="723" text-anchor="middle">push OTLP</text></g>
     </g>
     <rect x="285" y="621" width="6" height="108" rx="2" fill="#fbbf24"/>
   </g>
 
   <!-- drawn last, so every line runs into it out of sight -->
-  <rect x="1180" y="180" width="340" height="620" rx="24" fill="#142010" stroke="#76b900" stroke-width="3"/>
-  <text class="term" x="1350" y="499" text-anchor="middle">NKTP</text>
+  <rect x="1300" y="180" width="200" height="620" rx="24" fill="#142010" stroke="#76b900" stroke-width="3"/>
+  <text class="term" x="1400" y="499" text-anchor="middle">NKTP</text>
   </g>
 </g>
 <!-- ============ RECIPES ============ -->
@@ -1587,59 +1592,60 @@ a:focus{outline:none}
   <text class="lead" x="80" y="162">Whichever mix fits your service, every signal still ends up in NKTP.</text>
   <!-- lowered to clear the caption -->
   <g transform="translate(0 13)">
+  <!-- in every recipe each option sticks out past the service's border by 36, so all of them end at x 465 -->
   <!-- recipe 1: Prometheus -->
   <g>
     <text x="120" y="272" text-anchor="middle" font-size="56" font-weight="800" fill="#76b900">1</text>
     <text class="mut" x="120" y="300" text-anchor="middle" font-size="14">Prometheus</text>
-    <rect x="180" y="172" width="300" height="180" rx="14" fill="#121814" stroke="#334036" stroke-width="2"/><text class="mut" x="196" y="194" font-size="14">service</text>
+    <rect x="180" y="172" width="249" height="180" rx="14" fill="#121814" stroke="#334036" stroke-width="2"/><text class="mut" x="196" y="194" font-size="14">service</text>
     <use href="#st" x="196" y="202" width="26" height="20"/><text x="230" y="218" font-size="16">Traces</text><use href="#sm" x="196" y="252" width="26" height="20"/><text x="230" y="268" font-size="16">Metrics</text><use href="#sl" x="196" y="302" width="26" height="20"/><text x="230" y="318" font-size="16">Logs</text>
     <path class="flow t" d="M453 212 H1310"/>
     <g><rect x="315" y="198" width="150" height="28" rx="7" fill="#17220f" stroke="#76b900" stroke-width="2"/><text x="390" y="217" text-anchor="middle" font-size="13">OTel Instrumentation</text></g>
-    <g class="chip"><rect x="840" y="197" width="120" height="30" rx="15"/><text x="900" y="217" text-anchor="middle" style="font-size:15px">push OTLP</text></g>
-    <path class="flow m" d="M504 262 H1310"/>
-    <rect x="444" y="251" width="72" height="22" rx="5" fill="#0d1310" stroke="#38bdf8" stroke-width="2"/><text x="480" y="267" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="13" fill="#38bdf8">/metrics</text>
-    <use href="#doc" x="530" y="228" width="22" height="28"/><text x="558" y="248" font-size="14">ServiceMonitor</text>
-    <g class="chip"><rect x="840" y="247" width="120" height="30" rx="15"/><text x="900" y="267" text-anchor="middle" style="font-size:15px">scrape</text></g>
-    <path class="flow l" d="M524 312 H610"/><rect x="424" y="301" width="112" height="22" rx="5" fill="#0d1310" stroke="#fbbf24" stroke-width="2"/><text x="480" y="316" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="12" fill="#fbbf24">stdout/stderr</text>
-    <path class="flow l" d="M620 312 H1310"/>
-    <use href="#file" x="600" y="298" width="18" height="23"/><use href="#file" x="610" y="304" width="18" height="23"/>
-    <g class="chip"><rect x="840" y="297" width="120" height="30" rx="15"/><text x="900" y="317" text-anchor="middle" style="font-size:15px">read</text></g>
+    <g class="chip"><rect x="822.5" y="197" width="120" height="30" rx="15"/><text x="882.5" y="217" text-anchor="middle" style="font-size:15px">push OTLP</text></g>
+    <path class="flow m" d="M453 262 H1310"/>
+    <rect x="393" y="251" width="72" height="22" rx="5" fill="#0d1310" stroke="#38bdf8" stroke-width="2"/><text x="429" y="267" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="13" fill="#38bdf8">/metrics</text>
+    <use href="#doc-m" x="479" y="228" width="22" height="28"/><text x="507" y="248" font-size="14">ServiceMonitor</text>
+    <g class="chip"><rect x="822.5" y="247" width="120" height="30" rx="15"/><text x="882.5" y="267" text-anchor="middle" style="font-size:15px">scrape</text></g>
+    <path class="flow l" d="M453 312 H539"/><rect x="353" y="301" width="112" height="22" rx="5" fill="#0d1310" stroke="#fbbf24" stroke-width="2"/><text x="409" y="316" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="12" fill="#fbbf24">stdout/stderr</text>
+    <path class="flow l" d="M549 312 H1310"/>
+    <use href="#file" x="529" y="298" width="18" height="23"/><use href="#file" x="539" y="304" width="18" height="23"/>
+    <g class="chip"><rect x="822.5" y="297" width="120" height="30" rx="15"/><text x="882.5" y="317" text-anchor="middle" style="font-size:15px">read</text></g>
     <rect x="1300" y="172" width="200" height="180" rx="14" fill="#142010" stroke="#76b900" stroke-width="2.5"/><text class="term" x="1400" y="272" text-anchor="middle">NKTP</text>
   </g>
   <!-- recipe 2: OTLP -->
   <g>
     <text x="120" y="512" text-anchor="middle" font-size="56" font-weight="800" fill="#76b900">2</text>
     <text class="mut" x="120" y="540" text-anchor="middle" font-size="14">OTLP</text>
-    <rect x="180" y="412" width="300" height="180" rx="14" fill="#121814" stroke="#334036" stroke-width="2"/><text class="mut" x="196" y="434" font-size="14">service</text>
+    <rect x="180" y="412" width="249" height="180" rx="14" fill="#121814" stroke="#334036" stroke-width="2"/><text class="mut" x="196" y="434" font-size="14">service</text>
     <use href="#st" x="196" y="442" width="26" height="20"/><text x="230" y="458" font-size="16">Traces</text><use href="#sm" x="196" y="492" width="26" height="20"/><text x="230" y="508" font-size="16">Metrics</text><use href="#sl" x="196" y="542" width="26" height="20"/><text x="230" y="558" font-size="16">Logs</text>
     <path class="flow t" d="M453 452 H1310"/>
     <g><rect x="315" y="438" width="150" height="28" rx="7" fill="#17220f" stroke="#76b900" stroke-width="2"/><text x="390" y="457" text-anchor="middle" font-size="13">OTel Instrumentation</text></g>
-    <g class="chip"><rect x="840" y="437" width="120" height="30" rx="15"/><text x="900" y="457" text-anchor="middle" style="font-size:15px">push OTLP</text></g>
+    <g class="chip"><rect x="822.5" y="437" width="120" height="30" rx="15"/><text x="882.5" y="457" text-anchor="middle" style="font-size:15px">push OTLP</text></g>
     <path class="flow m" d="M453 502 H1310"/>
     <g><rect x="315" y="488" width="150" height="28" rx="7" fill="#17220f" stroke="#76b900" stroke-width="2"/><text x="390" y="507" text-anchor="middle" font-size="13">OTel Instrumentation</text></g>
-    <g class="chip"><rect x="840" y="487" width="120" height="30" rx="15"/><text x="900" y="507" text-anchor="middle" style="font-size:15px">push OTLP</text></g>
-    <path class="flow l" d="M524 552 H610"/><rect x="424" y="541" width="112" height="22" rx="5" fill="#0d1310" stroke="#fbbf24" stroke-width="2"/><text x="480" y="556" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="12" fill="#fbbf24">stdout/stderr</text>
-    <path class="flow l" d="M620 552 H1310"/>
-    <use href="#file" x="600" y="538" width="18" height="23"/><use href="#file" x="610" y="544" width="18" height="23"/>
-    <g class="chip"><rect x="840" y="537" width="120" height="30" rx="15"/><text x="900" y="557" text-anchor="middle" style="font-size:15px">read</text></g>
+    <g class="chip"><rect x="822.5" y="487" width="120" height="30" rx="15"/><text x="882.5" y="507" text-anchor="middle" style="font-size:15px">push OTLP</text></g>
+    <path class="flow l" d="M453 552 H539"/><rect x="353" y="541" width="112" height="22" rx="5" fill="#0d1310" stroke="#fbbf24" stroke-width="2"/><text x="409" y="556" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="12" fill="#fbbf24">stdout/stderr</text>
+    <path class="flow l" d="M549 552 H1310"/>
+    <use href="#file" x="529" y="538" width="18" height="23"/><use href="#file" x="539" y="544" width="18" height="23"/>
+    <g class="chip"><rect x="822.5" y="537" width="120" height="30" rx="15"/><text x="882.5" y="557" text-anchor="middle" style="font-size:15px">read</text></g>
     <rect x="1300" y="412" width="200" height="180" rx="14" fill="#142010" stroke="#76b900" stroke-width="2.5"/><text class="term" x="1400" y="512" text-anchor="middle">NKTP</text>
   </g>
   <!-- recipe 3: OTLP + sidecar -->
   <g>
     <text x="120" y="752" text-anchor="middle" font-size="56" font-weight="800" fill="#76b900">3</text>
     <text class="mut" x="120" y="780" text-anchor="middle" font-size="14">OTLP + sidecar</text>
-    <rect x="180" y="652" width="300" height="180" rx="14" fill="#121814" stroke="#334036" stroke-width="2"/><text class="mut" x="196" y="674" font-size="14">service</text>
+    <rect x="180" y="652" width="249" height="180" rx="14" fill="#121814" stroke="#334036" stroke-width="2"/><text class="mut" x="196" y="674" font-size="14">service</text>
     <use href="#st" x="196" y="682" width="26" height="20"/><text x="230" y="698" font-size="16">Traces</text><use href="#sm" x="196" y="732" width="26" height="20"/><text x="230" y="748" font-size="16">Metrics</text><use href="#sl" x="196" y="782" width="26" height="20"/><text x="230" y="798" font-size="16">Logs</text>
     <path class="flow t dense" style="stroke-width:5" d="M453 692 H469 C 560 692, 580 710, 636 710 H650"/><path class="flow m dense" style="stroke-width:5" d="M453 742 H469 C 560 742, 580 724, 636 724 H650"/>
     <g><rect x="315" y="678" width="150" height="28" rx="7" fill="#17220f" stroke="#76b900" stroke-width="2"/><text x="390" y="697" text-anchor="middle" font-size="13">OTel Instrumentation</text></g>
     <g><rect x="315" y="728" width="150" height="28" rx="7" fill="#17220f" stroke="#76b900" stroke-width="2"/><text x="390" y="747" text-anchor="middle" font-size="13">OTel Instrumentation</text></g>
     <path class="flow t sparse" d="M684 717 H1310"/><path class="flow m sparse" d="M684 717 H1310" style="animation-delay:-1s"/>
     <use href="#col" x="640" y="695" width="72" height="45"/><text class="mut" x="676" y="759" text-anchor="middle" font-size="13">sidecar</text>
-    <g class="chip"><rect x="840" y="702" width="120" height="30" rx="15"/><text x="900" y="722" text-anchor="middle" style="font-size:15px">push OTLP</text></g>
-    <path class="flow l" d="M524 792 H610"/><rect x="424" y="781" width="112" height="22" rx="5" fill="#0d1310" stroke="#fbbf24" stroke-width="2"/><text x="480" y="796" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="12" fill="#fbbf24">stdout/stderr</text>
-    <path class="flow l" d="M620 792 H1310"/>
-    <use href="#file" x="600" y="778" width="18" height="23"/><use href="#file" x="610" y="784" width="18" height="23"/>
-    <g class="chip"><rect x="840" y="777" width="120" height="30" rx="15"/><text x="900" y="797" text-anchor="middle" style="font-size:15px">read</text></g>
+    <g class="chip"><rect x="822.5" y="702" width="120" height="30" rx="15"/><text x="882.5" y="722" text-anchor="middle" style="font-size:15px">push OTLP</text></g>
+    <path class="flow l" d="M453 792 H539"/><rect x="353" y="781" width="112" height="22" rx="5" fill="#0d1310" stroke="#fbbf24" stroke-width="2"/><text x="409" y="796" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="12" fill="#fbbf24">stdout/stderr</text>
+    <path class="flow l" d="M549 792 H1310"/>
+    <use href="#file" x="529" y="778" width="18" height="23"/><use href="#file" x="539" y="784" width="18" height="23"/>
+    <g class="chip"><rect x="822.5" y="777" width="120" height="30" rx="15"/><text x="882.5" y="797" text-anchor="middle" style="font-size:15px">read</text></g>
     <rect x="1300" y="652" width="200" height="180" rx="14" fill="#142010" stroke="#76b900" stroke-width="2.5"/><text class="term" x="1400" y="752" text-anchor="middle">NKTP</text>
     </g>
   </g>
@@ -2038,6 +2044,8 @@ a:focus{outline:none}
     else if (e.key === ' ' && cued) { go(); e.preventDefault(); }
     else if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && was?.screen) { flow(e.key === 'ArrowUp' ? 1.5 : 1 / 1.5); e.preventDefault(); }
   });
+  // on the landing page a click or a tap speeds the river up, as the up arrow does; Learn more still just leads on
+  stage.addEventListener('click', (e) => { if (was?.screen === 'landing' && !e.target.closest('a')) flow(1.5); });
   route();
   if (was.screen === 'landing' && !calm.matches) fill();
 })();
