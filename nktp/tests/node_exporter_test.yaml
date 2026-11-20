@@ -48,6 +48,9 @@ tests:
       - equal:
           path: spec.template.spec.containers[0].image
           value: quay.io/prometheus/node-exporter:v1.13.1
+      - notContains:
+          path: spec.template.spec.containers[0].args
+          content: --no-collector.cpufreq
 
   - it: accepts other exporter arguments
     set:
